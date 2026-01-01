@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMessages, useConversation, useSendMessage, useMarkAsRead } from '@/hooks/useMessages';
+import { useMessageAttachments } from '@/hooks/useMessageAttachments';
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Send, MessageSquare, User } from 'lucide-react';
-import { format } from 'date-fns';
+import { Send, MessageSquare, User, Paperclip } from 'lucide-react';
+import { MessageBubble } from './MessageBubble';
+import { AttachmentPreview } from './AttachmentPreview';
 
 interface Conversation {
   id: string;
@@ -23,12 +25,15 @@ export function MessagingCenter() {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [newMessage, setNewMessage] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: allMessages } = useMessages(user?.id);
   const { data: conversationMessages } = useConversation(user?.id, selectedConversation || undefined);
   const sendMessage = useSendMessage();
   const markAsRead = useMarkAsRead();
+  const { uploadAttachment, uploading, allowedTypes } = useMessageAttachments();
 
   // Build conversation list from messages
   useEffect(() => {
@@ -51,7 +56,11 @@ export function MessagingCenter() {
       const conv = conversationMap.get(otherUserId)!;
       
       if (!conv.lastMessageTime || new Date(msg.created_at) > new Date(conv.lastMessageTime)) {
-        conv.lastMessage = msg.content;
+        conv.lastMessage = msg.attachment_type?.startsWith('image/') 
+          ? '📷 Photo' 
+          : msg.attachment_type === 'application/pdf'
+          ? '📄 Document'
+          : msg.content;
         conv.lastMessageTime = msg.created_at;
       }
 
@@ -104,16 +113,37 @@ export function MessagingCenter() {
       .forEach((m) => markAsRead.mutate(m.id));
   }, [conversationMessages, user, markAsRead]);
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+    }
+    e.target.value = '';
+  };
+
   const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedConversation || !user) return;
+    if ((!newMessage.trim() && !selectedFile) || !selectedConversation || !user) return;
+
+    let attachmentData = null;
+
+    if (selectedFile) {
+      attachmentData = await uploadAttachment(selectedFile, user.id);
+      if (!attachmentData && selectedFile) {
+        return; // Upload failed
+      }
+    }
 
     await sendMessage.mutateAsync({
       sender_id: user.id,
       recipient_id: selectedConversation,
       content: newMessage.trim(),
+      attachment_url: attachmentData?.url || null,
+      attachment_type: attachmentData?.type || null,
+      attachment_name: attachmentData?.name || null,
     });
 
     setNewMessage('');
+    setSelectedFile(null);
   };
 
   const selectedConv = conversations.find((c) => c.id === selectedConversation);
@@ -187,42 +217,58 @@ export function MessagingCenter() {
             </div>
 
             <ScrollArea className="flex-1 p-4">
-              <div className="space-y-4">
-                {conversationMessages?.map((msg) => {
-                  const isOwn = msg.sender_id === user?.id;
-                  return (
-                    <div
-                      key={msg.id}
-                      className={`flex ${isOwn ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div
-                        className={`max-w-[70%] rounded-lg px-4 py-2 ${
-                          isOwn
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-secondary text-foreground'
-                        }`}
-                      >
-                        <p>{msg.content}</p>
-                        <p className={`text-xs mt-1 ${isOwn ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                          {format(new Date(msg.created_at), 'h:mm a')}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="space-y-3">
+                {conversationMessages?.map((msg) => (
+                  <MessageBubble
+                    key={msg.id}
+                    content={msg.content}
+                    timestamp={msg.created_at}
+                    isOwn={msg.sender_id === user?.id}
+                    attachmentUrl={msg.attachment_url}
+                    attachmentType={msg.attachment_type}
+                    attachmentName={msg.attachment_name}
+                  />
+                ))}
                 <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
 
-            <div className="p-4 border-t border-border">
+            <div className="p-4 border-t border-border space-y-3">
+              {selectedFile && (
+                <AttachmentPreview
+                  file={selectedFile}
+                  onRemove={() => setSelectedFile(null)}
+                  uploading={uploading}
+                />
+              )}
               <div className="flex gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={allowedTypes}
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="flex-shrink-0"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </Button>
                 <Input
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   placeholder="Type a message..."
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+                  disabled={uploading}
                 />
-                <Button onClick={handleSendMessage} disabled={!newMessage.trim()}>
+                <Button 
+                  onClick={handleSendMessage} 
+                  disabled={(!newMessage.trim() && !selectedFile) || uploading}
+                >
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
