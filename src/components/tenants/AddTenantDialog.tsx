@@ -77,7 +77,7 @@ export function AddTenantDialog({
       rent_amount: selectedPropertyId && rentAmount ? parseFloat(rentAmount) : null,
       lease_start_date: leaseStartDate ? format(leaseStartDate, 'yyyy-MM-dd') : null,
       lease_end_date: leaseEndDate ? format(leaseEndDate, 'yyyy-MM-dd') : null,
-      created_by: managerId,
+      manager_id: managerId,
     });
 
     // Reset form
