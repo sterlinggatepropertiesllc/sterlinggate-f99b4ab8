@@ -105,7 +105,7 @@ export default function TenantPortal() {
       <div className="flex">
         {/* Sidebar */}
         <aside className="w-64 bg-sidebar min-h-screen p-2 flex flex-col">
-          <Link to="/" className="flex items-center mb-8">
+          <Link to="/" className="flex items-center mb-8 w-full">
             <img src={logo} alt="Sterling Gate Properties" className="h-24 w-auto object-contain" />
           </Link>
           
