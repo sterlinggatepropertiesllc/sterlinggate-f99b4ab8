@@ -104,9 +104,9 @@ export default function TenantPortal() {
     <div className="min-h-screen bg-background">
       <div className="flex">
         {/* Sidebar */}
-        <aside className="w-64 bg-sidebar min-h-screen p-6 flex flex-col">
-          <div className="flex items-center gap-3 mb-8">
-            <img src={logo} alt="Sterling Gate Properties" className="h-14 w-auto object-contain" />
+        <aside className="w-64 bg-sidebar min-h-screen p-4 flex flex-col">
+          <div className="flex items-center mb-8">
+            <img src={logo} alt="Sterling Gate Properties" className="h-20 w-auto object-contain" />
           </div>
           
           <nav className="space-y-1 flex-1">
