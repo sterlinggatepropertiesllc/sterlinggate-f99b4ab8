@@ -104,10 +104,10 @@ export default function TenantPortal() {
     <div className="min-h-screen bg-background">
       <div className="flex">
         {/* Sidebar */}
-        <aside className="w-64 bg-sidebar min-h-screen p-4 flex flex-col">
-          <div className="flex items-center mb-8">
-            <img src={logo} alt="Sterling Gate Properties" className="h-20 w-auto object-contain" />
-          </div>
+        <aside className="w-64 bg-sidebar min-h-screen p-2 flex flex-col">
+          <Link to="/" className="flex items-center mb-8">
+            <img src={logo} alt="Sterling Gate Properties" className="h-24 w-auto object-contain" />
+          </Link>
           
           <nav className="space-y-1 flex-1">
             {navItems.map((item) => (
