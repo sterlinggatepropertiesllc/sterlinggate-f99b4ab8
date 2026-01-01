@@ -12,26 +12,18 @@ export function useMessages(userId: string | undefined) {
     queryFn: async () => {
       if (!userId) return [];
       
+      // No FK exists between messages and profiles, so we fetch messages only
       const { data, error } = await supabase
         .from('messages')
-        .select(`
-          *,
-          sender:sender_id (
-            id,
-            email,
-            full_name
-          ),
-          recipient:recipient_id (
-            id,
-            email,
-            full_name
-          )
-        `)
+        .select('*')
         .or(`sender_id.eq.${userId},recipient_id.eq.${userId}`)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      return data;
+      if (error) {
+        console.error('Messages fetch error:', error);
+        throw error;
+      }
+      return data || [];
     },
     enabled: !!userId,
   });
@@ -43,23 +35,23 @@ export function useConversation(userId: string | undefined, otherUserId: string 
     queryFn: async () => {
       if (!userId || !otherUserId) return [];
       
+      // Fetch messages between these two users (no FK join since no FK exists)
       const { data, error } = await supabase
         .from('messages')
-        .select(`
-          *,
-          sender:sender_id (
-            id,
-            email,
-            full_name
-          )
-        `)
-        .or(`and(sender_id.eq.${userId},recipient_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},recipient_id.eq.${userId})`)
+        .select('*')
+        .or(
+          `and(sender_id.eq.${userId},recipient_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},recipient_id.eq.${userId})`
+        )
         .order('created_at', { ascending: true });
 
-      if (error) throw error;
-      return data;
+      if (error) {
+        console.error('Conversation fetch error:', error);
+        throw error;
+      }
+      return data || [];
     },
     enabled: !!userId && !!otherUserId,
+    refetchInterval: 5000, // Refetch every 5 seconds for near-realtime updates
   });
 }
 
