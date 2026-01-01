@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +26,11 @@ export default function Auth() {
   const [role, setRole] = useState<AppRole>('tenant');
   const { signIn, signUp } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  
+  const redirectTo = searchParams.get('redirect');
+  const action = searchParams.get('action');
+  const propertyId = searchParams.get('propertyId');
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,7 +53,14 @@ export default function Auth() {
       toast.error(error.message);
     } else {
       toast.success('Welcome back!');
-      navigate('/');
+      // Handle redirect after login
+      if (action === 'apply' && propertyId) {
+        navigate(`/properties?apply=${propertyId}`);
+      } else if (redirectTo) {
+        navigate(redirectTo);
+      } else {
+        navigate('/');
+      }
     }
   };
 
@@ -78,7 +90,14 @@ export default function Auth() {
       }
     } else {
       toast.success('Account created successfully!');
-      navigate('/');
+      // Handle redirect after signup
+      if (action === 'apply' && propertyId) {
+        navigate(`/properties?apply=${propertyId}`);
+      } else if (redirectTo) {
+        navigate(redirectTo);
+      } else {
+        navigate('/');
+      }
     }
   };
 

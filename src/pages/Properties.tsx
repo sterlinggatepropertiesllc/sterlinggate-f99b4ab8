@@ -1,11 +1,14 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAvailableProperties } from '@/hooks/useProperties';
 import { useAuth } from '@/contexts/AuthContext';
+import { useApplicationFee } from '@/hooks/useAppSettings';
+import { useCreateApplication } from '@/hooks/useApplications';
+import { useStripeCheckout } from '@/hooks/useStripePayments';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { ImageGallery } from '@/components/properties/ImageGallery';
 import { 
   Building2, 
@@ -13,8 +16,11 @@ import {
   ArrowLeft, 
   Layers,
   ArrowRight,
-  X
+  DollarSign,
+  CreditCard,
+  Loader2
 } from 'lucide-react';
+import { toast } from 'sonner';
 import logo from '@/assets/logo.jpg';
 import type { Database } from '@/integrations/supabase/types';
 
@@ -22,17 +28,55 @@ type Property = Database['public']['Tables']['properties']['Row'];
 
 export default function Properties() {
   const { data: properties, isLoading } = useAvailableProperties();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
+  const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false);
+  const [applyingProperty, setApplyingProperty] = useState<Property | null>(null);
+  
+  // Application flow hooks
+  const { data: applicationFee, isLoading: feeLoading } = useApplicationFee();
+  const feeAmountDisplay = applicationFee ? `$${(applicationFee.amount / 100).toFixed(0)}` : '$50';
+  const createApplication = useCreateApplication();
+  const { payApplicationFee, isLoading: isPaymentLoading } = useStripeCheckout();
+
+  // Handle auto-apply after login redirect
+  useEffect(() => {
+    const applyPropertyId = searchParams.get('apply');
+    if (applyPropertyId && user && properties) {
+      const property = properties.find(p => p.id === applyPropertyId);
+      if (property) {
+        setApplyingProperty(property);
+        setIsApplyDialogOpen(true);
+        // Clear the URL param
+        setSearchParams({});
+      }
+    }
+  }, [searchParams, user, properties, setSearchParams]);
 
   const handleApply = (propertyId: string) => {
     if (user) {
-      // User is logged in, navigate to application (tenant portal)
-      navigate(`/tenant?apply=${propertyId}`);
+      // User is logged in, open the apply dialog
+      const property = properties?.find(p => p.id === propertyId);
+      if (property) {
+        setApplyingProperty(property);
+        setIsApplyDialogOpen(true);
+        setSelectedProperty(null);
+      }
     } else {
       // User not logged in, redirect to auth with return URL
       navigate(`/auth?redirect=/properties&action=apply&propertyId=${propertyId}`);
+    }
+  };
+
+  const handlePayApplicationFee = async () => {
+    if (!applyingProperty || !user) return;
+    
+    try {
+      await payApplicationFee(applyingProperty.id);
+    } catch (error) {
+      toast.error('Failed to initiate payment. Please try again.');
     }
   };
 
@@ -54,7 +98,18 @@ export default function Properties() {
                 Back to Home
               </Button>
             </Link>
-            {!user && (
+            {user ? (
+              <>
+                <Link to="/tenant">
+                  <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+                    Tenant Portal
+                  </Button>
+                </Link>
+                <Button variant="ghost" size="sm" onClick={() => signOut()} className="text-muted-foreground hover:text-foreground">
+                  Sign Out
+                </Button>
+              </>
+            ) : (
               <Link to="/auth">
                 <Button className="btn-platinum">
                   Sign In
@@ -277,6 +332,50 @@ export default function Properties() {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Application Fee Dialog */}
+      <Dialog open={isApplyDialogOpen} onOpenChange={setIsApplyDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl">Apply for Property</DialogTitle>
+            <DialogDescription>
+              {applyingProperty?.address}, {applyingProperty?.city}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6 py-4">
+            <div className="flex items-start gap-4 p-4 rounded-lg bg-warning/10 border border-warning/20">
+              <div className="p-2 rounded-full bg-warning/20">
+                <DollarSign className="h-6 w-6 text-warning" />
+              </div>
+              <div>
+                <h3 className="font-serif text-xl mb-2">Application Fee: {feeAmountDisplay}</h3>
+                <p className="text-muted-foreground text-sm">
+                  A non-refundable application fee of {feeAmountDisplay} is required to process your rental application. 
+                  This covers background check, credit check, and application processing.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <Button onClick={handlePayApplicationFee} disabled={isPaymentLoading || feeLoading} className="w-full h-12 btn-platinum">
+                {isPaymentLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="mr-2 h-4 w-4" /> Pay {feeAmountDisplay} & Continue
+                  </>
+                )}
+              </Button>
+              <Button variant="outline" onClick={() => setIsApplyDialogOpen(false)} className="w-full">
+                Cancel
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
