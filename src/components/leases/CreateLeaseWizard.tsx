@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Calendar } from '@/components/ui/calendar';
+import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useTenantProfiles } from '@/hooks/useProfiles';
 import { useCreateLease } from '@/hooks/useLeases';
@@ -388,7 +388,7 @@ export function CreateLeaseWizard({
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
+                    <CalendarPicker
                       mode="single"
                       selected={formData.startDate ? parse(formData.startDate, 'yyyy-MM-dd', new Date()) : undefined}
                       onSelect={(date) => {
@@ -420,7 +420,7 @@ export function CreateLeaseWizard({
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
+                    <CalendarPicker
                       mode="single"
                       selected={formData.endDate ? parse(formData.endDate, 'yyyy-MM-dd', new Date()) : undefined}
                       onSelect={(date) => {
@@ -661,7 +661,7 @@ export function CreateLeaseWizard({
             <div className="flex items-center gap-2 flex-wrap">
               <Badge variant="outline">{LEASE_TYPE_LABELS[formData.leaseType]}</Badge>
               <Badge variant="secondary">
-                <Calendar className="h-3 w-3 mr-1" />
+                <CalendarIcon className="h-3 w-3 mr-1" />
                 {formData.startDate} to {formData.endDate}
               </Badge>
             </div>
