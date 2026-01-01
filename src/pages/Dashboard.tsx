@@ -32,8 +32,6 @@ import {
   ClipboardList,
   Plus,
   LogOut,
-  Bed,
-  Bath,
   MapPin,
   DollarSign,
   CheckCircle2,
@@ -43,7 +41,8 @@ import {
   Trash2,
   Edit,
   BarChart3,
-  Receipt
+  Receipt,
+  Layers
 } from 'lucide-react';
 
 type DashboardTab = 'overview' | 'properties' | 'applications' | 'tenants' | 'leases' | 'messages' | 'analytics' | 'audit';
@@ -103,8 +102,6 @@ export default function Dashboard() {
       state: formData.get('state') as string,
       zip_code: formData.get('zip_code') as string,
       rent_amount: parseFloat(formData.get('rent_amount') as string),
-      bedrooms: parseInt(formData.get('bedrooms') as string),
-      bathrooms: parseFloat(formData.get('bathrooms') as string),
       square_feet: formData.get('square_feet') ? parseInt(formData.get('square_feet') as string) : null,
       description: formData.get('description') as string || null,
       status: 'available',
@@ -260,56 +257,60 @@ export default function Dashboard() {
                       <Plus className="mr-2 h-4 w-4" /> Add Property
                     </Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-lg">
-                    <DialogHeader>
+                  <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
+                    <DialogHeader className="flex-shrink-0">
                       <DialogTitle className="font-serif text-2xl">Add New Property</DialogTitle>
                       <DialogDescription>Enter the property details below.</DialogDescription>
                     </DialogHeader>
-                    <form onSubmit={handleAddProperty} className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="col-span-2">
-                          <Label htmlFor="address">Street Address</Label>
-                          <Input id="address" name="address" required placeholder="123 Main St" />
+                    <form onSubmit={handleAddProperty} className="flex flex-col flex-1 min-h-0">
+                      <ScrollArea className="flex-1 pr-4">
+                        <div className="grid grid-cols-2 gap-4 pb-4">
+                          <div className="col-span-2">
+                            <Label htmlFor="address">Street Address</Label>
+                            <Input id="address" name="address" required placeholder="123 Main St" />
+                          </div>
+                          <div>
+                            <Label htmlFor="city">City</Label>
+                            <Input id="city" name="city" required placeholder="Los Angeles" />
+                          </div>
+                          <div>
+                            <Label htmlFor="state">State</Label>
+                            <Input id="state" name="state" required placeholder="CA" />
+                          </div>
+                          <div>
+                            <Label htmlFor="zip_code">ZIP Code</Label>
+                            <Input id="zip_code" name="zip_code" required placeholder="90001" />
+                          </div>
+                          <div>
+                            <Label htmlFor="rent_amount">Monthly Rent ($)</Label>
+                            <Input id="rent_amount" name="rent_amount" type="number" required placeholder="2500" />
+                          </div>
+                          <div className="col-span-2">
+                            <Label htmlFor="square_feet">Square Feet (optional)</Label>
+                            <Input id="square_feet" name="square_feet" type="number" placeholder="5000" />
+                          </div>
+                          <div className="col-span-2">
+                            <Label htmlFor="description">Description (optional)</Label>
+                            <Textarea id="description" name="description" placeholder="Modern commercial space with excellent visibility..." />
+                          </div>
+                          <div className="col-span-2">
+                            <Label>Property Photos (up to {maxImages})</Label>
+                            <ImageUploader
+                              images={propertyImages}
+                              onImagesChange={handleImagesChange}
+                              onFilesSelect={handleFilesSelect}
+                              maxImages={maxImages}
+                              uploading={uploading}
+                            />
+                          </div>
                         </div>
-                        <div>
-                          <Label htmlFor="city">City</Label>
-                          <Input id="city" name="city" required placeholder="Los Angeles" />
-                        </div>
-                        <div>
-                          <Label htmlFor="state">State</Label>
-                          <Input id="state" name="state" required placeholder="CA" />
-                        </div>
-                        <div>
-                          <Label htmlFor="zip_code">ZIP Code</Label>
-                          <Input id="zip_code" name="zip_code" required placeholder="90001" />
-                        </div>
-                        <div>
-                          <Label htmlFor="rent_amount">Monthly Rent ($)</Label>
-                          <Input id="rent_amount" name="rent_amount" type="number" required placeholder="2500" />
-                        </div>
-                        <div>
-                          <Label htmlFor="bedrooms">Bedrooms</Label>
-                          <Input id="bedrooms" name="bedrooms" type="number" required placeholder="2" />
-                        </div>
-                        <div>
-                          <Label htmlFor="bathrooms">Bathrooms</Label>
-                          <Input id="bathrooms" name="bathrooms" type="number" step="0.5" required placeholder="1.5" />
-                        </div>
-                        <div className="col-span-2">
-                          <Label htmlFor="square_feet">Square Feet (optional)</Label>
-                          <Input id="square_feet" name="square_feet" type="number" placeholder="1200" />
-                        </div>
-                        <div className="col-span-2">
-                          <Label htmlFor="description">Description (optional)</Label>
-                          <Textarea id="description" name="description" placeholder="Beautiful apartment with modern amenities..." />
-                        </div>
-                      </div>
-                      <DialogFooter>
+                      </ScrollArea>
+                      <DialogFooter className="flex-shrink-0 pt-4 border-t border-border mt-4">
                         <Button type="button" variant="outline" onClick={() => setIsAddPropertyOpen(false)}>
                           Cancel
                         </Button>
-                        <Button type="submit" disabled={createProperty.isPending}>
-                          {createProperty.isPending ? 'Adding...' : 'Add Property'}
+                        <Button type="submit" disabled={createProperty.isPending || uploading}>
+                          {createProperty.isPending || uploading ? 'Adding...' : 'Add Property'}
                         </Button>
                       </DialogFooter>
                     </form>
@@ -491,8 +492,10 @@ export default function Dashboard() {
                           <MapPin className="h-3 w-3" /> {property.address}, {property.city}
                         </p>
                         <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                          <span className="flex items-center gap-1"><Bed className="h-4 w-4" /> {property.bedrooms}</span>
-                          <span className="flex items-center gap-1"><Bath className="h-4 w-4" /> {property.bathrooms}</span>
+                          {property.square_feet && (
+                            <span className="flex items-center gap-1"><Layers className="h-4 w-4" /> {property.square_feet.toLocaleString()} sqft</span>
+                          )}
+                          <span className="flex items-center gap-1"><Building2 className="h-4 w-4" /> Commercial</span>
                         </div>
                       </CardContent>
                     </Card>

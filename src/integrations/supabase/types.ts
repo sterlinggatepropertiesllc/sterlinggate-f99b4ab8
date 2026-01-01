@@ -390,14 +390,15 @@ export type Database = {
         Row: {
           address: string
           amenities: string[] | null
-          bathrooms: number
-          bedrooms: number
+          bathrooms: number | null
+          bedrooms: number | null
           city: string
           created_at: string
           description: string | null
           id: string
           manager_id: string
           photos: string[] | null
+          property_type: string | null
           rent_amount: number
           square_feet: number | null
           state: string
@@ -408,14 +409,15 @@ export type Database = {
         Insert: {
           address: string
           amenities?: string[] | null
-          bathrooms?: number
-          bedrooms?: number
+          bathrooms?: number | null
+          bedrooms?: number | null
           city: string
           created_at?: string
           description?: string | null
           id?: string
           manager_id: string
           photos?: string[] | null
+          property_type?: string | null
           rent_amount: number
           square_feet?: number | null
           state: string
@@ -426,14 +428,15 @@ export type Database = {
         Update: {
           address?: string
           amenities?: string[] | null
-          bathrooms?: number
-          bedrooms?: number
+          bathrooms?: number | null
+          bedrooms?: number | null
           city?: string
           created_at?: string
           description?: string | null
           id?: string
           manager_id?: string
           photos?: string[] | null
+          property_type?: string | null
           rent_amount?: number
           square_feet?: number | null
           state?: string
