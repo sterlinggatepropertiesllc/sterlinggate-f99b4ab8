@@ -84,10 +84,10 @@ export default function Properties() {
     <div className="min-h-screen bg-background">
       {/* Navigation */}
       <nav className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link to="/" className="flex items-center gap-3">
-              <img src={logo} alt="Sterling Gate Properties" className="h-12 w-auto object-contain" />
+        <div className="px-2 py-2 flex items-center justify-between max-w-[1400px] mx-auto">
+          <div className="flex items-center">
+            <Link to="/" className="flex items-center">
+              <img src={logo} alt="Sterling Gate Properties" className="h-20 w-auto object-contain" />
             </Link>
           </div>
           <div className="flex items-center gap-4">
