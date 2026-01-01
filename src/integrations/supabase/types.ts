@@ -120,13 +120,22 @@ export type Database = {
       }
       leases: {
         Row: {
+          additional_clauses: string | null
+          cam_charges: number | null
           created_at: string
+          document_hash: string | null
           end_date: string
+          grace_period_days: number | null
           id: string
+          insurance_responsibility: string | null
+          late_fee_percentage: number | null
           lease_document_url: string | null
+          lease_type: string | null
           manager_id: string
           monthly_rent: number
           property_id: string
+          property_tax_responsibility: string | null
+          renewal_terms: string | null
           security_deposit: number | null
           signed_document_url: string | null
           start_date: string
@@ -136,13 +145,22 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          additional_clauses?: string | null
+          cam_charges?: number | null
           created_at?: string
+          document_hash?: string | null
           end_date: string
+          grace_period_days?: number | null
           id?: string
+          insurance_responsibility?: string | null
+          late_fee_percentage?: number | null
           lease_document_url?: string | null
+          lease_type?: string | null
           manager_id: string
           monthly_rent: number
           property_id: string
+          property_tax_responsibility?: string | null
+          renewal_terms?: string | null
           security_deposit?: number | null
           signed_document_url?: string | null
           start_date: string
@@ -152,13 +170,22 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          additional_clauses?: string | null
+          cam_charges?: number | null
           created_at?: string
+          document_hash?: string | null
           end_date?: string
+          grace_period_days?: number | null
           id?: string
+          insurance_responsibility?: string | null
+          late_fee_percentage?: number | null
           lease_document_url?: string | null
+          lease_type?: string | null
           manager_id?: string
           monthly_rent?: number
           property_id?: string
+          property_tax_responsibility?: string | null
+          renewal_terms?: string | null
           security_deposit?: number | null
           signed_document_url?: string | null
           start_date?: string
@@ -456,6 +483,7 @@ export type Database = {
           signature_type: string
           signed_at: string
           signer_id: string
+          user_agent: string | null
         }
         Insert: {
           hash_id: string
@@ -466,6 +494,7 @@ export type Database = {
           signature_type?: string
           signed_at?: string
           signer_id: string
+          user_agent?: string | null
         }
         Update: {
           hash_id?: string
@@ -476,6 +505,7 @@ export type Database = {
           signature_type?: string
           signed_at?: string
           signer_id?: string
+          user_agent?: string | null
         }
         Relationships: [
           {
