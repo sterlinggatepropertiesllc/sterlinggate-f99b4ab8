@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
-import { useManagerProperties, useCreateProperty, useUpdateProperty } from '@/hooks/useProperties';
+import { useManagerProperties, useCreateProperty, useUpdateProperty, useDeleteProperty } from '@/hooks/useProperties';
 import { useApplications, useUpdateApplication } from '@/hooks/useApplications';
 import { useTenants } from '@/hooks/useTenants';
 import { useLeases } from '@/hooks/useLeases';
 import { useUnreadCount } from '@/hooks/useMessages';
 import { usePropertyImages } from '@/hooks/usePropertyImages';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +24,9 @@ import { SettingsDialog } from '@/components/settings/SettingsDialog';
 import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard';
 import { AuditDashboard } from '@/components/audit/AuditDashboard';
 import { ImageUploader } from '@/components/properties/ImageUploader';
+import { PropertyCard } from '@/components/properties/PropertyCard';
+import { EditPropertyDialog } from '@/components/properties/EditPropertyDialog';
+import type { Database } from '@/integrations/supabase/types';
 import { 
   Building2, 
   LayoutDashboard, 
@@ -46,6 +51,7 @@ import {
 } from 'lucide-react';
 
 type DashboardTab = 'overview' | 'properties' | 'applications' | 'tenants' | 'leases' | 'messages' | 'analytics' | 'audit';
+type Property = Database['public']['Tables']['properties']['Row'];
 
 export default function Dashboard() {
   const { user, role, loading, signOut } = useAuth();
@@ -53,7 +59,10 @@ export default function Dashboard() {
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
   const [propertyImages, setPropertyImages] = useState<string[]>([]);
   const [pendingImageFiles, setPendingImageFiles] = useState<File[]>([]);
+  const [editingProperty, setEditingProperty] = useState<Property | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
+  const queryClient = useQueryClient();
   const { data: properties, isLoading: propertiesLoading } = useManagerProperties(user?.id);
   const { data: applications, isLoading: applicationsLoading } = useApplications();
   const { data: tenants, isLoading: tenantsLoading } = useTenants(user?.id);
@@ -62,8 +71,35 @@ export default function Dashboard() {
 
   const createProperty = useCreateProperty();
   const updateProperty = useUpdateProperty();
+  const deleteProperty = useDeleteProperty();
   const updateApplication = useUpdateApplication();
   const { uploadImages, uploading, maxImages } = usePropertyImages();
+
+  // Realtime subscription for properties
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel('properties-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'properties',
+          filter: `manager_id=eq.${user.id}`,
+        },
+        () => {
+          // Invalidate and refetch properties when any change occurs
+          queryClient.invalidateQueries({ queryKey: ['properties', 'manager', user.id] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, queryClient]);
 
   if (loading) {
     return (
@@ -162,6 +198,25 @@ export default function Dashboard() {
       reviewed_at: new Date().toISOString(),
     });
     toast.success('Application rejected');
+  };
+
+  const handleEditProperty = (property: Property) => {
+    setEditingProperty(property);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveProperty = async (id: string, updates: Partial<Property>) => {
+    await updateProperty.mutateAsync({ id, ...updates });
+    setIsEditDialogOpen(false);
+    setEditingProperty(null);
+  };
+
+  const handleDeleteProperty = async (id: string) => {
+    await deleteProperty.mutateAsync(id);
+  };
+
+  const handleStatusChange = async (id: string, status: 'available' | 'occupied' | 'off_market') => {
+    await updateProperty.mutateAsync({ id, status });
   };
 
   const navItems = [
@@ -409,34 +464,13 @@ export default function Dashboard() {
               ) : properties && properties.length > 0 ? (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {properties.map((property) => (
-                    <Card key={property.id} className="overflow-hidden hover:shadow-card transition-smooth">
-                      <div className="h-40 bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center relative">
-                        <Building2 className="h-12 w-12 text-muted-foreground/30" />
-                        <Badge 
-                          className={`absolute top-3 right-3 ${
-                            property.status === 'available' 
-                              ? 'bg-success text-success-foreground' 
-                              : property.status === 'occupied'
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-muted text-muted-foreground'
-                          }`}
-                        >
-                          {property.status}
-                        </Badge>
-                      </div>
-                      <CardContent className="p-4">
-                        <h3 className="font-serif text-xl mb-1">${Number(property.rent_amount).toLocaleString()}/mo</h3>
-                        <p className="text-sm text-muted-foreground flex items-center gap-1 mb-2">
-                          <MapPin className="h-3 w-3" /> {property.address}, {property.city}
-                        </p>
-                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                          {property.square_feet && (
-                            <span className="flex items-center gap-1"><Layers className="h-4 w-4" /> {property.square_feet.toLocaleString()} sqft</span>
-                          )}
-                          <span className="flex items-center gap-1"><Building2 className="h-4 w-4" /> Commercial</span>
-                        </div>
-                      </CardContent>
-                    </Card>
+                    <PropertyCard
+                      key={property.id}
+                      property={property}
+                      onEdit={handleEditProperty}
+                      onDelete={handleDeleteProperty}
+                      onStatusChange={handleStatusChange}
+                    />
                   ))}
                 </div>
               ) : (
@@ -739,6 +773,15 @@ export default function Dashboard() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Property Dialog */}
+      <EditPropertyDialog
+        property={editingProperty}
+        open={isEditDialogOpen}
+        onOpenChange={setIsEditDialogOpen}
+        onSave={handleSaveProperty}
+        saving={updateProperty.isPending}
+      />
     </div>
   );
 }
