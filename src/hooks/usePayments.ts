@@ -9,7 +9,8 @@ export interface Payment {
   lease_id: string | null;
   amount: number;
   payment_date: string;
-  payment_method: string;
+  payment_method: string | null;
+  payment_type: string | null;
   status: string;
   notes: string | null;
   created_at: string;
