@@ -1,23 +1,23 @@
 import { useState } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useManagerProperties, useCreateProperty, useUpdateProperty, useDeleteProperty } from '@/hooks/useProperties';
+import { useManagerProperties, useCreateProperty } from '@/hooks/useProperties';
 import { useApplications, useUpdateApplication } from '@/hooks/useApplications';
-import { useTenants, useUpdateTenant } from '@/hooks/useTenants';
-import { useLeases, useCreateLease } from '@/hooks/useLeases';
-import { useMessages, useUnreadCount } from '@/hooks/useMessages';
+import { useTenants } from '@/hooks/useTenants';
+import { useLeases } from '@/hooks/useLeases';
+import { useUnreadCount } from '@/hooks/useMessages';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { SettingsDialog } from '@/components/settings/SettingsDialog';
 import { 
   Building2, 
   LayoutDashboard, 
@@ -37,10 +37,7 @@ import {
   Clock,
   Eye,
   Trash2,
-  Edit,
-  Send,
-  TrendingUp,
-  AlertCircle
+  Edit
 } from 'lucide-react';
 
 type DashboardTab = 'overview' | 'properties' | 'applications' | 'tenants' | 'leases' | 'messages';
@@ -186,7 +183,23 @@ export default function Dashboard() {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 p-8 overflow-auto">
+        <main className="flex-1 overflow-auto">
+          {/* Top Header Bar */}
+          <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border/50 px-8 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-serif text-foreground">
+                  {navItems.find(item => item.id === activeTab)?.label || 'Dashboard'}
+                </h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <NotificationBell />
+                <SettingsDialog />
+              </div>
+            </div>
+          </div>
+
+          <div className="p-8">
           {/* Overview Tab */}
           {activeTab === 'overview' && (
             <div className="animate-fade-in">
@@ -714,6 +727,9 @@ export default function Dashboard() {
           </form>
         </DialogContent>
       </Dialog>
+        </div>
+      </main>
     </div>
+  </div>
   );
 }

@@ -221,6 +221,87 @@ export type Database = {
           },
         ]
       }
+      notification_settings: {
+        Row: {
+          created_at: string
+          discord_enabled: boolean
+          discord_webhook_url: string | null
+          id: string
+          notify_application_approved: boolean
+          notify_application_received: boolean
+          notify_application_rejected: boolean
+          notify_lease_signed: boolean
+          notify_maintenance_request: boolean
+          notify_message_received: boolean
+          notify_rent_received: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          discord_enabled?: boolean
+          discord_webhook_url?: string | null
+          id?: string
+          notify_application_approved?: boolean
+          notify_application_received?: boolean
+          notify_application_rejected?: boolean
+          notify_lease_signed?: boolean
+          notify_maintenance_request?: boolean
+          notify_message_received?: boolean
+          notify_rent_received?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          discord_enabled?: boolean
+          discord_webhook_url?: string | null
+          id?: string
+          notify_application_approved?: boolean
+          notify_application_received?: boolean
+          notify_application_rejected?: boolean
+          notify_lease_signed?: boolean
+          notify_maintenance_request?: boolean
+          notify_message_received?: boolean
+          notify_rent_received?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notifications: {
+        Row: {
+          created_at: string
+          id: string
+          is_read: boolean
+          message: string
+          metadata: Json | null
+          title: string
+          type: Database["public"]["Enums"]["notification_type"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          message: string
+          metadata?: Json | null
+          title: string
+          type: Database["public"]["Enums"]["notification_type"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_read?: boolean
+          message?: string
+          metadata?: Json | null
+          title?: string
+          type?: Database["public"]["Enums"]["notification_type"]
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -440,6 +521,14 @@ export type Database = {
         | "pending_manager_signature"
         | "completed"
         | "expired"
+      notification_type:
+        | "application_received"
+        | "application_approved"
+        | "application_rejected"
+        | "rent_received"
+        | "maintenance_request"
+        | "lease_signed"
+        | "message_received"
       property_status: "available" | "occupied" | "off_market"
     }
     CompositeTypes: {
@@ -576,6 +665,15 @@ export const Constants = {
         "pending_manager_signature",
         "completed",
         "expired",
+      ],
+      notification_type: [
+        "application_received",
+        "application_approved",
+        "application_rejected",
+        "rent_received",
+        "maintenance_request",
+        "lease_signed",
+        "message_received",
       ],
       property_status: ["available", "occupied", "off_market"],
     },
