@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAvailableProperties, useProperty } from '@/hooks/useProperties';
+import { useApplicationFee } from '@/hooks/useAppSettings';
 import { useMyApplications, useCreateApplication } from '@/hooks/useApplications';
 import { useLeases } from '@/hooks/useLeases';
 import { useMessages, useUnreadCount } from '@/hooks/useMessages';
@@ -63,6 +64,9 @@ export default function TenantPortal() {
   const createApplication = useCreateApplication();
   const { payApplicationFee, paySecurityDeposit, payRent, isLoading: isPaymentLoading } = useStripeCheckout();
   const [pendingPayment, setPendingPayment] = useState<{ type: string; id: string; amount?: number } | null>(null);
+  
+  const { data: applicationFee, isLoading: feeLoading } = useApplicationFee();
+  const feeAmountDisplay = applicationFee ? `$${(applicationFee.amount / 100).toFixed(0)}` : '$50';
 
   if (loading) {
     return (
@@ -517,9 +521,9 @@ export default function TenantPortal() {
                     <DollarSign className="h-6 w-6 text-warning" />
                   </div>
                   <div>
-                    <h3 className="font-serif text-xl mb-2">Application Fee: $95</h3>
+                    <h3 className="font-serif text-xl mb-2">Application Fee: {feeAmountDisplay}</h3>
                     <p className="text-muted-foreground">
-                      A non-refundable application fee of $95 is required to process your rental application. 
+                      A non-refundable application fee of {feeAmountDisplay} is required to process your rental application. 
                       This covers background check, credit check, and application processing.
                     </p>
                   </div>
@@ -538,14 +542,14 @@ export default function TenantPortal() {
                 <Button variant="outline" onClick={() => setIsApplyDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handlePayApplicationFee} disabled={isPaymentLoading}>
+              <Button onClick={handlePayApplicationFee} disabled={isPaymentLoading || feeLoading}>
                   {isPaymentLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
                     </>
                   ) : (
                     <>
-                      <CreditCard className="mr-2 h-4 w-4" /> Pay $50 & Continue
+                      <CreditCard className="mr-2 h-4 w-4" /> Pay {feeAmountDisplay} & Continue
                     </>
                   )}
                 </Button>
