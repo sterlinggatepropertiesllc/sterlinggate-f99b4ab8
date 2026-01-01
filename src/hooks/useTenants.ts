@@ -87,3 +87,55 @@ export function useUpdateTenant() {
     },
   });
 }
+
+interface AddTenantInput {
+  user_id: string;
+  property_id: string;
+  rent_amount: number;
+  lease_start_date?: string | null;
+  lease_end_date?: string | null;
+}
+
+export function useAddTenant() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: AddTenantInput) => {
+      // First, insert the tenant record
+      const { data: tenant, error: tenantError } = await supabase
+        .from('tenants')
+        .insert({
+          user_id: input.user_id,
+          property_id: input.property_id,
+          rent_amount: input.rent_amount,
+          lease_start_date: input.lease_start_date,
+          lease_end_date: input.lease_end_date,
+          is_active: true,
+        })
+        .select()
+        .single();
+
+      if (tenantError) throw tenantError;
+
+      // Then, assign the tenant role to the user
+      const { error: roleError } = await supabase.rpc('assign_tenant_role', {
+        _user_id: input.user_id,
+      });
+
+      if (roleError) {
+        console.error('Failed to assign tenant role:', roleError);
+        // Don't throw here - the tenant record was created successfully
+      }
+
+      return tenant;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenants'] });
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      toast.success('Tenant added successfully');
+    },
+    onError: (error) => {
+      toast.error(`Failed to add tenant: ${error.message}`);
+    },
+  });
+}

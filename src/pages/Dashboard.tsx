@@ -4,7 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useManagerProperties, useCreateProperty, useUpdateProperty, useDeleteProperty } from '@/hooks/useProperties';
 import { useApplications, useUpdateApplication } from '@/hooks/useApplications';
-import { useTenants } from '@/hooks/useTenants';
+import { useTenants, useAddTenant } from '@/hooks/useTenants';
+import { AddTenantDialog } from '@/components/tenants/AddTenantDialog';
 import { useLeases } from '@/hooks/useLeases';
 import { useUnreadCount } from '@/hooks/useMessages';
 import { usePropertyImages } from '@/hooks/usePropertyImages';
@@ -65,6 +66,7 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
   const [isCreateLeaseOpen, setIsCreateLeaseOpen] = useState(false);
+  const [isAddTenantOpen, setIsAddTenantOpen] = useState(false);
   const [propertyImages, setPropertyImages] = useState<string[]>([]);
   const [pendingImageFiles, setPendingImageFiles] = useState<File[]>([]);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
@@ -575,9 +577,14 @@ export default function Dashboard() {
           {/* Tenants Tab */}
           {activeTab === 'tenants' && (
             <div className="animate-fade-in">
-              <div className="mb-8">
-                <h1 className="text-3xl font-serif">Tenants</h1>
-                <p className="text-muted-foreground">Manage your current tenants</p>
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h1 className="text-3xl font-serif">Tenants</h1>
+                  <p className="text-muted-foreground">Manage your current tenants</p>
+                </div>
+                <Button onClick={() => setIsAddTenantOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" /> Add Tenant
+                </Button>
               </div>
 
               {tenantsLoading ? (
@@ -841,6 +848,14 @@ export default function Dashboard() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Add Tenant Dialog */}
+      <AddTenantDialog
+        open={isAddTenantOpen}
+        onOpenChange={setIsAddTenantOpen}
+        properties={properties || []}
+        existingTenantUserIds={tenants?.map((t: any) => t.user_id) || []}
+      />
     </div>
   );
 }
