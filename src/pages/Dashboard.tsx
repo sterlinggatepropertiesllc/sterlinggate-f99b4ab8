@@ -1,14 +1,67 @@
-import { Navigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Card } from '@/components/ui/card';
-import { Building2 } from 'lucide-react';
+import { useManagerProperties, useCreateProperty, useUpdateProperty, useDeleteProperty } from '@/hooks/useProperties';
+import { useApplications, useUpdateApplication } from '@/hooks/useApplications';
+import { useTenants, useUpdateTenant } from '@/hooks/useTenants';
+import { useLeases, useCreateLease } from '@/hooks/useLeases';
+import { useMessages, useUnreadCount } from '@/hooks/useMessages';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { toast } from 'sonner';
+import { 
+  Building2, 
+  LayoutDashboard, 
+  Home, 
+  Users, 
+  FileText, 
+  MessageSquare, 
+  ClipboardList,
+  Plus,
+  LogOut,
+  Bed,
+  Bath,
+  MapPin,
+  DollarSign,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Eye,
+  Trash2,
+  Edit,
+  Send,
+  TrendingUp,
+  AlertCircle
+} from 'lucide-react';
+
+type DashboardTab = 'overview' | 'properties' | 'applications' | 'tenants' | 'leases' | 'messages';
 
 export default function Dashboard() {
-  const { user, role, loading } = useAuth();
+  const { user, role, loading, signOut } = useAuth();
+  const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+  const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
+
+  const { data: properties, isLoading: propertiesLoading } = useManagerProperties(user?.id);
+  const { data: applications, isLoading: applicationsLoading } = useApplications();
+  const { data: tenants, isLoading: tenantsLoading } = useTenants(user?.id);
+  const { data: leases, isLoading: leasesLoading } = useLeases(user?.id, role);
+  const { data: unreadCount } = useUnreadCount(user?.id);
+
+  const createProperty = useCreateProperty();
+  const updateApplication = useUpdateApplication();
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-pulse text-muted-foreground">Loading...</div>
       </div>
     );
@@ -22,54 +75,645 @@ export default function Dashboard() {
     return <Navigate to="/tenant" replace />;
   }
 
+  const stats = {
+    totalProperties: properties?.length || 0,
+    availableProperties: properties?.filter(p => p.status === 'available').length || 0,
+    occupiedProperties: properties?.filter(p => p.status === 'occupied').length || 0,
+    pendingApplications: applications?.filter(a => a.status === 'pending' || a.status === 'under_review').length || 0,
+    activeTenants: tenants?.length || 0,
+    pendingLeases: leases?.filter(l => l.status !== 'completed').length || 0,
+  };
+
+  const handleAddProperty = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    
+    await createProperty.mutateAsync({
+      manager_id: user.id,
+      address: formData.get('address') as string,
+      city: formData.get('city') as string,
+      state: formData.get('state') as string,
+      zip_code: formData.get('zip_code') as string,
+      rent_amount: parseFloat(formData.get('rent_amount') as string),
+      bedrooms: parseInt(formData.get('bedrooms') as string),
+      bathrooms: parseFloat(formData.get('bathrooms') as string),
+      square_feet: formData.get('square_feet') ? parseInt(formData.get('square_feet') as string) : null,
+      description: formData.get('description') as string || null,
+      status: 'available',
+    });
+
+    setIsAddPropertyOpen(false);
+  };
+
+  const handleApproveApplication = async (applicationId: string) => {
+    await updateApplication.mutateAsync({
+      id: applicationId,
+      status: 'approved',
+      reviewed_by: user.id,
+      reviewed_at: new Date().toISOString(),
+    });
+    toast.success('Application approved!');
+  };
+
+  const handleRejectApplication = async (applicationId: string, reason: string) => {
+    await updateApplication.mutateAsync({
+      id: applicationId,
+      status: 'rejected',
+      rejection_reason: reason,
+      reviewed_by: user.id,
+      reviewed_at: new Date().toISOString(),
+    });
+    toast.success('Application rejected');
+  };
+
+  const navItems = [
+    { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'properties', label: 'Properties', icon: Home },
+    { id: 'applications', label: 'Applications', icon: ClipboardList, badge: stats.pendingApplications },
+    { id: 'tenants', label: 'Tenants', icon: Users },
+    { id: 'leases', label: 'Leases', icon: FileText },
+    { id: 'messages', label: 'Messages', icon: MessageSquare, badge: unreadCount },
+  ];
+
   return (
     <div className="min-h-screen bg-background">
       <div className="flex">
         {/* Sidebar */}
-        <aside className="w-64 bg-sidebar min-h-screen p-6">
+        <aside className="w-64 bg-sidebar min-h-screen p-6 flex flex-col">
           <div className="flex items-center gap-3 mb-8">
             <div className="w-10 h-10 bg-sidebar-primary rounded-xl flex items-center justify-center">
               <Building2 className="h-5 w-5 text-sidebar-primary-foreground" />
             </div>
-            <span className="text-lg font-serif text-sidebar-foreground">PropertyFlow</span>
+            <div>
+              <span className="text-lg font-serif text-sidebar-foreground block">PropertyFlow</span>
+              <span className="text-xs text-sidebar-foreground/60">Manager Portal</span>
+            </div>
           </div>
-          <nav className="space-y-2">
-            {['Dashboard', 'Properties', 'Applications', 'Tenants', 'Leases', 'Messages'].map((item) => (
-              <div
-                key={item}
-                className="px-4 py-2 rounded-lg text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground cursor-pointer transition-smooth"
+          
+          <nav className="space-y-1 flex-1">
+            {navItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id as DashboardTab)}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-smooth text-left ${
+                  activeTab === item.id
+                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                    : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+                }`}
               >
-                {item}
-              </div>
+                <span className="flex items-center gap-3">
+                  <item.icon className="h-5 w-5" />
+                  {item.label}
+                </span>
+                {item.badge && item.badge > 0 && (
+                  <Badge variant="secondary" className="bg-sidebar-primary text-sidebar-primary-foreground text-xs">
+                    {item.badge}
+                  </Badge>
+                )}
+              </button>
             ))}
           </nav>
+
+          <Separator className="my-4 bg-sidebar-border" />
+          
+          <Button 
+            variant="ghost" 
+            onClick={() => signOut()} 
+            className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+          >
+            <LogOut className="mr-3 h-5 w-5" /> Sign Out
+          </Button>
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 p-8">
-          <h1 className="text-3xl font-serif mb-8">Dashboard</h1>
-          
-          <div className="grid md:grid-cols-4 gap-6 mb-8">
-            {[
-              { label: 'Total Properties', value: '0' },
-              { label: 'Active Tenants', value: '0' },
-              { label: 'Pending Applications', value: '0' },
-              { label: 'Pending Leases', value: '0' },
-            ].map((stat) => (
-              <Card key={stat.label} className="p-6">
-                <p className="text-muted-foreground text-sm">{stat.label}</p>
-                <p className="text-3xl font-serif mt-2">{stat.value}</p>
-              </Card>
-            ))}
-          </div>
+        <main className="flex-1 p-8 overflow-auto">
+          {/* Overview Tab */}
+          {activeTab === 'overview' && (
+            <div className="animate-fade-in">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h1 className="text-3xl font-serif">Dashboard</h1>
+                  <p className="text-muted-foreground">Welcome back! Here's your property overview.</p>
+                </div>
+                <Dialog open={isAddPropertyOpen} onOpenChange={setIsAddPropertyOpen}>
+                  <DialogTrigger asChild>
+                    <Button>
+                      <Plus className="mr-2 h-4 w-4" /> Add Property
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle className="font-serif text-2xl">Add New Property</DialogTitle>
+                      <DialogDescription>Enter the property details below.</DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleAddProperty} className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-2">
+                          <Label htmlFor="address">Street Address</Label>
+                          <Input id="address" name="address" required placeholder="123 Main St" />
+                        </div>
+                        <div>
+                          <Label htmlFor="city">City</Label>
+                          <Input id="city" name="city" required placeholder="Los Angeles" />
+                        </div>
+                        <div>
+                          <Label htmlFor="state">State</Label>
+                          <Input id="state" name="state" required placeholder="CA" />
+                        </div>
+                        <div>
+                          <Label htmlFor="zip_code">ZIP Code</Label>
+                          <Input id="zip_code" name="zip_code" required placeholder="90001" />
+                        </div>
+                        <div>
+                          <Label htmlFor="rent_amount">Monthly Rent ($)</Label>
+                          <Input id="rent_amount" name="rent_amount" type="number" required placeholder="2500" />
+                        </div>
+                        <div>
+                          <Label htmlFor="bedrooms">Bedrooms</Label>
+                          <Input id="bedrooms" name="bedrooms" type="number" required placeholder="2" />
+                        </div>
+                        <div>
+                          <Label htmlFor="bathrooms">Bathrooms</Label>
+                          <Input id="bathrooms" name="bathrooms" type="number" step="0.5" required placeholder="1.5" />
+                        </div>
+                        <div className="col-span-2">
+                          <Label htmlFor="square_feet">Square Feet (optional)</Label>
+                          <Input id="square_feet" name="square_feet" type="number" placeholder="1200" />
+                        </div>
+                        <div className="col-span-2">
+                          <Label htmlFor="description">Description (optional)</Label>
+                          <Textarea id="description" name="description" placeholder="Beautiful apartment with modern amenities..." />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setIsAddPropertyOpen(false)}>
+                          Cancel
+                        </Button>
+                        <Button type="submit" disabled={createProperty.isPending}>
+                          {createProperty.isPending ? 'Adding...' : 'Add Property'}
+                        </Button>
+                      </DialogFooter>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </div>
 
-          <Card className="p-8 text-center">
-            <Building2 className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-            <h2 className="text-xl font-serif mb-2">Welcome to your Dashboard</h2>
-            <p className="text-muted-foreground">Start by adding your first property to get started.</p>
-          </Card>
+              {/* Stats Grid */}
+              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <Card className="hover:shadow-card transition-smooth">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-muted-foreground text-sm">Total Properties</p>
+                        <p className="text-4xl font-serif mt-1">{stats.totalProperties}</p>
+                      </div>
+                      <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                        <Home className="h-6 w-6 text-primary" />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-3 text-sm">
+                      <Badge variant="secondary" className="bg-success/10 text-success">
+                        {stats.availableProperties} available
+                      </Badge>
+                      <Badge variant="secondary">
+                        {stats.occupiedProperties} occupied
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="hover:shadow-card transition-smooth">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-muted-foreground text-sm">Active Tenants</p>
+                        <p className="text-4xl font-serif mt-1">{stats.activeTenants}</p>
+                      </div>
+                      <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
+                        <Users className="h-6 w-6 text-accent" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="hover:shadow-card transition-smooth">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-muted-foreground text-sm">Pending Applications</p>
+                        <p className="text-4xl font-serif mt-1">{stats.pendingApplications}</p>
+                      </div>
+                      <div className="w-12 h-12 bg-warning/10 rounded-xl flex items-center justify-center">
+                        <ClipboardList className="h-6 w-6 text-warning" />
+                      </div>
+                    </div>
+                    {stats.pendingApplications > 0 && (
+                      <Button 
+                        variant="link" 
+                        className="p-0 h-auto mt-2 text-sm"
+                        onClick={() => setActiveTab('applications')}
+                      >
+                        Review applications →
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="hover:shadow-card transition-smooth">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-muted-foreground text-sm">Pending Leases</p>
+                        <p className="text-4xl font-serif mt-1">{stats.pendingLeases}</p>
+                      </div>
+                      <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                        <FileText className="h-6 w-6 text-primary" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="grid md:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="font-serif">Recent Applications</CardTitle>
+                    <CardDescription>Review and respond to new applications</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {applications && applications.filter(a => a.status === 'pending').length > 0 ? (
+                      <div className="space-y-3">
+                        {applications.filter(a => a.status === 'pending').slice(0, 3).map((app: any) => (
+                          <div key={app.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                            <div>
+                              <p className="font-medium">{app.profiles?.full_name || 'Applicant'}</p>
+                              <p className="text-sm text-muted-foreground">{app.properties?.address}</p>
+                            </div>
+                            <Badge variant="outline" className="text-warning border-warning">
+                              <Clock className="h-3 w-3 mr-1" /> Pending
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground text-center py-8">No pending applications</p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="font-serif">Quick Actions</CardTitle>
+                    <CardDescription>Common tasks at your fingertips</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Button className="w-full justify-start" variant="outline" onClick={() => setIsAddPropertyOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" /> Add New Property
+                    </Button>
+                    <Button className="w-full justify-start" variant="outline" onClick={() => setActiveTab('applications')}>
+                      <ClipboardList className="mr-2 h-4 w-4" /> Review Applications
+                    </Button>
+                    <Button className="w-full justify-start" variant="outline" onClick={() => setActiveTab('messages')}>
+                      <MessageSquare className="mr-2 h-4 w-4" /> View Messages
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
+
+          {/* Properties Tab */}
+          {activeTab === 'properties' && (
+            <div className="animate-fade-in">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h1 className="text-3xl font-serif">Properties</h1>
+                  <p className="text-muted-foreground">Manage your rental properties</p>
+                </div>
+                <Button onClick={() => setIsAddPropertyOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" /> Add Property
+                </Button>
+              </div>
+
+              {propertiesLoading ? (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {[1, 2, 3].map((i) => (
+                    <Card key={i} className="animate-pulse">
+                      <div className="h-40 bg-muted" />
+                      <CardContent className="p-4">
+                        <div className="h-5 bg-muted rounded w-1/2 mb-2" />
+                        <div className="h-4 bg-muted rounded w-3/4" />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : properties && properties.length > 0 ? (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {properties.map((property) => (
+                    <Card key={property.id} className="overflow-hidden hover:shadow-card transition-smooth">
+                      <div className="h-40 bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center relative">
+                        <Building2 className="h-12 w-12 text-muted-foreground/30" />
+                        <Badge 
+                          className={`absolute top-3 right-3 ${
+                            property.status === 'available' 
+                              ? 'bg-success text-success-foreground' 
+                              : property.status === 'occupied'
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-muted text-muted-foreground'
+                          }`}
+                        >
+                          {property.status}
+                        </Badge>
+                      </div>
+                      <CardContent className="p-4">
+                        <h3 className="font-serif text-xl mb-1">${Number(property.rent_amount).toLocaleString()}/mo</h3>
+                        <p className="text-sm text-muted-foreground flex items-center gap-1 mb-2">
+                          <MapPin className="h-3 w-3" /> {property.address}, {property.city}
+                        </p>
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1"><Bed className="h-4 w-4" /> {property.bedrooms}</span>
+                          <span className="flex items-center gap-1"><Bath className="h-4 w-4" /> {property.bathrooms}</span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <Card className="p-12 text-center border-dashed">
+                  <Home className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
+                  <h3 className="text-xl font-serif mb-2">No Properties Yet</h3>
+                  <p className="text-muted-foreground mb-6">Add your first property to get started</p>
+                  <Button onClick={() => setIsAddPropertyOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" /> Add Property
+                  </Button>
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/* Applications Tab */}
+          {activeTab === 'applications' && (
+            <div className="animate-fade-in">
+              <div className="mb-8">
+                <h1 className="text-3xl font-serif">Applications</h1>
+                <p className="text-muted-foreground">Review and manage rental applications</p>
+              </div>
+
+              {applicationsLoading ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <Card key={i} className="p-4 animate-pulse">
+                      <div className="h-20 bg-muted rounded" />
+                    </Card>
+                  ))}
+                </div>
+              ) : applications && applications.length > 0 ? (
+                <div className="space-y-4">
+                  {applications.map((app: any) => (
+                    <Card key={app.id} className="p-6">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="font-serif text-xl">{app.profiles?.full_name || 'Applicant'}</h3>
+                            <Badge 
+                              variant="outline"
+                              className={
+                                app.status === 'approved' ? 'border-success text-success' :
+                                app.status === 'rejected' ? 'border-destructive text-destructive' :
+                                'border-warning text-warning'
+                              }
+                            >
+                              {app.status === 'approved' && <CheckCircle2 className="h-3 w-3 mr-1" />}
+                              {app.status === 'rejected' && <XCircle className="h-3 w-3 mr-1" />}
+                              {app.status === 'pending' && <Clock className="h-3 w-3 mr-1" />}
+                              {app.status}
+                            </Badge>
+                          </div>
+                          <p className="text-muted-foreground mb-1">
+                            <MapPin className="h-4 w-4 inline mr-1" />
+                            {app.properties?.address}, {app.properties?.city}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            Applied: {new Date(app.created_at).toLocaleDateString()}
+                          </p>
+                          {app.background_check_consent && (
+                            <Badge variant="secondary" className="mt-2">
+                              <CheckCircle2 className="h-3 w-3 mr-1" /> Background check consent given
+                            </Badge>
+                          )}
+                        </div>
+                        {app.status === 'pending' && (
+                          <div className="flex gap-2">
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => handleRejectApplication(app.id, 'Application did not meet requirements')}
+                            >
+                              <XCircle className="h-4 w-4 mr-1" /> Reject
+                            </Button>
+                            <Button 
+                              size="sm"
+                              onClick={() => handleApproveApplication(app.id)}
+                            >
+                              <CheckCircle2 className="h-4 w-4 mr-1" /> Approve
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <Card className="p-12 text-center border-dashed">
+                  <ClipboardList className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
+                  <h3 className="text-xl font-serif mb-2">No Applications</h3>
+                  <p className="text-muted-foreground">Applications will appear here when tenants apply to your properties</p>
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/* Tenants Tab */}
+          {activeTab === 'tenants' && (
+            <div className="animate-fade-in">
+              <div className="mb-8">
+                <h1 className="text-3xl font-serif">Tenants</h1>
+                <p className="text-muted-foreground">Manage your current tenants</p>
+              </div>
+
+              {tenantsLoading ? (
+                <div className="grid md:grid-cols-2 gap-6">
+                  {[1, 2].map((i) => (
+                    <Card key={i} className="p-4 animate-pulse">
+                      <div className="h-32 bg-muted rounded" />
+                    </Card>
+                  ))}
+                </div>
+              ) : tenants && tenants.length > 0 ? (
+                <div className="grid md:grid-cols-2 gap-6">
+                  {tenants.map((tenant: any) => (
+                    <Card key={tenant.id} className="p-6">
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
+                          <Users className="h-6 w-6 text-accent" />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-serif text-xl mb-1">{tenant.user?.full_name}</h3>
+                          <p className="text-sm text-muted-foreground">{tenant.user?.email}</p>
+                          <p className="text-sm text-muted-foreground mt-2">
+                            <MapPin className="h-3 w-3 inline mr-1" />
+                            {tenant.property?.address}
+                          </p>
+                          <div className="flex items-center gap-4 mt-3">
+                            <Badge variant="secondary">
+                              <DollarSign className="h-3 w-3 mr-1" />
+                              ${Number(tenant.rent_amount).toLocaleString()}/mo
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <Card className="p-12 text-center border-dashed">
+                  <Users className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
+                  <h3 className="text-xl font-serif mb-2">No Tenants Yet</h3>
+                  <p className="text-muted-foreground">Approved applicants will appear here once they sign their lease</p>
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/* Leases Tab */}
+          {activeTab === 'leases' && (
+            <div className="animate-fade-in">
+              <div className="mb-8">
+                <h1 className="text-3xl font-serif">Leases</h1>
+                <p className="text-muted-foreground">Manage and track lease agreements</p>
+              </div>
+
+              {leasesLoading ? (
+                <div className="space-y-4">
+                  {[1, 2].map((i) => (
+                    <Card key={i} className="p-4 animate-pulse">
+                      <div className="h-24 bg-muted rounded" />
+                    </Card>
+                  ))}
+                </div>
+              ) : leases && leases.length > 0 ? (
+                <div className="space-y-4">
+                  {leases.map((lease: any) => (
+                    <Card key={lease.id} className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="font-serif text-xl mb-1">{lease.properties?.address}</h3>
+                          <p className="text-muted-foreground">Tenant: {lease.tenant?.full_name}</p>
+                          <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+                            <span>{new Date(lease.start_date).toLocaleDateString()} - {new Date(lease.end_date).toLocaleDateString()}</span>
+                            <span>${Number(lease.monthly_rent).toLocaleString()}/mo</span>
+                          </div>
+                        </div>
+                        <Badge 
+                          variant="outline"
+                          className={
+                            lease.status === 'completed' ? 'border-success text-success' :
+                            lease.status === 'expired' ? 'border-muted text-muted-foreground' :
+                            'border-warning text-warning'
+                          }
+                        >
+                          {lease.status.replace(/_/g, ' ')}
+                        </Badge>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <Card className="p-12 text-center border-dashed">
+                  <FileText className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
+                  <h3 className="text-xl font-serif mb-2">No Leases</h3>
+                  <p className="text-muted-foreground">Leases will appear here once you create them for approved applicants</p>
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/* Messages Tab */}
+          {activeTab === 'messages' && (
+            <div className="animate-fade-in">
+              <div className="mb-8">
+                <h1 className="text-3xl font-serif">Messages</h1>
+                <p className="text-muted-foreground">Communicate with your tenants</p>
+              </div>
+
+              <Card className="p-12 text-center border-dashed">
+                <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
+                <h3 className="text-xl font-serif mb-2">Messaging Center</h3>
+                <p className="text-muted-foreground">Your conversations with tenants will appear here</p>
+              </Card>
+            </div>
+          )}
         </main>
       </div>
+
+      {/* Add Property Dialog is rendered inside the component */}
+      <Dialog open={isAddPropertyOpen} onOpenChange={setIsAddPropertyOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-2xl">Add New Property</DialogTitle>
+            <DialogDescription>Enter the property details below.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddProperty} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <Label htmlFor="address">Street Address</Label>
+                <Input id="address" name="address" required placeholder="123 Main St" />
+              </div>
+              <div>
+                <Label htmlFor="city">City</Label>
+                <Input id="city" name="city" required placeholder="Los Angeles" />
+              </div>
+              <div>
+                <Label htmlFor="state">State</Label>
+                <Input id="state" name="state" required placeholder="CA" />
+              </div>
+              <div>
+                <Label htmlFor="zip_code">ZIP Code</Label>
+                <Input id="zip_code" name="zip_code" required placeholder="90001" />
+              </div>
+              <div>
+                <Label htmlFor="rent_amount">Monthly Rent ($)</Label>
+                <Input id="rent_amount" name="rent_amount" type="number" required placeholder="2500" />
+              </div>
+              <div>
+                <Label htmlFor="bedrooms">Bedrooms</Label>
+                <Input id="bedrooms" name="bedrooms" type="number" required placeholder="2" />
+              </div>
+              <div>
+                <Label htmlFor="bathrooms">Bathrooms</Label>
+                <Input id="bathrooms" name="bathrooms" type="number" step="0.5" required placeholder="1.5" />
+              </div>
+              <div className="col-span-2">
+                <Label htmlFor="square_feet">Square Feet (optional)</Label>
+                <Input id="square_feet" name="square_feet" type="number" placeholder="1200" />
+              </div>
+              <div className="col-span-2">
+                <Label htmlFor="description">Description (optional)</Label>
+                <Textarea id="description" name="description" placeholder="Beautiful apartment with modern amenities..." />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsAddPropertyOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createProperty.isPending}>
+                {createProperty.isPending ? 'Adding...' : 'Add Property'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
