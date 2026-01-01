@@ -719,7 +719,7 @@ export function CreateLeaseWizard({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-2xl h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="text-xl font-serif">Create New Lease</DialogTitle>
         </DialogHeader>
