@@ -565,6 +565,7 @@ export type Database = {
           lease_end_date: string | null
           lease_start_date: string | null
           manager_id: string | null
+          notes: string | null
           property_id: string | null
           rent_amount: number | null
           updated_at: string
@@ -578,6 +579,7 @@ export type Database = {
           lease_end_date?: string | null
           lease_start_date?: string | null
           manager_id?: string | null
+          notes?: string | null
           property_id?: string | null
           rent_amount?: number | null
           updated_at?: string
@@ -591,6 +593,7 @@ export type Database = {
           lease_end_date?: string | null
           lease_start_date?: string | null
           manager_id?: string | null
+          notes?: string | null
           property_id?: string | null
           rent_amount?: number | null
           updated_at?: string
@@ -677,6 +680,7 @@ export type Database = {
           id: string
         }[]
       }
+      revoke_tenant_role: { Args: { _user_id: string }; Returns: undefined }
     }
     Enums: {
       app_role: "tenant" | "property_manager"

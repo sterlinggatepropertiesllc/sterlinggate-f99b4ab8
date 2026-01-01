@@ -4,8 +4,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useManagerProperties, useCreateProperty, useUpdateProperty, useDeleteProperty } from '@/hooks/useProperties';
 import { useApplications, useUpdateApplication } from '@/hooks/useApplications';
-import { useTenants, useAddTenant } from '@/hooks/useTenants';
+import { useTenants, useAddTenant, useUpdateTenant, useDeleteTenant, useRevokeTenantAccess } from '@/hooks/useTenants';
 import { AddTenantDialog } from '@/components/tenants/AddTenantDialog';
+import { TenantDetailsDialog } from '@/components/tenants/TenantDetailsDialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useLeases } from '@/hooks/useLeases';
 import { useUnreadCount } from '@/hooks/useMessages';
 import { usePropertyImages } from '@/hooks/usePropertyImages';
@@ -67,6 +69,8 @@ export default function Dashboard() {
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
   const [isCreateLeaseOpen, setIsCreateLeaseOpen] = useState(false);
   const [isAddTenantOpen, setIsAddTenantOpen] = useState(false);
+  const [selectedTenant, setSelectedTenant] = useState<any>(null);
+  const [isTenantDetailsOpen, setIsTenantDetailsOpen] = useState(false);
   const [propertyImages, setPropertyImages] = useState<string[]>([]);
   const [pendingImageFiles, setPendingImageFiles] = useState<File[]>([]);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
@@ -612,52 +616,105 @@ export default function Dashboard() {
               </div>
 
               {tenantsLoading ? (
-                <div className="grid md:grid-cols-2 gap-6">
-                  {[1, 2].map((i) => (
-                    <Card key={i} className="p-4 animate-pulse">
-                      <div className="h-32 bg-muted rounded" />
-                    </Card>
-                  ))}
-                </div>
+                <Card>
+                  <div className="p-4 space-y-3">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="h-16 bg-muted rounded animate-pulse" />
+                    ))}
+                  </div>
+                </Card>
               ) : tenants && tenants.length > 0 ? (
-                <div className="grid md:grid-cols-2 gap-6">
-                  {tenants.map((tenant: any) => (
-                    <Card key={tenant.id} className="p-6">
-                      <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
-                          <Users className="h-6 w-6 text-accent" />
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="font-serif text-xl mb-1">{tenant.user?.full_name || 'Unnamed User'}</h3>
-                          <p className="text-sm text-muted-foreground">{tenant.user?.email}</p>
-                          {tenant.property ? (
-                            <p className="text-sm text-muted-foreground mt-2">
-                              <MapPin className="h-3 w-3 inline mr-1" />
-                              {tenant.property.address}
-                            </p>
-                          ) : (
-                            <Badge variant="outline" className="mt-2 border-warning text-warning">
-                              No Property Assigned
-                            </Badge>
-                          )}
-                          <div className="flex items-center gap-4 mt-3">
-                            {tenant.property && tenant.rent_amount > 0 && (
-                              <Badge variant="secondary">
-                                <DollarSign className="h-3 w-3 mr-1" />
-                                ${Number(tenant.rent_amount).toLocaleString()}/mo
+                <Card>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tenant</TableHead>
+                        <TableHead>Contact</TableHead>
+                        <TableHead>Property</TableHead>
+                        <TableHead>Rent</TableHead>
+                        <TableHead>Lease Period</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {tenants.map((tenant: any) => (
+                        <TableRow 
+                          key={tenant.id} 
+                          className="cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => {
+                            setSelectedTenant(tenant);
+                            setIsTenantDetailsOpen(true);
+                          }}
+                        >
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-accent/10 rounded-full flex items-center justify-center">
+                                <Users className="h-5 w-5 text-accent" />
+                              </div>
+                              <div>
+                                <p className="font-medium">{tenant.user?.full_name || 'Unnamed'}</p>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              <p>{tenant.user?.email}</p>
+                              {tenant.user?.phone && (
+                                <p className="text-muted-foreground">{tenant.user.phone}</p>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {tenant.property ? (
+                              <div className="flex items-center gap-1.5 text-sm">
+                                <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span>{tenant.property.address}</span>
+                              </div>
+                            ) : (
+                              <Badge variant="outline" className="border-warning text-warning">
+                                Unassigned
                               </Badge>
                             )}
-                          </div>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
+                          </TableCell>
+                          <TableCell>
+                            {tenant.rent_amount && tenant.rent_amount > 0 ? (
+                              <div className="flex items-center gap-1">
+                                <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+                                <span>{Number(tenant.rent_amount).toLocaleString()}/mo</span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {tenant.lease_start_date && tenant.lease_end_date ? (
+                              <div className="text-sm">
+                                <span>{new Date(tenant.lease_start_date).toLocaleDateString()}</span>
+                                <span className="text-muted-foreground"> — </span>
+                                <span>{new Date(tenant.lease_end_date).toLocaleDateString()}</span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className="bg-success/10 text-success">
+                              Active
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </Card>
               ) : (
                 <Card className="p-12 text-center border-dashed">
                   <Users className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
                   <h3 className="text-xl font-serif mb-2">No Tenants Yet</h3>
-                  <p className="text-muted-foreground">Approved applicants will appear here once they sign their lease</p>
+                  <p className="text-muted-foreground mb-6">Add your first tenant or approve applicants to get started</p>
+                  <Button onClick={() => setIsAddTenantOpen(true)}>
+                    <Plus className="mr-2 h-4 w-4" /> Add Tenant
+                  </Button>
                 </Card>
               )}
             </div>
@@ -888,6 +945,14 @@ export default function Dashboard() {
         properties={properties || []}
         existingTenantUserIds={tenants?.map((t: any) => t.user_id) || []}
         managerId={user.id}
+      />
+
+      {/* Tenant Details Dialog */}
+      <TenantDetailsDialog
+        tenant={selectedTenant}
+        open={isTenantDetailsOpen}
+        onOpenChange={setIsTenantDetailsOpen}
+        properties={properties || []}
       />
     </div>
   );

@@ -75,6 +75,46 @@ export function useUpdateTenant() {
         .from('tenants')
         .update(updates)
         .eq('id', id)
+        .select(`
+          *,
+          user:profiles!tenants_user_id_fkey (
+            id,
+            email,
+            full_name,
+            phone
+          ),
+          property:properties (
+            id,
+            address,
+            city,
+            state
+          )
+        `)
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['tenants'] });
+      toast.success('Tenant updated successfully');
+    },
+    onError: (error) => {
+      toast.error(`Failed to update tenant: ${error.message}`);
+    },
+  });
+}
+
+export function useDeleteTenant() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (tenantId: string) => {
+      // Soft delete - set is_active to false
+      const { data, error } = await supabase
+        .from('tenants')
+        .update({ is_active: false })
+        .eq('id', tenantId)
         .select()
         .single();
 
@@ -83,10 +123,32 @@ export function useUpdateTenant() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
-      toast.success('Tenant updated successfully');
+      toast.success('Tenant removed successfully');
     },
     onError: (error) => {
-      toast.error(`Failed to update tenant: ${error.message}`);
+      toast.error(`Failed to remove tenant: ${error.message}`);
+    },
+  });
+}
+
+export function useRevokeTenantAccess() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      const { error } = await supabase.rpc('revoke_tenant_role', {
+        _user_id: userId,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenants'] });
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      toast.success('Tenant portal access revoked');
+    },
+    onError: (error) => {
+      toast.error(`Failed to revoke access: ${error.message}`);
     },
   });
 }
