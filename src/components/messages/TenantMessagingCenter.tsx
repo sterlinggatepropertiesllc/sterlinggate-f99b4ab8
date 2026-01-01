@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMessages, useConversation, useSendMessage, useMarkAsRead } from '@/hooks/useMessages';
-import { useMyPropertyManagers } from '@/hooks/usePropertyManagers';
+import { useAllPropertyManagers } from '@/hooks/usePropertyManagers';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,6 @@ interface ManagerConversation {
   id: string;
   name: string;
   email: string;
-  propertyAddress?: string;
   lastMessage?: string;
   lastMessageTime?: string;
   unreadCount: number;
@@ -27,7 +26,7 @@ export function TenantMessagingCenter() {
   const [newMessage, setNewMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { data: managers, isLoading: managersLoading } = useMyPropertyManagers(user?.id);
+  const { data: managers, isLoading: managersLoading } = useAllPropertyManagers();
   const { data: allMessages } = useMessages(user?.id);
   const { data: conversationMessages } = useConversation(user?.id, selectedManager || undefined);
   const sendMessage = useSendMessage();
@@ -45,7 +44,6 @@ export function TenantMessagingCenter() {
         id: manager.id,
         name: manager.full_name || manager.email,
         email: manager.email,
-        propertyAddress: manager.property_address,
         unreadCount: 0,
       });
     });
@@ -125,9 +123,9 @@ export function TenantMessagingCenter() {
     return (
       <Card className="p-12 text-center border-dashed">
         <Building2 className="h-16 w-16 mx-auto text-muted-foreground/30 mb-4" />
-        <h3 className="text-xl font-serif mb-2">No Property Managers Yet</h3>
+        <h3 className="text-xl font-serif mb-2">No Property Managers Available</h3>
         <p className="text-muted-foreground">
-          You'll be able to message your property manager once you have an active lease or tenancy.
+          There are no property managers to contact at this time.
         </p>
       </Card>
     );
@@ -169,12 +167,6 @@ export function TenantMessagingCenter() {
                       </span>
                     )}
                   </div>
-                  {conv.propertyAddress && (
-                    <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
-                      <Building2 className="h-3 w-3" />
-                      {conv.propertyAddress}
-                    </p>
-                  )}
                   {conv.lastMessage && (
                     <p className="text-sm text-muted-foreground truncate mt-1">
                       {conv.lastMessage}
