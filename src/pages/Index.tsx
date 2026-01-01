@@ -136,7 +136,7 @@ export default function Index() {
               <h1 className="text-5xl sm:text-6xl md:text-7xl font-serif font-medium text-foreground mb-8 leading-[1.1] animate-slide-up">
                 Sterling Gate
                 <br />
-                <span className="text-gradient-silver">Properties</span>
+                <span className="text-primary">Properties</span>
               </h1>
               
               <p className="text-lg md:text-xl text-muted-foreground max-w-xl mb-12 animate-slide-up-delay-1 leading-relaxed">
