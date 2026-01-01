@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useManagerProperties, useCreateProperty } from '@/hooks/useProperties';
+import { useManagerProperties, useCreateProperty, useUpdateProperty } from '@/hooks/useProperties';
 import { useApplications, useUpdateApplication } from '@/hooks/useApplications';
 import { useTenants } from '@/hooks/useTenants';
 import { useLeases } from '@/hooks/useLeases';
 import { useUnreadCount } from '@/hooks/useMessages';
+import { usePropertyImages } from '@/hooks/usePropertyImages';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +19,9 @@ import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { SettingsDialog } from '@/components/settings/SettingsDialog';
+import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard';
+import { AuditDashboard } from '@/components/audit/AuditDashboard';
+import { ImageUploader } from '@/components/properties/ImageUploader';
 import { 
   Building2, 
   LayoutDashboard, 
@@ -37,15 +41,19 @@ import {
   Clock,
   Eye,
   Trash2,
-  Edit
+  Edit,
+  BarChart3,
+  Receipt
 } from 'lucide-react';
 
-type DashboardTab = 'overview' | 'properties' | 'applications' | 'tenants' | 'leases' | 'messages';
+type DashboardTab = 'overview' | 'properties' | 'applications' | 'tenants' | 'leases' | 'messages' | 'analytics' | 'audit';
 
 export default function Dashboard() {
   const { user, role, loading, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
+  const [propertyImages, setPropertyImages] = useState<string[]>([]);
+  const [pendingImageFiles, setPendingImageFiles] = useState<File[]>([]);
 
   const { data: properties, isLoading: propertiesLoading } = useManagerProperties(user?.id);
   const { data: applications, isLoading: applicationsLoading } = useApplications();
@@ -54,7 +62,9 @@ export default function Dashboard() {
   const { data: unreadCount } = useUnreadCount(user?.id);
 
   const createProperty = useCreateProperty();
+  const updateProperty = useUpdateProperty();
   const updateApplication = useUpdateApplication();
+  const { uploadImages, uploading, maxImages } = usePropertyImages();
 
   if (loading) {
     return (
@@ -85,7 +95,8 @@ export default function Dashboard() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     
-    await createProperty.mutateAsync({
+    // Create property first
+    const newProperty = await createProperty.mutateAsync({
       manager_id: user.id,
       address: formData.get('address') as string,
       city: formData.get('city') as string,
@@ -99,7 +110,40 @@ export default function Dashboard() {
       status: 'available',
     });
 
+    // Upload images if any
+    if (pendingImageFiles.length > 0 && newProperty) {
+      const uploadedUrls = await uploadImages(pendingImageFiles, newProperty.id);
+      if (uploadedUrls.length > 0) {
+        await updateProperty.mutateAsync({
+          id: newProperty.id,
+          photos: uploadedUrls,
+        });
+      }
+    }
+
+    // Reset state
+    setPropertyImages([]);
+    setPendingImageFiles([]);
     setIsAddPropertyOpen(false);
+  };
+
+  const handleFilesSelect = (files: File[]) => {
+    setPendingImageFiles(prev => [...prev, ...files].slice(0, maxImages));
+    // Create preview URLs
+    const newPreviews = files.map(file => URL.createObjectURL(file));
+    setPropertyImages(prev => [...prev, ...newPreviews].slice(0, maxImages));
+  };
+
+  const handleImagesChange = (newImages: string[]) => {
+    // Find which images were removed
+    const removedIndexes = propertyImages
+      .map((img, idx) => newImages.includes(img) ? -1 : idx)
+      .filter(idx => idx !== -1);
+    
+    // Update pending files accordingly
+    const newPendingFiles = pendingImageFiles.filter((_, idx) => !removedIndexes.includes(idx));
+    setPendingImageFiles(newPendingFiles);
+    setPropertyImages(newImages);
   };
 
   const handleApproveApplication = async (applicationId: string) => {
@@ -130,6 +174,8 @@ export default function Dashboard() {
     { id: 'tenants', label: 'Tenants', icon: Users },
     { id: 'leases', label: 'Leases', icon: FileText },
     { id: 'messages', label: 'Messages', icon: MessageSquare, badge: unreadCount },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'audit', label: 'Audit', icon: Receipt },
   ];
 
   return (
@@ -667,10 +713,17 @@ export default function Dashboard() {
               </Card>
             </div>
           )}
+
+          {/* Analytics Tab */}
+          {activeTab === 'analytics' && <AnalyticsDashboard />}
+
+          {/* Audit Tab */}
+          {activeTab === 'audit' && <AuditDashboard />}
+          </div>
         </main>
       </div>
 
-      {/* Add Property Dialog is rendered inside the component */}
+      {/* Add Property Dialog */}
       <Dialog open={isAddPropertyOpen} onOpenChange={setIsAddPropertyOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -715,21 +768,31 @@ export default function Dashboard() {
                 <Label htmlFor="description">Description (optional)</Label>
                 <Textarea id="description" name="description" placeholder="Beautiful apartment with modern amenities..." />
               </div>
+              <div className="col-span-2">
+                <ImageUploader
+                  images={propertyImages}
+                  onImagesChange={handleImagesChange}
+                  onFilesSelect={handleFilesSelect}
+                  maxImages={maxImages}
+                  uploading={uploading}
+                />
+              </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsAddPropertyOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => {
+                setPropertyImages([]);
+                setPendingImageFiles([]);
+                setIsAddPropertyOpen(false);
+              }}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={createProperty.isPending}>
-                {createProperty.isPending ? 'Adding...' : 'Add Property'}
+              <Button type="submit" disabled={createProperty.isPending || uploading}>
+                {createProperty.isPending || uploading ? 'Adding...' : 'Add Property'}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
-        </div>
-      </main>
     </div>
-  </div>
   );
 }
