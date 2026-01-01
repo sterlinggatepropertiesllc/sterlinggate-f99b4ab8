@@ -21,6 +21,7 @@ import {
   Layers,
   Clock
 } from 'lucide-react';
+import logo from '@/assets/logo.jpg';
 
 export default function Index() {
   const { user, role, loading, signOut } = useAuth();
@@ -105,9 +106,7 @@ export default function Index() {
         {/* Navigation */}
         <nav className="container mx-auto px-6 py-6 flex items-center justify-between relative z-20">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 border border-primary/40 rounded-lg flex items-center justify-center">
-              <Building2 className="h-5 w-5 text-primary" />
-            </div>
+            <img src={logo} alt="Sterling Gate Properties" className="h-10 w-auto object-contain" />
             <span className="text-xl font-serif font-medium text-foreground tracking-tight">Sterling Gate</span>
           </div>
           <div className="flex items-center gap-4">
@@ -490,9 +489,7 @@ export default function Index() {
         <div className="container mx-auto px-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 border border-border rounded flex items-center justify-center">
-                <Building2 className="h-4 w-4 text-primary" />
-              </div>
+              <img src={logo} alt="Sterling Gate Properties" className="h-8 w-auto object-contain" />
               <span className="font-serif text-lg">Sterling Gate Properties</span>
             </div>
             <p className="text-muted-foreground text-sm">
