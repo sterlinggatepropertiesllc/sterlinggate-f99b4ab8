@@ -18,13 +18,11 @@ import {
   MessageSquare, 
   ClipboardList,
   LogOut,
-  MapPin,
   DollarSign,
   CheckCircle2,
   XCircle,
   Clock,
   Search,
-  Key,
   ArrowRight,
   Folder,
   PenTool,
@@ -32,6 +30,7 @@ import {
   CreditCard,
   Loader2
 } from 'lucide-react';
+import logo from '@/assets/logo.png';
 
 type PortalTab = 'applications' | 'leases' | 'documents' | 'messages';
 
@@ -93,13 +92,7 @@ export default function TenantPortal() {
         {/* Sidebar */}
         <aside className="w-64 bg-sidebar min-h-screen p-6 flex flex-col">
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 bg-sidebar-primary rounded-xl flex items-center justify-center">
-              <Key className="h-5 w-5 text-sidebar-primary-foreground" />
-            </div>
-            <div>
-              <span className="text-lg font-serif text-sidebar-foreground block">Tenant Portal</span>
-              <span className="text-xs text-sidebar-foreground/60">PropertyFlow Pro</span>
-            </div>
+            <img src={logo} alt="Sterling Gate Properties" className="h-14 w-auto object-contain" />
           </div>
           
           <nav className="space-y-1 flex-1">

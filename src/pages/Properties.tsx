@@ -21,7 +21,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
-import logo from '@/assets/logo.jpg';
+import logo from '@/assets/logo.png';
 import type { Database } from '@/integrations/supabase/types';
 
 type Property = Database['public']['Tables']['properties']['Row'];
@@ -87,8 +87,7 @@ export default function Properties() {
         <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link to="/" className="flex items-center gap-3">
-              <img src={logo} alt="Sterling Gate Properties" className="h-8 w-auto object-contain" />
-              <span className="text-lg font-serif font-medium text-foreground tracking-tight hidden sm:block">Sterling Gate</span>
+              <img src={logo} alt="Sterling Gate Properties" className="h-12 w-auto object-contain" />
             </Link>
           </div>
           <div className="flex items-center gap-4">

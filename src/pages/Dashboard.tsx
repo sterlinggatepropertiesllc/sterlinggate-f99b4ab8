@@ -32,7 +32,6 @@ import { MessagingCenter } from '@/components/messages/MessagingCenter';
 import { AuditCertificate } from '@/components/leases/AuditCertificate';
 import type { Database } from '@/integrations/supabase/types';
 import { 
-  Building2, 
   LayoutDashboard, 
   Home, 
   Users, 
@@ -56,6 +55,7 @@ import {
   PenTool,
   Shield
 } from 'lucide-react';
+import logo from '@/assets/logo.png';
 
 type DashboardTab = 'overview' | 'properties' | 'applications' | 'tenants' | 'leases' | 'messages' | 'analytics' | 'audit';
 type Property = Database['public']['Tables']['properties']['Row'];
@@ -246,13 +246,7 @@ export default function Dashboard() {
         {/* Sidebar */}
         <aside className="w-64 bg-sidebar min-h-screen p-6 flex flex-col">
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 bg-sidebar-primary rounded-xl flex items-center justify-center">
-              <Building2 className="h-5 w-5 text-sidebar-primary-foreground" />
-            </div>
-            <div>
-              <span className="text-lg font-serif text-sidebar-foreground block">PropertyFlow</span>
-              <span className="text-xs text-sidebar-foreground/60">Manager Portal</span>
-            </div>
+            <img src={logo} alt="Sterling Gate Properties" className="h-14 w-auto object-contain" />
           </div>
           
           <nav className="space-y-1 flex-1">
