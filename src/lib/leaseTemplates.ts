@@ -2,6 +2,8 @@
 
 export type LeaseType = 'triple_net' | 'gross' | 'modified_gross';
 
+export type LateFeeType = 'flat' | 'percentage' | 'daily' | 'flat_plus_daily' | 'flat_plus_percentage' | 'percentage_plus_daily' | 'all';
+
 export interface LeaseTerms {
   leaseType: LeaseType;
   propertyAddress: string;
@@ -19,8 +21,13 @@ export interface LeaseTerms {
   camCharges?: number;
   propertyTaxResponsibility: 'landlord' | 'tenant' | 'shared';
   insuranceResponsibility: 'landlord' | 'tenant' | 'both';
+  rentDueDay: number;
+  lateAfterDay: number;
+  lateFeeType: LateFeeType;
   lateFeePercentage: number;
-  gracePeriodDays: number;
+  lateFeeFlatAmount: number;
+  lateFeeDailyAmount: number;
+  lateFeeMaxAmount?: number;
   renewalTerms?: string;
   additionalClauses?: string;
 }
@@ -50,6 +57,59 @@ function formatDate(dateStr: string): string {
     month: 'long',
     day: 'numeric',
   });
+}
+
+function getOrdinalSuffix(day: number): string {
+  if (day >= 11 && day <= 13) return 'th';
+  switch (day % 10) {
+    case 1: return 'st';
+    case 2: return 'nd';
+    case 3: return 'rd';
+    default: return 'th';
+  }
+}
+
+function formatDayOfMonth(day: number): string {
+  return `${day}${getOrdinalSuffix(day)}`;
+}
+
+function generateLateFeeClause(terms: LeaseTerms): string {
+  const dueDay = formatDayOfMonth(terms.rentDueDay);
+  const lateAfterDay = formatDayOfMonth(terms.lateAfterDay);
+  
+  let clause = `Rent is due on the ${dueDay} of each month and is considered late after the ${lateAfterDay}. `;
+  
+  switch (terms.lateFeeType) {
+    case 'flat':
+      clause += `If payment is not received by the ${lateAfterDay}, a late charge of ${formatCurrency(terms.lateFeeFlatAmount)} will be assessed.`;
+      break;
+    case 'percentage':
+      clause += `If payment is not received by the ${lateAfterDay}, a late charge equal to ${terms.lateFeePercentage}% of the overdue amount will be assessed.`;
+      break;
+    case 'daily':
+      clause += `If payment is not received by the ${lateAfterDay}, a late charge of ${formatCurrency(terms.lateFeeDailyAmount)} per day will be assessed for each day the payment remains outstanding.`;
+      break;
+    case 'flat_plus_daily':
+      clause += `If payment is not received by the ${lateAfterDay}, an initial late charge of ${formatCurrency(terms.lateFeeFlatAmount)} will be assessed, plus ${formatCurrency(terms.lateFeeDailyAmount)} for each additional day the payment remains outstanding.`;
+      break;
+    case 'flat_plus_percentage':
+      clause += `If payment is not received by the ${lateAfterDay}, a late charge of ${formatCurrency(terms.lateFeeFlatAmount)} will be assessed, plus ${terms.lateFeePercentage}% of the overdue amount.`;
+      break;
+    case 'percentage_plus_daily':
+      clause += `If payment is not received by the ${lateAfterDay}, a late charge equal to ${terms.lateFeePercentage}% of the overdue amount will be assessed, plus ${formatCurrency(terms.lateFeeDailyAmount)} for each additional day the payment remains outstanding.`;
+      break;
+    case 'all':
+      clause += `If payment is not received by the ${lateAfterDay}, a late charge of ${formatCurrency(terms.lateFeeFlatAmount)} will be assessed, plus ${terms.lateFeePercentage}% of the overdue amount, plus ${formatCurrency(terms.lateFeeDailyAmount)} for each additional day the payment remains outstanding.`;
+      break;
+  }
+  
+  if (terms.lateFeeMaxAmount && terms.lateFeeMaxAmount > 0) {
+    clause += ` Total late fees shall not exceed ${formatCurrency(terms.lateFeeMaxAmount)}.`;
+  }
+  
+  clause += ` This late charge is in addition to any other remedies available to Landlord.`;
+  
+  return clause;
 }
 
 export function generateLeaseDocument(terms: LeaseTerms): string {
@@ -109,7 +169,7 @@ ARTICLE 3: RENT
 3.1 BASE RENT
 Tenant agrees to pay Landlord as base rent for the Premises the sum of
 ${formatCurrency(terms.monthlyRent)} per month ("Base Rent"), payable in advance on the
-first day of each calendar month during the Term.
+${formatDayOfMonth(terms.rentDueDay)} day of each calendar month during the Term.
 
 3.2 SECURITY DEPOSIT
 Upon execution of this Lease, Tenant shall deposit with Landlord the sum of
@@ -125,10 +185,7 @@ Tenant's proportionate share of property taxes, insurance, and maintenance costs
 ` : ''}
 
 3.4 LATE PAYMENT
-If any installment of Rent is not received by Landlord within ${terms.gracePeriodDays} days
-after the date due, Tenant shall pay a late charge equal to ${terms.lateFeePercentage}% of the
-overdue amount. This late charge is in addition to any other remedies available
-to Landlord.
+${generateLateFeeClause(terms)}
 
 ================================================================================
 ARTICLE 4: USE OF PREMISES
@@ -201,7 +258,7 @@ ARTICLE 7: DEFAULT AND REMEDIES
 
 7.1 TENANT DEFAULT
 The following shall constitute a default by Tenant:
-(a) Failure to pay Rent within ${terms.gracePeriodDays} days after written notice
+(a) Failure to pay Rent after the ${formatDayOfMonth(terms.lateAfterDay)} of the month
 (b) Failure to perform any other covenant within 30 days after written notice
 (c) Abandonment of the Premises
 (d) Filing of bankruptcy or insolvency proceedings

@@ -11,7 +11,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useTenantProfiles } from '@/hooks/useProfiles';
 import { useCreateLease } from '@/hooks/useLeases';
-import { generateLeaseHTML, LeaseTerms, LeaseType, LEASE_TYPE_LABELS, LEASE_TYPE_DESCRIPTIONS } from '@/lib/leaseTemplates';
+import { generateLeaseHTML, LeaseTerms, LeaseType, LateFeeType, LEASE_TYPE_LABELS, LEASE_TYPE_DESCRIPTIONS } from '@/lib/leaseTemplates';
 import { generateDocumentHash } from '@/hooks/useSignatures';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -81,8 +81,13 @@ export function CreateLeaseWizard({
     camCharges: 0,
     propertyTaxResponsibility: 'landlord' as 'landlord' | 'tenant' | 'shared',
     insuranceResponsibility: 'tenant' as 'landlord' | 'tenant' | 'both',
+    rentDueDay: 1,
+    lateAfterDay: 5,
+    lateFeeType: 'percentage' as LateFeeType,
     lateFeePercentage: 5,
-    gracePeriodDays: 5,
+    lateFeeFlatAmount: 0,
+    lateFeeDailyAmount: 0,
+    lateFeeMaxAmount: 0,
     renewalTerms: '',
     additionalClauses: '',
   });
@@ -150,8 +155,13 @@ export function CreateLeaseWizard({
       camCharges: formData.camCharges,
       propertyTaxResponsibility: formData.propertyTaxResponsibility,
       insuranceResponsibility: formData.insuranceResponsibility,
+      rentDueDay: formData.rentDueDay,
+      lateAfterDay: formData.lateAfterDay,
+      lateFeeType: formData.lateFeeType,
       lateFeePercentage: formData.lateFeePercentage,
-      gracePeriodDays: formData.gracePeriodDays,
+      lateFeeFlatAmount: formData.lateFeeFlatAmount,
+      lateFeeDailyAmount: formData.lateFeeDailyAmount,
+      lateFeeMaxAmount: formData.lateFeeMaxAmount || undefined,
       renewalTerms: formData.renewalTerms,
       additionalClauses: formData.additionalClauses,
     };
@@ -172,8 +182,13 @@ export function CreateLeaseWizard({
       cam_charges: formData.camCharges || null,
       property_tax_responsibility: formData.propertyTaxResponsibility,
       insurance_responsibility: formData.insuranceResponsibility,
+      rent_due_day: formData.rentDueDay,
+      late_after_day: formData.lateAfterDay,
+      late_fee_type: formData.lateFeeType,
       late_fee_percentage: formData.lateFeePercentage,
-      grace_period_days: formData.gracePeriodDays,
+      late_fee_flat_amount: formData.lateFeeFlatAmount || null,
+      late_fee_daily_amount: formData.lateFeeDailyAmount || null,
+      late_fee_max_amount: formData.lateFeeMaxAmount || null,
       renewal_terms: formData.renewalTerms || null,
       additional_clauses: formData.additionalClauses || null,
       terms: generateLeaseHTML(leaseTerms),
@@ -207,8 +222,13 @@ export function CreateLeaseWizard({
       camCharges: 0,
       propertyTaxResponsibility: 'landlord',
       insuranceResponsibility: 'tenant',
+      rentDueDay: 1,
+      lateAfterDay: 5,
+      lateFeeType: 'percentage',
       lateFeePercentage: 5,
-      gracePeriodDays: 5,
+      lateFeeFlatAmount: 0,
+      lateFeeDailyAmount: 0,
+      lateFeeMaxAmount: 0,
       renewalTerms: '',
       additionalClauses: '',
     });
@@ -488,23 +508,122 @@ export function CreateLeaseWizard({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Late Fee (%)</Label>
-                <Input
-                  type="number"
-                  value={formData.lateFeePercentage || ''}
-                  onChange={(e) => updateFormData({ lateFeePercentage: e.target.value === '' ? 0 : Number(e.target.value) })}
-                  placeholder="0"
-                />
+            {/* Payment Due Date Section */}
+            <div className="space-y-4 p-4 border border-border rounded-lg bg-secondary/20">
+              <Label className="text-base font-medium">Payment Schedule</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Rent Due On</Label>
+                  <Select
+                    value={String(formData.rentDueDay)}
+                    onValueChange={(v) => updateFormData({ rentDueDay: Number(v) })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
+                        <SelectItem key={day} value={String(day)}>
+                          {day}{day === 1 ? 'st' : day === 2 ? 'nd' : day === 3 ? 'rd' : 'th'} of the month
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Considered Late After</Label>
+                  <Select
+                    value={String(formData.lateAfterDay)}
+                    onValueChange={(v) => updateFormData({ lateAfterDay: Number(v) })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
+                        <SelectItem key={day} value={String(day)}>
+                          {day}{day === 1 ? 'st' : day === 2 ? 'nd' : day === 3 ? 'rd' : 'th'} of the month
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
+              <p className="text-sm text-muted-foreground">
+                Rent is due on the {formData.rentDueDay}{formData.rentDueDay === 1 ? 'st' : formData.rentDueDay === 2 ? 'nd' : formData.rentDueDay === 3 ? 'rd' : 'th'}, considered late after the {formData.lateAfterDay}{formData.lateAfterDay === 1 ? 'st' : formData.lateAfterDay === 2 ? 'nd' : formData.lateAfterDay === 3 ? 'rd' : 'th'}
+              </p>
+            </div>
+
+            {/* Late Fee Configuration Section */}
+            <div className="space-y-4 p-4 border border-border rounded-lg bg-secondary/20">
+              <Label className="text-base font-medium">Late Fee Structure</Label>
+              
               <div className="space-y-2">
-                <Label>Grace Period (days)</Label>
+                <Label>Fee Type</Label>
+                <Select
+                  value={formData.lateFeeType}
+                  onValueChange={(v) => updateFormData({ lateFeeType: v as LateFeeType })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select late fee type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="flat">Flat Fee Only</SelectItem>
+                    <SelectItem value="percentage">Percentage Only</SelectItem>
+                    <SelectItem value="daily">Daily Fee Only</SelectItem>
+                    <SelectItem value="flat_plus_daily">Flat Fee + Daily Fee</SelectItem>
+                    <SelectItem value="flat_plus_percentage">Flat Fee + Percentage</SelectItem>
+                    <SelectItem value="percentage_plus_daily">Percentage + Daily Fee</SelectItem>
+                    <SelectItem value="all">Flat + Percentage + Daily</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {['flat', 'flat_plus_daily', 'flat_plus_percentage', 'all'].includes(formData.lateFeeType) && (
+                  <div className="space-y-2">
+                    <Label>Flat Late Fee ($)</Label>
+                    <Input
+                      type="number"
+                      value={formData.lateFeeFlatAmount || ''}
+                      onChange={(e) => updateFormData({ lateFeeFlatAmount: e.target.value === '' ? 0 : Number(e.target.value) })}
+                      placeholder="50"
+                    />
+                  </div>
+                )}
+                
+                {['percentage', 'flat_plus_percentage', 'percentage_plus_daily', 'all'].includes(formData.lateFeeType) && (
+                  <div className="space-y-2">
+                    <Label>Late Fee (%)</Label>
+                    <Input
+                      type="number"
+                      value={formData.lateFeePercentage || ''}
+                      onChange={(e) => updateFormData({ lateFeePercentage: e.target.value === '' ? 0 : Number(e.target.value) })}
+                      placeholder="5"
+                    />
+                  </div>
+                )}
+                
+                {['daily', 'flat_plus_daily', 'percentage_plus_daily', 'all'].includes(formData.lateFeeType) && (
+                  <div className="space-y-2">
+                    <Label>Daily Late Fee ($)</Label>
+                    <Input
+                      type="number"
+                      value={formData.lateFeeDailyAmount || ''}
+                      onChange={(e) => updateFormData({ lateFeeDailyAmount: e.target.value === '' ? 0 : Number(e.target.value) })}
+                      placeholder="10"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Maximum Late Fee Cap ($) <span className="text-muted-foreground text-xs">(optional)</span></Label>
                 <Input
                   type="number"
-                  value={formData.gracePeriodDays || ''}
-                  onChange={(e) => updateFormData({ gracePeriodDays: e.target.value === '' ? 0 : Number(e.target.value) })}
-                  placeholder="0"
+                  value={formData.lateFeeMaxAmount || ''}
+                  onChange={(e) => updateFormData({ lateFeeMaxAmount: e.target.value === '' ? 0 : Number(e.target.value) })}
+                  placeholder="Leave empty for no cap"
                 />
               </div>
             </div>

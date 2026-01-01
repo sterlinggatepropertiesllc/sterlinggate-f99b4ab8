@@ -152,7 +152,12 @@ export type Database = {
           grace_period_days: number | null
           id: string
           insurance_responsibility: string | null
+          late_after_day: number | null
+          late_fee_daily_amount: number | null
+          late_fee_flat_amount: number | null
+          late_fee_max_amount: number | null
           late_fee_percentage: number | null
+          late_fee_type: string | null
           lease_document_url: string | null
           lease_type: string | null
           manager_id: string
@@ -160,6 +165,7 @@ export type Database = {
           property_id: string
           property_tax_responsibility: string | null
           renewal_terms: string | null
+          rent_due_day: number | null
           security_deposit: number | null
           signed_document_url: string | null
           start_date: string
@@ -177,7 +183,12 @@ export type Database = {
           grace_period_days?: number | null
           id?: string
           insurance_responsibility?: string | null
+          late_after_day?: number | null
+          late_fee_daily_amount?: number | null
+          late_fee_flat_amount?: number | null
+          late_fee_max_amount?: number | null
           late_fee_percentage?: number | null
+          late_fee_type?: string | null
           lease_document_url?: string | null
           lease_type?: string | null
           manager_id: string
@@ -185,6 +196,7 @@ export type Database = {
           property_id: string
           property_tax_responsibility?: string | null
           renewal_terms?: string | null
+          rent_due_day?: number | null
           security_deposit?: number | null
           signed_document_url?: string | null
           start_date: string
@@ -202,7 +214,12 @@ export type Database = {
           grace_period_days?: number | null
           id?: string
           insurance_responsibility?: string | null
+          late_after_day?: number | null
+          late_fee_daily_amount?: number | null
+          late_fee_flat_amount?: number | null
+          late_fee_max_amount?: number | null
           late_fee_percentage?: number | null
+          late_fee_type?: string | null
           lease_document_url?: string | null
           lease_type?: string | null
           manager_id?: string
@@ -210,6 +227,7 @@ export type Database = {
           property_id?: string
           property_tax_responsibility?: string | null
           renewal_terms?: string | null
+          rent_due_day?: number | null
           security_deposit?: number | null
           signed_document_url?: string | null
           start_date?: string
