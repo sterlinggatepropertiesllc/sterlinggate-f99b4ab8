@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useManagerProperties, useCreateProperty, useUpdateProperty, useDeleteProperty } from '@/hooks/useProperties';
@@ -8,6 +8,7 @@ import { useTenants } from '@/hooks/useTenants';
 import { useLeases } from '@/hooks/useLeases';
 import { useUnreadCount } from '@/hooks/useMessages';
 import { usePropertyImages } from '@/hooks/usePropertyImages';
+import { useProfile } from '@/hooks/useProfiles';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -26,6 +27,9 @@ import { AuditDashboard } from '@/components/audit/AuditDashboard';
 import { ImageUploader } from '@/components/properties/ImageUploader';
 import { PropertyCard } from '@/components/properties/PropertyCard';
 import { EditPropertyDialog } from '@/components/properties/EditPropertyDialog';
+import { CreateLeaseWizard } from '@/components/leases/CreateLeaseWizard';
+import { MessagingCenter } from '@/components/messages/MessagingCenter';
+import { AuditCertificate } from '@/components/leases/AuditCertificate';
 import type { Database } from '@/integrations/supabase/types';
 import { 
   Building2, 
@@ -47,7 +51,10 @@ import {
   Edit,
   BarChart3,
   Receipt,
-  Layers
+  Layers,
+  Download,
+  PenTool,
+  Shield
 } from 'lucide-react';
 
 type DashboardTab = 'overview' | 'properties' | 'applications' | 'tenants' | 'leases' | 'messages' | 'analytics' | 'audit';
@@ -57,10 +64,12 @@ export default function Dashboard() {
   const { user, role, loading, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
+  const [isCreateLeaseOpen, setIsCreateLeaseOpen] = useState(false);
   const [propertyImages, setPropertyImages] = useState<string[]>([]);
   const [pendingImageFiles, setPendingImageFiles] = useState<File[]>([]);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [selectedLeaseForCert, setSelectedLeaseForCert] = useState<any>(null);
 
   const queryClient = useQueryClient();
   const { data: properties, isLoading: propertiesLoading } = useManagerProperties(user?.id);
@@ -68,6 +77,7 @@ export default function Dashboard() {
   const { data: tenants, isLoading: tenantsLoading } = useTenants(user?.id);
   const { data: leases, isLoading: leasesLoading } = useLeases(user?.id, role);
   const { data: unreadCount } = useUnreadCount(user?.id);
+  const { data: managerProfile } = useProfile(user?.id);
 
   const createProperty = useCreateProperty();
   const updateProperty = useUpdateProperty();
@@ -623,9 +633,14 @@ export default function Dashboard() {
           {/* Leases Tab */}
           {activeTab === 'leases' && (
             <div className="animate-fade-in">
-              <div className="mb-8">
-                <h1 className="text-3xl font-serif">Leases</h1>
-                <p className="text-muted-foreground">Manage and track lease agreements</p>
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h1 className="text-3xl font-serif">Leases</h1>
+                  <p className="text-muted-foreground">Manage and track lease agreements</p>
+                </div>
+                <Button onClick={() => setIsCreateLeaseOpen(true)} className="btn-platinum">
+                  <Plus className="h-4 w-4 mr-2" /> Create Lease
+                </Button>
               </div>
 
               {leasesLoading ? (
@@ -643,22 +658,42 @@ export default function Dashboard() {
                       <div className="flex items-center justify-between">
                         <div>
                           <h3 className="font-serif text-xl mb-1">{lease.properties?.address}</h3>
-                          <p className="text-muted-foreground">Tenant: {lease.tenant?.full_name}</p>
+                          <p className="text-muted-foreground">Tenant: {lease.tenant?.full_name || lease.tenant?.email}</p>
                           <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
                             <span>{new Date(lease.start_date).toLocaleDateString()} - {new Date(lease.end_date).toLocaleDateString()}</span>
                             <span>${Number(lease.monthly_rent).toLocaleString()}/mo</span>
                           </div>
                         </div>
-                        <Badge 
-                          variant="outline"
-                          className={
-                            lease.status === 'completed' ? 'border-success text-success' :
-                            lease.status === 'expired' ? 'border-muted text-muted-foreground' :
-                            'border-warning text-warning'
-                          }
-                        >
-                          {lease.status.replace(/_/g, ' ')}
-                        </Badge>
+                        <div className="flex items-center gap-3">
+                          <Badge 
+                            variant="outline"
+                            className={
+                              lease.status === 'completed' ? 'border-success text-success' :
+                              lease.status === 'expired' ? 'border-muted text-muted-foreground' :
+                              'border-warning text-warning'
+                            }
+                          >
+                            {lease.status.replace(/_/g, ' ')}
+                          </Badge>
+                          
+                          {lease.status === 'pending_manager_signature' && (
+                            <Link to={`/sign-lease/${lease.id}`}>
+                              <Button size="sm">
+                                <PenTool className="h-4 w-4 mr-2" /> Sign
+                              </Button>
+                            </Link>
+                          )}
+                          
+                          {lease.status === 'completed' && (
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => setSelectedLeaseForCert(lease)}
+                            >
+                              <Shield className="h-4 w-4 mr-2" /> Certificate
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </Card>
                   ))}
@@ -667,7 +702,10 @@ export default function Dashboard() {
                 <Card className="p-12 text-center border-dashed">
                   <FileText className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
                   <h3 className="text-xl font-serif mb-2">No Leases</h3>
-                  <p className="text-muted-foreground">Leases will appear here once you create them for approved applicants</p>
+                  <p className="text-muted-foreground mb-4">Create your first lease for an approved applicant</p>
+                  <Button onClick={() => setIsCreateLeaseOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" /> Create Lease
+                  </Button>
                 </Card>
               )}
             </div>
@@ -681,11 +719,7 @@ export default function Dashboard() {
                 <p className="text-muted-foreground">Communicate with your tenants</p>
               </div>
 
-              <Card className="p-12 text-center border-dashed">
-                <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                <h3 className="text-xl font-serif mb-2">Messaging Center</h3>
-                <p className="text-muted-foreground">Your conversations with tenants will appear here</p>
-              </Card>
+              <MessagingCenter />
             </div>
           )}
 
@@ -782,6 +816,37 @@ export default function Dashboard() {
         onSave={handleSaveProperty}
         saving={updateProperty.isPending}
       />
+
+      {/* Create Lease Wizard */}
+      <CreateLeaseWizard
+        open={isCreateLeaseOpen}
+        onOpenChange={setIsCreateLeaseOpen}
+        properties={properties || []}
+        managerId={user?.id || ''}
+        managerName={managerProfile?.full_name || managerProfile?.email || ''}
+        managerEmail={managerProfile?.email || ''}
+      />
+
+      {/* Lease Certificate Dialog */}
+      <Dialog open={!!selectedLeaseForCert} onOpenChange={() => setSelectedLeaseForCert(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl">Document Certificate</DialogTitle>
+          </DialogHeader>
+          {selectedLeaseForCert && (
+            <AuditCertificate
+              leaseId={selectedLeaseForCert.id}
+              documentHash={selectedLeaseForCert.document_hash}
+              createdAt={selectedLeaseForCert.created_at}
+              signatures={selectedLeaseForCert.signatures || []}
+              signerNames={{
+                [selectedLeaseForCert.tenant_id]: selectedLeaseForCert.tenant?.full_name || selectedLeaseForCert.tenant?.email || 'Tenant',
+                [selectedLeaseForCert.manager_id]: managerProfile?.full_name || managerProfile?.email || 'Manager',
+              }}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

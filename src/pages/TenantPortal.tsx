@@ -15,6 +15,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
+import { MessagingCenter } from '@/components/messages/MessagingCenter';
+import { AuditCertificate } from '@/components/leases/AuditCertificate';
 import { 
   Building2, 
   Home, 
@@ -35,7 +37,9 @@ import {
   Upload,
   Key,
   ArrowRight,
-  Folder
+  Folder,
+  PenTool,
+  Download
 } from 'lucide-react';
 
 type PortalTab = 'browse' | 'applications' | 'leases' | 'documents' | 'messages';
@@ -370,9 +374,18 @@ export default function TenantPortal() {
                             {lease.status.replace(/_/g, ' ')}
                           </Badge>
                           {lease.status === 'pending_tenant_signature' && (
-                            <Button>
-                              Sign Lease <ArrowRight className="ml-2 h-4 w-4" />
-                            </Button>
+                            <Link to={`/sign-lease/${lease.id}`}>
+                              <Button>
+                                <PenTool className="h-4 w-4 mr-2" /> Sign Lease
+                              </Button>
+                            </Link>
+                          )}
+                          {lease.status === 'completed' && (
+                            <Link to={`/sign-lease/${lease.id}`}>
+                              <Button variant="outline" size="sm">
+                                <Download className="h-4 w-4 mr-2" /> View
+                              </Button>
+                            </Link>
                           )}
                         </div>
                       </div>
@@ -413,11 +426,7 @@ export default function TenantPortal() {
                 <p className="text-muted-foreground">Communicate with your property manager</p>
               </div>
 
-              <Card className="p-12 text-center border-dashed">
-                <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                <h3 className="text-xl font-serif mb-2">Messaging Center</h3>
-                <p className="text-muted-foreground">Your conversations with property managers will appear here</p>
-              </Card>
+              <MessagingCenter />
             </div>
           )}
         </main>

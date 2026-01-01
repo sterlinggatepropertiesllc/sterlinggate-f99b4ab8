@@ -1,1 +1,7 @@
 project_id = "nmibwtbrbpqfvseeflep"
+
+[functions.send-discord-notification]
+verify_jwt = false
+
+[functions.generate-lease-pdf]
+verify_jwt = true
