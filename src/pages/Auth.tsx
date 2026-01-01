@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Building2, User, ArrowLeft, Shield, Lock, Mail } from 'lucide-react';
+import logo from '@/assets/logo.png';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import type { Database } from '@/integrations/supabase/types';
@@ -116,12 +117,12 @@ export default function Auth() {
 
         <Card className="shadow-elevated border-border/50">
           <CardHeader className="text-center pb-2">
-            <div className="mx-auto w-12 h-12 bg-primary rounded-xl flex items-center justify-center mb-4">
-              <Building2 className="h-6 w-6 text-primary-foreground" />
+            <div className="mx-auto mb-2">
+              <img src={logo} alt="Sterling Gate Properties" className="h-20 w-auto object-contain mx-auto" />
             </div>
-            <CardTitle className="text-3xl font-serif">PropertyFlow Pro</CardTitle>
+            <CardTitle className="text-3xl font-serif">Sterling Gate Properties</CardTitle>
             <CardDescription className="text-base">
-              Premium property management, simplified
+              Commercial real estate management, simplified
             </CardDescription>
           </CardHeader>
 
