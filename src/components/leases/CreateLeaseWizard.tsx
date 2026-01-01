@@ -66,6 +66,8 @@ export function CreateLeaseWizard({
   managerEmail
 }: CreateLeaseWizardProps) {
   const [currentStep, setCurrentStep] = useState(0);
+  const [startDateOpen, setStartDateOpen] = useState(false);
+  const [endDateOpen, setEndDateOpen] = useState(false);
   const [formData, setFormData] = useState({
     tenantId: '',
     tenantName: '',
@@ -352,7 +354,7 @@ export function CreateLeaseWizard({
                   <CalendarIcon className="h-4 w-4 text-primary" />
                   Start Date
                 </Label>
-                <Popover>
+                <Popover open={startDateOpen} onOpenChange={setStartDateOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
@@ -369,7 +371,10 @@ export function CreateLeaseWizard({
                     <Calendar
                       mode="single"
                       selected={formData.startDate ? parse(formData.startDate, 'yyyy-MM-dd', new Date()) : undefined}
-                      onSelect={(date) => updateFormData({ startDate: date ? format(date, 'yyyy-MM-dd') : '' })}
+                      onSelect={(date) => {
+                        updateFormData({ startDate: date ? format(date, 'yyyy-MM-dd') : '' });
+                        setStartDateOpen(false);
+                      }}
                       initialFocus
                       className="p-3 pointer-events-auto"
                     />
@@ -381,7 +386,7 @@ export function CreateLeaseWizard({
                   <CalendarIcon className="h-4 w-4 text-primary" />
                   End Date
                 </Label>
-                <Popover>
+                <Popover open={endDateOpen} onOpenChange={setEndDateOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
@@ -398,7 +403,10 @@ export function CreateLeaseWizard({
                     <Calendar
                       mode="single"
                       selected={formData.endDate ? parse(formData.endDate, 'yyyy-MM-dd', new Date()) : undefined}
-                      onSelect={(date) => updateFormData({ endDate: date ? format(date, 'yyyy-MM-dd') : '' })}
+                      onSelect={(date) => {
+                        updateFormData({ endDate: date ? format(date, 'yyyy-MM-dd') : '' });
+                        setEndDateOpen(false);
+                      }}
                       disabled={(date) => formData.startDate ? date < parse(formData.startDate, 'yyyy-MM-dd', new Date()) : false}
                       initialFocus
                       className="p-3 pointer-events-auto"
@@ -413,16 +421,18 @@ export function CreateLeaseWizard({
                 <Label>Monthly Rent ($)</Label>
                 <Input
                   type="number"
-                  value={formData.monthlyRent}
-                  onChange={(e) => updateFormData({ monthlyRent: Number(e.target.value) })}
+                  value={formData.monthlyRent || ''}
+                  onChange={(e) => updateFormData({ monthlyRent: e.target.value === '' ? 0 : Number(e.target.value) })}
+                  placeholder="0"
                 />
               </div>
               <div className="space-y-2">
                 <Label>Security Deposit ($)</Label>
                 <Input
                   type="number"
-                  value={formData.securityDeposit}
-                  onChange={(e) => updateFormData({ securityDeposit: Number(e.target.value) })}
+                  value={formData.securityDeposit || ''}
+                  onChange={(e) => updateFormData({ securityDeposit: e.target.value === '' ? 0 : Number(e.target.value) })}
+                  placeholder="0"
                 />
               </div>
             </div>
@@ -432,9 +442,9 @@ export function CreateLeaseWizard({
                 <Label>Monthly CAM Charges ($)</Label>
                 <Input
                   type="number"
-                  value={formData.camCharges}
-                  onChange={(e) => updateFormData({ camCharges: Number(e.target.value) })}
-                  placeholder="Common Area Maintenance charges"
+                  value={formData.camCharges || ''}
+                  onChange={(e) => updateFormData({ camCharges: e.target.value === '' ? 0 : Number(e.target.value) })}
+                  placeholder="0"
                 />
               </div>
             )}
@@ -483,16 +493,18 @@ export function CreateLeaseWizard({
                 <Label>Late Fee (%)</Label>
                 <Input
                   type="number"
-                  value={formData.lateFeePercentage}
-                  onChange={(e) => updateFormData({ lateFeePercentage: Number(e.target.value) })}
+                  value={formData.lateFeePercentage || ''}
+                  onChange={(e) => updateFormData({ lateFeePercentage: e.target.value === '' ? 0 : Number(e.target.value) })}
+                  placeholder="0"
                 />
               </div>
               <div className="space-y-2">
                 <Label>Grace Period (days)</Label>
                 <Input
                   type="number"
-                  value={formData.gracePeriodDays}
-                  onChange={(e) => updateFormData({ gracePeriodDays: Number(e.target.value) })}
+                  value={formData.gracePeriodDays || ''}
+                  onChange={(e) => updateFormData({ gracePeriodDays: e.target.value === '' ? 0 : Number(e.target.value) })}
+                  placeholder="0"
                 />
               </div>
             </div>
