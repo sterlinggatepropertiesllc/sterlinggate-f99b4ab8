@@ -4,6 +4,8 @@ export type LeaseType = 'triple_net' | 'gross' | 'modified_gross';
 
 export type LateFeeType = 'flat' | 'percentage' | 'daily' | 'flat_plus_daily' | 'flat_plus_percentage' | 'percentage_plus_daily' | 'all';
 
+export type EntityType = 'individual' | 'llc' | 'corporation';
+
 export interface LeaseTerms {
   leaseType: LeaseType;
   propertyAddress: string;
@@ -12,8 +14,12 @@ export interface LeaseTerms {
   propertyZip: string;
   landlordName: string;
   landlordEmail: string;
+  landlordEntityType?: EntityType;
+  landlordStateOfFormation?: string;
   tenantName: string;
   tenantEmail: string;
+  tenantEntityType?: EntityType;
+  tenantStateOfFormation?: string;
   startDate: string;
   endDate: string;
   monthlyRent: number;
@@ -30,6 +36,11 @@ export interface LeaseTerms {
   lateFeeMaxAmount?: number;
   renewalTerms?: string;
   additionalClauses?: string;
+  permittedUse?: string;
+  prohibitedUses?: string;
+  guarantorName?: string;
+  noticeAddressLandlord?: string;
+  noticeAddressTenant?: string;
 }
 
 export const LEASE_TYPE_LABELS: Record<LeaseType, string> = {

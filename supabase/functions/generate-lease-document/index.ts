@@ -1,0 +1,463 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+interface LeaseGenerationRequest {
+  leaseType: "triple_net" | "gross" | "modified_gross";
+  propertyAddress: string;
+  propertyCity: string;
+  propertyState: string;
+  propertyZip: string;
+  landlordName: string;
+  landlordEmail: string;
+  landlordEntityType: "individual" | "llc" | "corporation";
+  landlordStateOfFormation?: string;
+  tenantName: string;
+  tenantEmail: string;
+  tenantEntityType: "individual" | "llc" | "corporation";
+  tenantStateOfFormation?: string;
+  startDate: string;
+  endDate: string;
+  monthlyRent: number;
+  securityDeposit: number;
+  camCharges?: number;
+  propertyTaxResponsibility: "landlord" | "tenant" | "shared";
+  insuranceResponsibility: "landlord" | "tenant" | "both";
+  rentDueDay: number;
+  lateAfterDay: number;
+  lateFeeType: string;
+  lateFeePercentage: number;
+  lateFeeFlatAmount: number;
+  lateFeeDailyAmount: number;
+  lateFeeMaxAmount?: number;
+  renewalTerms?: string;
+  additionalClauses?: string;
+  permittedUse?: string;
+  prohibitedUses?: string;
+  guarantorName?: string;
+  noticeAddressLandlord?: string;
+  noticeAddressTenant?: string;
+}
+
+const SYSTEM_PROMPT = `You are acting as a commercial real estate lease drafting engine, not a generic writer.
+Your task is to generate legally consistent, professional commercial lease agreements using AI, suitable for execution in the United States.
+
+You must prioritize internal consistency, enforceability, and professional legal formatting over verbosity.
+
+LEASE TYPE LOGIC (CRITICAL)
+
+Before generating the document, determine the lease type from system input:
+
+Lease Type = Triple Net (NNN) OR Gross Lease OR Modified Gross
+
+Lease Duration = Short-term or Long-term
+
+Tenant Type = Individual or Legal Entity
+
+You must never label a lease as NNN unless all NNN obligations are correctly assigned to the Tenant.
+
+If Lease Type = NNN, enforce ALL of the following:
+
+Tenant pays property taxes
+
+Tenant pays property insurance
+
+Tenant pays all maintenance and repairs, including:
+
+Structural elements
+
+Roof
+
+HVAC
+
+Plumbing and electrical
+
+Exterior and parking areas
+
+Landlord has no maintenance or repair obligations, except as expressly stated
+
+If any of the above cannot be satisfied, you must downgrade the lease type and label it accurately.
+
+RENT & TERM CONSISTENCY RULES
+
+Lease term dates must logically align with rent schedule
+
+If lease does not start on the 1st of the month:
+
+Automatically calculate and insert prorated rent language
+
+If lease term is less than 30 days:
+
+Treat as short-term commercial occupancy
+
+Adjust rent language accordingly
+
+You must never produce a lease with:
+
+Monthly rent but no proration explanation
+
+Rent due dates that fall outside the lease term
+
+REQUIRED CLAUSES (MANDATORY)
+
+Every generated commercial lease MUST include:
+
+Parties
+
+Full legal names (no placeholders)
+
+Entity type (Individual / LLC / Corp)
+
+State of formation (if entity)
+
+Valid notice addresses
+
+Premises Description
+
+Full address
+
+City, State, ZIP
+
+Condition of Premises
+
+Premises accepted "AS IS"
+
+Tenant acknowledges inspection
+
+No landlord warranties unless stated
+
+Use Clause
+
+Permitted use
+
+Prohibited uses
+
+Rent
+
+Base rent
+
+Due date
+
+Proration if applicable
+
+Late fees with grace period
+
+Security Deposit
+
+Amount
+
+Holding terms
+
+Application upon default
+
+Taxes, Insurance, Maintenance
+
+Explicit responsibility assignments
+
+No ambiguity
+
+Indemnification
+
+Tenant indemnifies Landlord for:
+
+Injuries
+
+Tenant operations
+
+Legal violations
+
+Default & Remedies
+
+Notice requirements
+
+Cure periods
+
+Landlord remedies
+
+Assignment & Subleasing
+
+Restrictions
+
+Consent requirements
+
+Governing Law
+
+Full state name (e.g., "State of Georgia")
+
+Standard Legal Clauses
+
+Entire Agreement
+
+Amendments
+
+Severability
+
+Waiver
+
+Attorney's fees
+
+Force majeure
+
+Time is of the essence
+
+Counterparts & electronic signatures
+
+GUARANTY LOGIC
+
+If Tenant Type = Legal Entity:
+
+Require a Personal Guaranty section
+
+Identify guarantor by full legal name
+
+If Tenant Type = Individual:
+
+Omit guaranty section
+
+OUTPUT RULES (STRICT)
+
+No placeholders such as "admin", "tenant", or fake emails
+
+No contradictory obligations
+
+No informal language
+
+No explanations in the final document
+
+Output must read like a document drafted by a commercial real estate attorney
+
+SYSTEM SAFETY RULE
+
+If required inputs are missing or contradictory:
+
+Stop generation
+
+Return a structured error explaining what must be fixed
+
+Do NOT guess or auto-fill legal assumptions
+
+FINAL OUTPUT FORMAT
+
+Title in all caps
+
+Articles numbered consistently
+
+Professional legal formatting
+
+Signature blocks suitable for e-signature platforms
+
+Include document generation timestamp
+
+Return the lease document in HTML format with proper semantic tags:
+- Use <h1> for the main title
+- Use <h2> for article headings
+- Use <h3> for section headings
+- Use <p> for paragraphs
+- Use <ul> and <li> for lists
+- Use <hr> for section separators
+- Use appropriate CSS classes for styling: "text-foreground", "text-muted-foreground", "font-semibold", "my-4", "mt-6", "mb-2", etc.
+
+DO NOT include any markdown code blocks, explanations, or commentary. ONLY output the raw HTML lease document.`;
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const leaseData: LeaseGenerationRequest = await req.json();
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    
+    if (!LOVABLE_API_KEY) {
+      console.error("LOVABLE_API_KEY is not configured");
+      throw new Error("AI service is not configured");
+    }
+
+    // Validate required fields
+    const requiredFields = [
+      "leaseType", "propertyAddress", "propertyCity", "propertyState", "propertyZip",
+      "landlordName", "landlordEmail", "tenantName", "tenantEmail",
+      "startDate", "endDate", "monthlyRent"
+    ];
+    
+    const missingFields = requiredFields.filter(field => !leaseData[field as keyof LeaseGenerationRequest]);
+    
+    if (missingFields.length > 0) {
+      console.error("Missing required fields:", missingFields);
+      return new Response(
+        JSON.stringify({ 
+          error: "Missing required fields", 
+          missingFields,
+          message: `The following fields are required: ${missingFields.join(", ")}`
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Validate NNN lease requirements
+    if (leaseData.leaseType === "triple_net") {
+      const nnnValid = 
+        leaseData.propertyTaxResponsibility === "tenant" &&
+        leaseData.insuranceResponsibility === "tenant";
+      
+      if (!nnnValid) {
+        console.log("NNN lease validation failed - downgrading to modified_gross");
+        leaseData.leaseType = "modified_gross";
+      }
+    }
+
+    // Check for proration needs
+    const startDay = new Date(leaseData.startDate).getDate();
+    const needsProration = startDay !== 1;
+    
+    // Calculate lease duration
+    const startDate = new Date(leaseData.startDate);
+    const endDate = new Date(leaseData.endDate);
+    const durationDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+    const isShortTerm = durationDays < 30;
+
+    // Build the user prompt with all lease data
+    const userPrompt = `Generate a complete commercial lease agreement with the following details:
+
+LEASE CONFIGURATION:
+- Lease Type: ${leaseData.leaseType === "triple_net" ? "Triple Net (NNN)" : leaseData.leaseType === "gross" ? "Gross Lease" : "Modified Gross Lease"}
+- Duration: ${durationDays} days (${isShortTerm ? "SHORT-TERM OCCUPANCY" : "Standard Term"})
+- Proration Required: ${needsProration ? "YES - lease starts on day " + startDay : "NO"}
+
+LANDLORD INFORMATION:
+- Name: ${leaseData.landlordName}
+- Email: ${leaseData.landlordEmail}
+- Entity Type: ${leaseData.landlordEntityType || "individual"}
+${leaseData.landlordStateOfFormation ? `- State of Formation: ${leaseData.landlordStateOfFormation}` : ""}
+${leaseData.noticeAddressLandlord ? `- Notice Address: ${leaseData.noticeAddressLandlord}` : `- Notice Address: ${leaseData.propertyAddress}, ${leaseData.propertyCity}, ${leaseData.propertyState} ${leaseData.propertyZip}`}
+
+TENANT INFORMATION:
+- Name: ${leaseData.tenantName}
+- Email: ${leaseData.tenantEmail}
+- Entity Type: ${leaseData.tenantEntityType || "individual"}
+${leaseData.tenantStateOfFormation ? `- State of Formation: ${leaseData.tenantStateOfFormation}` : ""}
+${leaseData.noticeAddressTenant ? `- Notice Address: ${leaseData.noticeAddressTenant}` : ""}
+${leaseData.tenantEntityType && leaseData.tenantEntityType !== "individual" && leaseData.guarantorName ? `- Personal Guarantor Required: ${leaseData.guarantorName}` : ""}
+
+PREMISES:
+- Address: ${leaseData.propertyAddress}
+- City: ${leaseData.propertyCity}
+- State: ${leaseData.propertyState}
+- ZIP: ${leaseData.propertyZip}
+
+TERM:
+- Commencement Date: ${leaseData.startDate}
+- Expiration Date: ${leaseData.endDate}
+
+RENT:
+- Base Monthly Rent: $${leaseData.monthlyRent.toLocaleString()}
+- Security Deposit: $${leaseData.securityDeposit.toLocaleString()}
+${leaseData.camCharges ? `- CAM Charges: $${leaseData.camCharges.toLocaleString()}/month` : ""}
+- Rent Due: ${leaseData.rentDueDay}${leaseData.rentDueDay === 1 ? "st" : leaseData.rentDueDay === 2 ? "nd" : leaseData.rentDueDay === 3 ? "rd" : "th"} of each month
+- Grace Period: Until ${leaseData.lateAfterDay}${leaseData.lateAfterDay === 1 ? "st" : leaseData.lateAfterDay === 2 ? "nd" : leaseData.lateAfterDay === 3 ? "rd" : "th"} of each month
+- Late Fee Structure: ${leaseData.lateFeeType}
+${leaseData.lateFeeFlatAmount ? `  - Flat Fee: $${leaseData.lateFeeFlatAmount}` : ""}
+${leaseData.lateFeePercentage ? `  - Percentage: ${leaseData.lateFeePercentage}%` : ""}
+${leaseData.lateFeeDailyAmount ? `  - Daily Fee: $${leaseData.lateFeeDailyAmount}/day` : ""}
+${leaseData.lateFeeMaxAmount ? `  - Maximum Cap: $${leaseData.lateFeeMaxAmount}` : ""}
+
+RESPONSIBILITIES:
+- Property Taxes: ${leaseData.propertyTaxResponsibility}
+- Insurance: ${leaseData.insuranceResponsibility}
+
+${leaseData.permittedUse ? `PERMITTED USE:\n${leaseData.permittedUse}` : "PERMITTED USE: General commercial purposes consistent with the character of the building and in compliance with all applicable laws."}
+
+${leaseData.prohibitedUses ? `PROHIBITED USES:\n${leaseData.prohibitedUses}` : ""}
+
+${leaseData.renewalTerms ? `RENEWAL OPTIONS:\n${leaseData.renewalTerms}` : ""}
+
+${leaseData.additionalClauses ? `ADDITIONAL TERMS:\n${leaseData.additionalClauses}` : ""}
+
+GOVERNING LAW: State of ${leaseData.propertyState}
+
+Generate the complete lease document now.`;
+
+    console.log("Calling Lovable AI to generate lease document...");
+    console.log("Lease type:", leaseData.leaseType);
+    console.log("Duration days:", durationDays);
+    console.log("Needs proration:", needsProration);
+
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        console.error("Rate limit exceeded");
+        return new Response(
+          JSON.stringify({ error: "Rate limits exceeded, please try again later." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      if (response.status === 402) {
+        console.error("Payment required");
+        return new Response(
+          JSON.stringify({ error: "AI credits exhausted. Please add funds to continue." }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const errorText = await response.text();
+      console.error("AI gateway error:", response.status, errorText);
+      throw new Error(`AI gateway error: ${response.status}`);
+    }
+
+    const aiResponse = await response.json();
+    let leaseDocument = aiResponse.choices?.[0]?.message?.content;
+
+    if (!leaseDocument) {
+      console.error("No content in AI response");
+      throw new Error("Failed to generate lease document");
+    }
+
+    // Clean up the response - remove any markdown code blocks if present
+    leaseDocument = leaseDocument
+      .replace(/```html\n?/g, "")
+      .replace(/```\n?/g, "")
+      .trim();
+
+    console.log("Lease document generated successfully");
+
+    return new Response(
+      JSON.stringify({ 
+        leaseDocument,
+        metadata: {
+          generatedAt: new Date().toISOString(),
+          leaseType: leaseData.leaseType,
+          durationDays,
+          proratedRent: needsProration,
+          isShortTerm,
+          hasGuaranty: leaseData.tenantEntityType !== "individual" && !!leaseData.guarantorName
+        }
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
+  } catch (error) {
+    console.error("Error generating lease document:", error);
+    return new Response(
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : "Failed to generate lease document" 
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});

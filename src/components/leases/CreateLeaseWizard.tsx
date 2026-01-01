@@ -11,11 +11,12 @@ import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useTenantProfiles } from '@/hooks/useProfiles';
 import { useCreateLease } from '@/hooks/useLeases';
-import { generateLeaseHTML, LeaseTerms, LeaseType, LateFeeType, LEASE_TYPE_LABELS, LEASE_TYPE_DESCRIPTIONS } from '@/lib/leaseTemplates';
+import { LeaseTerms, LeaseType, LateFeeType, EntityType, LEASE_TYPE_LABELS, LEASE_TYPE_DESCRIPTIONS, generateLeaseHTML } from '@/lib/leaseTemplates';
 import { generateDocumentHash } from '@/hooks/useSignatures';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { format, parse } from 'date-fns';
+import { toast } from 'sonner';
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -28,7 +29,9 @@ import {
   Building2,
   CalendarIcon,
   Shield,
-  Eye
+  Eye,
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 
 interface Property {
@@ -74,6 +77,9 @@ export function CreateLeaseWizard({
     tenantId: '',
     tenantName: '',
     tenantEmail: '',
+    tenantEntityType: 'individual' as EntityType,
+    tenantStateOfFormation: '',
+    guarantorName: '',
     propertyId: '',
     leaseType: 'gross' as LeaseType,
     startDate: '',
@@ -92,7 +98,11 @@ export function CreateLeaseWizard({
     lateFeeMaxAmount: 0,
     renewalTerms: '',
     additionalClauses: '',
+    permittedUse: '',
+    prohibitedUses: '',
   });
+  const [generatedLeaseHTML, setGeneratedLeaseHTML] = useState<string>('');
+  const [isGeneratingLease, setIsGeneratingLease] = useState(false);
 
   const { data: tenants, isLoading: tenantsLoading } = useTenantProfiles();
   const createLease = useCreateLease();
@@ -132,7 +142,7 @@ export function CreateLeaseWizard({
       case 2: return !!formData.leaseType;
       case 3: return formData.startDate && formData.endDate && formData.monthlyRent > 0;
       case 4: return true;
-      case 5: return true; // Document preview
+      case 5: return !!generatedLeaseHTML; // Must generate document before proceeding
       case 6: return true; // Confirm & send
       default: return false;
     }
@@ -149,8 +159,12 @@ export function CreateLeaseWizard({
       propertyZip: selectedProperty.zip_code,
       landlordName: managerName,
       landlordEmail: managerEmail,
+      landlordEntityType: 'individual',
       tenantName: formData.tenantName,
       tenantEmail: formData.tenantEmail,
+      tenantEntityType: formData.tenantEntityType,
+      tenantStateOfFormation: formData.tenantStateOfFormation || undefined,
+      guarantorName: formData.guarantorName || undefined,
       startDate: formData.startDate,
       endDate: formData.endDate,
       monthlyRent: formData.monthlyRent,
@@ -167,7 +181,82 @@ export function CreateLeaseWizard({
       lateFeeMaxAmount: formData.lateFeeMaxAmount || undefined,
       renewalTerms: formData.renewalTerms,
       additionalClauses: formData.additionalClauses,
+      permittedUse: formData.permittedUse || undefined,
+      prohibitedUses: formData.prohibitedUses || undefined,
     };
+  };
+
+  // Generate lease document using AI
+  const generateLeaseWithAI = async () => {
+    if (!selectedProperty) {
+      toast.error('Please select a property first');
+      return;
+    }
+
+    setIsGeneratingLease(true);
+    try {
+      const leaseData = {
+        leaseType: formData.leaseType,
+        propertyAddress: selectedProperty.address,
+        propertyCity: selectedProperty.city,
+        propertyState: selectedProperty.state,
+        propertyZip: selectedProperty.zip_code,
+        landlordName: managerName,
+        landlordEmail: managerEmail,
+        landlordEntityType: 'individual' as EntityType,
+        tenantName: formData.tenantName,
+        tenantEmail: formData.tenantEmail,
+        tenantEntityType: formData.tenantEntityType,
+        tenantStateOfFormation: formData.tenantStateOfFormation || undefined,
+        guarantorName: formData.guarantorName || undefined,
+        startDate: formData.startDate,
+        endDate: formData.endDate,
+        monthlyRent: formData.monthlyRent,
+        securityDeposit: formData.securityDeposit,
+        camCharges: formData.camCharges || undefined,
+        propertyTaxResponsibility: formData.propertyTaxResponsibility,
+        insuranceResponsibility: formData.insuranceResponsibility,
+        rentDueDay: formData.rentDueDay,
+        lateAfterDay: formData.lateAfterDay,
+        lateFeeType: formData.lateFeeType,
+        lateFeePercentage: formData.lateFeePercentage,
+        lateFeeFlatAmount: formData.lateFeeFlatAmount,
+        lateFeeDailyAmount: formData.lateFeeDailyAmount,
+        lateFeeMaxAmount: formData.lateFeeMaxAmount || undefined,
+        renewalTerms: formData.renewalTerms || undefined,
+        additionalClauses: formData.additionalClauses || undefined,
+        permittedUse: formData.permittedUse || undefined,
+        prohibitedUses: formData.prohibitedUses || undefined,
+      };
+
+      const { data, error } = await supabase.functions.invoke('generate-lease-document', {
+        body: leaseData,
+      });
+
+      if (error) {
+        console.error('Error generating lease:', error);
+        throw new Error(error.message || 'Failed to generate lease document');
+      }
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      setGeneratedLeaseHTML(data.leaseDocument);
+      toast.success('Lease document generated successfully');
+    } catch (error) {
+      console.error('Error generating lease:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to generate lease document');
+      
+      // Fallback to template-based generation
+      const terms = getLeaseTerms();
+      if (terms) {
+        setGeneratedLeaseHTML(generateLeaseHTML(terms));
+        toast.info('Using template-based generation as fallback');
+      }
+    } finally {
+      setIsGeneratingLease(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -226,7 +315,7 @@ export function CreateLeaseWizard({
       late_fee_max_amount: formData.lateFeeMaxAmount || null,
       renewal_terms: formData.renewalTerms || null,
       additional_clauses: formData.additionalClauses || null,
-      terms: generateLeaseHTML(leaseTerms),
+      terms: generatedLeaseHTML || generateLeaseHTML(getLeaseTerms()!),
       status: 'pending_tenant_signature',
       document_hash: documentHash,
     });
@@ -248,6 +337,9 @@ export function CreateLeaseWizard({
       tenantId: '',
       tenantName: '',
       tenantEmail: '',
+      tenantEntityType: 'individual',
+      tenantStateOfFormation: '',
+      guarantorName: '',
       propertyId: '',
       leaseType: 'gross',
       startDate: '',
@@ -266,14 +358,17 @@ export function CreateLeaseWizard({
       lateFeeMaxAmount: 0,
       renewalTerms: '',
       additionalClauses: '',
+      permittedUse: '',
+      prohibitedUses: '',
     });
+    setGeneratedLeaseHTML('');
   };
 
   const renderStepContent = () => {
     switch (currentStep) {
       case 0: // Select Tenant
         return (
-          <div className="space-y-4">
+          <div className="space-y-6">
             <p className="text-muted-foreground">
               Select a tenant who has registered on the platform to create a lease for.
             </p>
@@ -316,6 +411,55 @@ export function CreateLeaseWizard({
                 <User className="h-12 w-12 mx-auto mb-3 opacity-50" />
                 <p>No tenants have registered yet.</p>
                 <p className="text-sm">Tenants need to create an account first.</p>
+              </div>
+            )}
+
+            {/* Tenant Entity Type Section */}
+            {formData.tenantId && (
+              <div className="space-y-4 p-4 border border-border rounded-lg bg-secondary/20">
+                <Label className="text-base font-medium">Tenant Entity Type</Label>
+                <div className="grid grid-cols-3 gap-3">
+                  {(['individual', 'llc', 'corporation'] as EntityType[]).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => updateFormData({ tenantEntityType: type })}
+                      className={`p-3 rounded-lg border text-center transition-all ${
+                        formData.tenantEntityType === type
+                          ? 'border-primary bg-primary/10 ring-1 ring-primary'
+                          : 'border-border hover:border-primary/50 bg-background'
+                      }`}
+                    >
+                      <p className="font-medium text-foreground capitalize">
+                        {type === 'llc' ? 'LLC' : type === 'corporation' ? 'Corporation' : 'Individual'}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+                
+                {formData.tenantEntityType !== 'individual' && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>State of Formation</Label>
+                      <Input
+                        value={formData.tenantStateOfFormation}
+                        onChange={(e) => updateFormData({ tenantStateOfFormation: e.target.value })}
+                        placeholder="e.g., Delaware, California"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Personal Guarantor Name <span className="text-muted-foreground text-xs">(Required for entity tenants)</span></Label>
+                      <Input
+                        value={formData.guarantorName}
+                        onChange={(e) => updateFormData({ guarantorName: e.target.value })}
+                        placeholder="Full legal name of the guarantor"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        A personal guaranty is required when the tenant is a legal entity.
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -669,6 +813,26 @@ export function CreateLeaseWizard({
         return (
           <div className="space-y-6">
             <div className="space-y-2">
+              <Label>Permitted Use</Label>
+              <Textarea
+                value={formData.permittedUse}
+                onChange={(e) => updateFormData({ permittedUse: e.target.value })}
+                placeholder="e.g., General office use, retail sales, restaurant operations..."
+                rows={2}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Prohibited Uses (Optional)</Label>
+              <Textarea
+                value={formData.prohibitedUses}
+                onChange={(e) => updateFormData({ prohibitedUses: e.target.value })}
+                placeholder="e.g., No hazardous materials, no overnight storage..."
+                rows={2}
+              />
+            </div>
+
+            <div className="space-y-2">
               <Label>Renewal Terms (Optional)</Label>
               <Textarea
                 value={formData.renewalTerms}
@@ -684,35 +848,63 @@ export function CreateLeaseWizard({
                 value={formData.additionalClauses}
                 onChange={(e) => updateFormData({ additionalClauses: e.target.value })}
                 placeholder="Add any custom terms, special conditions, or modifications to the standard lease..."
-                rows={6}
+                rows={4}
               />
             </div>
           </div>
         );
 
       case 5: // Document Preview
-        const leaseTerms = getLeaseTerms();
-        const leaseHTML = leaseTerms ? generateLeaseHTML(leaseTerms) : '';
         return (
           <div className="space-y-4">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="outline">{LEASE_TYPE_LABELS[formData.leaseType]}</Badge>
-              <Badge variant="secondary">
-                <CalendarIcon className="h-3 w-3 mr-1" />
-                {formData.startDate} to {formData.endDate}
-              </Badge>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="outline">{LEASE_TYPE_LABELS[formData.leaseType]}</Badge>
+                <Badge variant="secondary">
+                  <CalendarIcon className="h-3 w-3 mr-1" />
+                  {formData.startDate} to {formData.endDate}
+                </Badge>
+              </div>
+              <Button
+                onClick={generateLeaseWithAI}
+                disabled={isGeneratingLease}
+                className="gap-2"
+              >
+                {isGeneratingLease ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4" />
+                    Generate with AI
+                  </>
+                )}
+              </Button>
             </div>
 
-            <div className="p-4 rounded-lg bg-warning/10 border border-warning/20">
-              <p className="text-sm font-medium text-warning">
-                Review the complete lease document below before sending to the tenant.
-              </p>
-            </div>
+            {!generatedLeaseHTML && !isGeneratingLease && (
+              <div className="p-6 rounded-lg bg-secondary/30 border border-border text-center">
+                <Sparkles className="h-12 w-12 mx-auto mb-3 text-primary opacity-50" />
+                <p className="text-muted-foreground mb-2">Click "Generate with AI" to create a professional lease document</p>
+                <p className="text-sm text-muted-foreground">The AI will generate a legally consistent commercial lease based on your inputs.</p>
+              </div>
+            )}
 
-            <div 
-              className="p-6 rounded-lg bg-background border border-border max-h-[400px] overflow-y-auto prose prose-sm dark:prose-invert"
-              dangerouslySetInnerHTML={{ __html: leaseHTML }}
-            />
+            {generatedLeaseHTML && (
+              <>
+                <div className="p-4 rounded-lg bg-success/10 border border-success/20">
+                  <p className="text-sm font-medium text-success">
+                    Lease document generated. Review below before sending to the tenant.
+                  </p>
+                </div>
+                <div 
+                  className="p-6 rounded-lg bg-background border border-border max-h-[400px] overflow-y-auto prose prose-sm dark:prose-invert"
+                  dangerouslySetInnerHTML={{ __html: generatedLeaseHTML }}
+                />
+              </>
+            )}
           </div>
         );
 
