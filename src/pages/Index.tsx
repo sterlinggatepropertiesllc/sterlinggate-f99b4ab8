@@ -143,7 +143,7 @@ export default function Index() {
               </p>
               
               <div className="flex flex-col sm:flex-row items-start gap-4 animate-slide-up-delay-2">
-                <Link to="/auth">
+                <Link to="/properties">
                   <Button size="lg" className="h-14 px-10 text-base btn-platinum">
                     Explore Properties <ArrowRight className="ml-3 h-5 w-5" />
                   </Button>
@@ -289,7 +289,7 @@ export default function Index() {
                 Featured Spaces
               </h2>
             </div>
-            <Link to="/auth">
+            <Link to="/properties">
               <Button variant="outline" size="lg" className="btn-outline-silver">
                 View All <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
@@ -357,8 +357,8 @@ export default function Index() {
                         Commercial
                       </span>
                     </div>
-                    <Link to="/auth">
-                      <Button className="w-full h-11 btn-platinum">Inquire</Button>
+                    <Link to="/properties">
+                      <Button className="w-full h-11 btn-platinum">View Details</Button>
                     </Link>
                   </CardContent>
                 </Card>
