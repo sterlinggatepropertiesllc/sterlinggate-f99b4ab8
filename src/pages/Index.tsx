@@ -149,11 +149,6 @@ export default function Index() {
                     Explore Properties <ArrowRight className="ml-3 h-5 w-5" />
                   </Button>
                 </Link>
-                <Link to="/auth">
-                  <Button size="lg" variant="outline" className="h-14 px-10 text-base btn-outline-silver">
-                    Property Managers
-                  </Button>
-                </Link>
               </div>
             </div>
           </div>
@@ -369,14 +364,9 @@ export default function Index() {
             <Card className="p-16 text-center border-dashed silver-border bg-transparent">
               <Building2 className="h-16 w-16 mx-auto text-muted-foreground/20 mb-6" />
               <h3 className="text-2xl font-serif mb-3">No Properties Listed</h3>
-              <p className="text-muted-foreground mb-8 max-w-md mx-auto">
-                Commercial spaces will appear here once added to the platform.
+              <p className="text-muted-foreground max-w-md mx-auto">
+                Commercial spaces will appear here soon. Check back later for available listings.
               </p>
-              <Link to="/auth">
-                <Button variant="outline" size="lg" className="btn-outline-silver">
-                  Sign in as Property Manager <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </Link>
             </Card>
           )}
         </div>
@@ -482,7 +472,7 @@ export default function Index() {
               Elevate Your Portfolio
             </h2>
             <p className="text-lg text-muted-foreground mb-10 leading-relaxed">
-              Join property managers who trust Sterling Gate for their commercial real estate operations.
+              Find your perfect commercial space with Sterling Gate's streamlined application process.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link to="/auth">
