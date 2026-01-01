@@ -10,6 +10,8 @@ import Dashboard from "./pages/Dashboard";
 import TenantPortal from "./pages/TenantPortal";
 import Properties from "./pages/Properties";
 import SignLease from "./pages/SignLease";
+import PaymentSuccess from "./pages/PaymentSuccess";
+import PaymentCancelled from "./pages/PaymentCancelled";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,6 +30,8 @@ const App = () => (
             <Route path="/dashboard/*" element={<Dashboard />} />
             <Route path="/tenant/*" element={<TenantPortal />} />
             <Route path="/sign-lease/:id" element={<SignLease />} />
+            <Route path="/payment-success" element={<PaymentSuccess />} />
+            <Route path="/payment-cancelled" element={<PaymentCancelled />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
