@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLease, useUpdateLease } from '@/hooks/useLeases';
@@ -15,6 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   FileText, 
   Calendar, 
@@ -42,6 +43,7 @@ export default function SignLease() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [showCertificate, setShowCertificate] = useState(false);
   const [signing, setSigning] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   const isLoading = authLoading || leaseLoading;
   
@@ -121,8 +123,26 @@ export default function SignLease() {
       let newStatus = lease.status;
       if (isTenant && lease.status === 'pending_tenant_signature') {
         newStatus = 'pending_manager_signature';
+        
+        // Notify manager that tenant has signed
+        await supabase.rpc('create_notification', {
+          _user_id: lease.manager_id,
+          _type: 'lease_signed',
+          _title: 'Tenant Signed Lease',
+          _message: `${tenantProfile?.full_name || 'Tenant'} has signed the lease for ${lease.properties?.address}. Your counter-signature is needed.`,
+          _metadata: { lease_id: lease.id, property_id: lease.property_id }
+        });
       } else if (isManager && lease.status === 'pending_manager_signature') {
         newStatus = 'completed';
+        
+        // Notify tenant that lease is fully executed
+        await supabase.rpc('create_notification', {
+          _user_id: lease.tenant_id,
+          _type: 'lease_signed',
+          _title: 'Lease Fully Executed',
+          _message: `Your lease for ${lease.properties?.address} has been fully signed by both parties.`,
+          _metadata: { lease_id: lease.id, property_id: lease.property_id }
+        });
       }
 
       await updateLease.mutateAsync({
@@ -142,6 +162,37 @@ export default function SignLease() {
       toast.error('Failed to sign lease. Please try again.');
     } finally {
       setSigning(false);
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    setDownloading(true);
+    try {
+      const response = await supabase.functions.invoke('generate-lease-pdf', {
+        body: { leaseId: lease.id }
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      // The edge function returns ArrayBuffer, convert to blob
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `lease-${lease.id.slice(0, 8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success('PDF downloaded successfully!');
+    } catch (error) {
+      console.error('PDF download error:', error);
+      toast.error('Failed to download PDF. Please try again.');
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -188,9 +239,24 @@ export default function SignLease() {
             </Badge>
             
             {lease.status === 'completed' && (
-              <Button variant="outline" size="sm" onClick={() => setShowCertificate(true)}>
-                <Shield className="h-4 w-4 mr-2" /> View Certificate
-              </Button>
+              <>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleDownloadPDF}
+                  disabled={downloading}
+                >
+                  {downloading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  Download PDF
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setShowCertificate(true)}>
+                  <Shield className="h-4 w-4 mr-2" /> View Certificate
+                </Button>
+              </>
             )}
           </div>
         </div>

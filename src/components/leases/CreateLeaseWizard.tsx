@@ -11,6 +11,7 @@ import { useTenantProfiles } from '@/hooks/useProfiles';
 import { useCreateLease } from '@/hooks/useLeases';
 import { generateLeaseHTML, LeaseTerms, LeaseType, LEASE_TYPE_LABELS, LEASE_TYPE_DESCRIPTIONS } from '@/lib/leaseTemplates';
 import { generateDocumentHash } from '@/hooks/useSignatures';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -153,7 +154,7 @@ export function CreateLeaseWizard({
     const documentContent = JSON.stringify(leaseTerms) + new Date().toISOString();
     const documentHash = await generateDocumentHash(documentContent);
 
-    await createLease.mutateAsync({
+    const leaseResult = await createLease.mutateAsync({
       property_id: formData.propertyId,
       tenant_id: formData.tenantId,
       manager_id: managerId,
@@ -173,6 +174,17 @@ export function CreateLeaseWizard({
       status: 'pending_tenant_signature',
       document_hash: documentHash,
     });
+
+    // Notify tenant about the new lease awaiting signature
+    if (leaseResult?.id) {
+      await supabase.rpc('create_notification', {
+        _user_id: formData.tenantId,
+        _type: 'lease_signed',
+        _title: 'New Lease Agreement',
+        _message: `You have a new lease agreement for ${selectedProperty.address} awaiting your signature.`,
+        _metadata: { lease_id: leaseResult.id, property_id: formData.propertyId }
+      });
+    }
 
     onOpenChange(false);
     setCurrentStep(0);
