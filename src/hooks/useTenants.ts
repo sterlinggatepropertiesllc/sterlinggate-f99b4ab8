@@ -29,6 +29,7 @@ export function useTenants(managerId: string | undefined) {
             state
           )
         `)
+        .eq('manager_id', managerId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
@@ -36,6 +37,8 @@ export function useTenants(managerId: string | undefined) {
       return data;
     },
     enabled: !!managerId,
+    retry: 1,
+    staleTime: 5000,
   });
 }
 
@@ -94,7 +97,7 @@ interface AddTenantInput {
   rent_amount?: number | null;
   lease_start_date?: string | null;
   lease_end_date?: string | null;
-  created_by: string;
+  manager_id: string;
 }
 
 export function useAddTenant() {
@@ -111,10 +114,25 @@ export function useAddTenant() {
           rent_amount: input.rent_amount || 0,
           lease_start_date: input.lease_start_date,
           lease_end_date: input.lease_end_date,
-          created_by: input.created_by,
+          manager_id: input.manager_id,
+          created_by: input.manager_id,
           is_active: true,
         })
-        .select()
+        .select(`
+          *,
+          user:profiles!tenants_user_id_fkey (
+            id,
+            email,
+            full_name,
+            phone
+          ),
+          property:properties (
+            id,
+            address,
+            city,
+            state
+          )
+        `)
         .single();
 
       if (tenantError) throw tenantError;
@@ -126,13 +144,20 @@ export function useAddTenant() {
 
       if (roleError) {
         console.error('Failed to assign tenant role:', roleError);
-        // Don't throw here - the tenant record was created successfully
       }
 
       return tenant;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tenants'] });
+    onMutate: async (input) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['tenants', input.manager_id] });
+    },
+    onSuccess: (data, variables) => {
+      // Optimistically update the cache
+      queryClient.setQueryData(['tenants', variables.manager_id], (old: any[] | undefined) => {
+        if (!old) return [data];
+        return [data, ...old];
+      });
       queryClient.invalidateQueries({ queryKey: ['profiles'] });
       toast.success('Tenant added successfully');
     },

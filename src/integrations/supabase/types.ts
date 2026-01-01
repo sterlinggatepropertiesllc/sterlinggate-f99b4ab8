@@ -564,6 +564,7 @@ export type Database = {
           is_active: boolean
           lease_end_date: string | null
           lease_start_date: string | null
+          manager_id: string | null
           property_id: string | null
           rent_amount: number | null
           updated_at: string
@@ -576,6 +577,7 @@ export type Database = {
           is_active?: boolean
           lease_end_date?: string | null
           lease_start_date?: string | null
+          manager_id?: string | null
           property_id?: string | null
           rent_amount?: number | null
           updated_at?: string
@@ -588,6 +590,7 @@ export type Database = {
           is_active?: boolean
           lease_end_date?: string | null
           lease_start_date?: string | null
+          manager_id?: string | null
           property_id?: string | null
           rent_amount?: number | null
           updated_at?: string
@@ -602,10 +605,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "tenants_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "tenants_property_id_fkey"
             columns: ["property_id"]
             isOneToOne: false
             referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]

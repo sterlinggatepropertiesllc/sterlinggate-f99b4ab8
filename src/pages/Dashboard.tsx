@@ -102,8 +102,32 @@ export default function Dashboard() {
           filter: `manager_id=eq.${user.id}`,
         },
         () => {
-          // Invalidate and refetch properties when any change occurs
           queryClient.invalidateQueries({ queryKey: ['properties', 'manager', user.id] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, queryClient]);
+
+  // Realtime subscription for tenants
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel('tenants-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tenants',
+          filter: `manager_id=eq.${user.id}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['tenants', user.id] });
         }
       )
       .subscribe();
