@@ -27,7 +27,8 @@ import {
   Send,
   Building2,
   CalendarIcon,
-  Shield
+  Shield,
+  Eye
 } from 'lucide-react';
 
 interface Property {
@@ -54,7 +55,8 @@ const STEPS = [
   { id: 'type', label: 'Lease Type', icon: FileText },
   { id: 'terms', label: 'Lease Terms', icon: DollarSign },
   { id: 'additional', label: 'Additional Clauses', icon: Shield },
-  { id: 'preview', label: 'Preview & Send', icon: Send },
+  { id: 'document', label: 'Preview Document', icon: Eye },
+  { id: 'confirm', label: 'Confirm & Send', icon: Send },
 ];
 
 export function CreateLeaseWizard({ 
@@ -130,9 +132,42 @@ export function CreateLeaseWizard({
       case 2: return !!formData.leaseType;
       case 3: return formData.startDate && formData.endDate && formData.monthlyRent > 0;
       case 4: return true;
-      case 5: return true;
+      case 5: return true; // Document preview
+      case 6: return true; // Confirm & send
       default: return false;
     }
+  };
+
+  // Generate lease terms object for preview
+  const getLeaseTerms = (): LeaseTerms | null => {
+    if (!selectedProperty) return null;
+    return {
+      leaseType: formData.leaseType,
+      propertyAddress: selectedProperty.address,
+      propertyCity: selectedProperty.city,
+      propertyState: selectedProperty.state,
+      propertyZip: selectedProperty.zip_code,
+      landlordName: managerName,
+      landlordEmail: managerEmail,
+      tenantName: formData.tenantName,
+      tenantEmail: formData.tenantEmail,
+      startDate: formData.startDate,
+      endDate: formData.endDate,
+      monthlyRent: formData.monthlyRent,
+      securityDeposit: formData.securityDeposit,
+      camCharges: formData.camCharges,
+      propertyTaxResponsibility: formData.propertyTaxResponsibility,
+      insuranceResponsibility: formData.insuranceResponsibility,
+      rentDueDay: formData.rentDueDay,
+      lateAfterDay: formData.lateAfterDay,
+      lateFeeType: formData.lateFeeType,
+      lateFeePercentage: formData.lateFeePercentage,
+      lateFeeFlatAmount: formData.lateFeeFlatAmount,
+      lateFeeDailyAmount: formData.lateFeeDailyAmount,
+      lateFeeMaxAmount: formData.lateFeeMaxAmount || undefined,
+      renewalTerms: formData.renewalTerms,
+      additionalClauses: formData.additionalClauses,
+    };
   };
 
   const handleSubmit = async () => {
@@ -655,7 +690,9 @@ export function CreateLeaseWizard({
           </div>
         );
 
-      case 5: // Preview & Send
+      case 5: // Document Preview
+        const leaseTerms = getLeaseTerms();
+        const leaseHTML = leaseTerms ? generateLeaseHTML(leaseTerms) : '';
         return (
           <div className="space-y-4">
             <div className="flex items-center gap-2 flex-wrap">
@@ -666,6 +703,22 @@ export function CreateLeaseWizard({
               </Badge>
             </div>
 
+            <div className="p-4 rounded-lg bg-warning/10 border border-warning/20">
+              <p className="text-sm font-medium text-warning">
+                Review the complete lease document below before sending to the tenant.
+              </p>
+            </div>
+
+            <div 
+              className="p-6 rounded-lg bg-background border border-border max-h-[400px] overflow-y-auto prose prose-sm dark:prose-invert"
+              dangerouslySetInnerHTML={{ __html: leaseHTML }}
+            />
+          </div>
+        );
+
+      case 6: // Confirm & Send
+        return (
+          <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-secondary/50 border border-border">
               <div>
                 <p className="text-sm text-muted-foreground">Tenant</p>
@@ -698,14 +751,14 @@ export function CreateLeaseWizard({
               )}
             </div>
 
-            <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
-              <p className="text-sm font-medium text-foreground mb-2">
-                What happens next?
+            <div className="p-4 rounded-lg bg-success/10 border border-success/20">
+              <p className="text-sm font-medium text-success mb-2">
+                Ready to send to {formData.tenantName}?
               </p>
               <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
-                <li>The lease will be generated and sent to the tenant</li>
-                <li>Tenant will receive a notification to sign</li>
-                <li>Once signed, you'll be notified for counter-signature</li>
+                <li>The lease will be sent to the tenant for signature</li>
+                <li>Tenant will receive a notification to review and sign</li>
+                <li>Once tenant signs, you'll be notified for counter-signature</li>
                 <li>Both signatures create a legally binding document</li>
               </ol>
             </div>
@@ -795,12 +848,12 @@ export function CreateLeaseWizard({
               {createLease.isPending ? (
                 <>
                   <div className="h-4 w-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin mr-2" />
-                  Creating...
+                  Sending...
                 </>
               ) : (
                 <>
                   <Send className="h-4 w-4 mr-2" />
-                  Create & Send Lease
+                  Send to Tenant
                 </>
               )}
             </Button>

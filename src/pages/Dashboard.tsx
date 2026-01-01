@@ -743,50 +743,93 @@ export default function Dashboard() {
                 </div>
               ) : leases && leases.length > 0 ? (
                 <div className="space-y-4">
-                  {leases.map((lease: any) => (
-                    <Card key={lease.id} className="p-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h3 className="font-serif text-xl mb-1">{lease.properties?.address}</h3>
-                          <p className="text-muted-foreground">Tenant: {lease.tenant?.full_name || lease.tenant?.email}</p>
-                          <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                            <span>{new Date(lease.start_date).toLocaleDateString()} - {new Date(lease.end_date).toLocaleDateString()}</span>
-                            <span>${Number(lease.monthly_rent).toLocaleString()}/mo</span>
+                  {leases.map((lease: any) => {
+                    // Status badge configuration
+                    const statusConfig = {
+                      draft: { 
+                        label: 'Draft', 
+                        className: 'bg-muted text-muted-foreground border-muted' 
+                      },
+                      pending_tenant_signature: { 
+                        label: 'Awaiting Tenant', 
+                        className: 'bg-warning/10 text-warning border-warning' 
+                      },
+                      pending_manager_signature: { 
+                        label: 'Ready for Your Signature', 
+                        className: 'bg-primary/10 text-primary border-primary' 
+                      },
+                      completed: { 
+                        label: 'Fully Signed', 
+                        className: 'bg-success/10 text-success border-success' 
+                      },
+                      expired: { 
+                        label: 'Expired', 
+                        className: 'bg-muted text-muted-foreground border-muted' 
+                      },
+                    };
+                    const config = statusConfig[lease.status as keyof typeof statusConfig] || statusConfig.draft;
+
+                    return (
+                      <Link key={lease.id} to={`/sign-lease/${lease.id}`} className="block">
+                        <Card className="p-6 hover:shadow-card transition-smooth cursor-pointer hover:border-primary/30">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h3 className="font-serif text-xl mb-1">{lease.properties?.address}</h3>
+                              <p className="text-muted-foreground">Tenant: {lease.tenant?.full_name || lease.tenant?.email}</p>
+                              <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+                                <span>{new Date(lease.start_date).toLocaleDateString()} - {new Date(lease.end_date).toLocaleDateString()}</span>
+                                <span>${Number(lease.monthly_rent).toLocaleString()}/mo</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3" onClick={(e) => e.preventDefault()}>
+                              <Badge 
+                                variant="outline"
+                                className={config.className}
+                              >
+                                {config.label}
+                              </Badge>
+                              
+                              {lease.status === 'pending_tenant_signature' && (
+                                <Link to={`/sign-lease/${lease.id}`}>
+                                  <Button size="sm" variant="outline">
+                                    <Eye className="h-4 w-4 mr-2" /> View
+                                  </Button>
+                                </Link>
+                              )}
+                              
+                              {lease.status === 'pending_manager_signature' && (
+                                <Link to={`/sign-lease/${lease.id}`}>
+                                  <Button size="sm" className="btn-platinum">
+                                    <PenTool className="h-4 w-4 mr-2" /> Sign Now
+                                  </Button>
+                                </Link>
+                              )}
+                              
+                              {lease.status === 'completed' && (
+                                <>
+                                  <Link to={`/sign-lease/${lease.id}`}>
+                                    <Button size="sm" variant="outline">
+                                      <Eye className="h-4 w-4 mr-2" /> View
+                                    </Button>
+                                  </Link>
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedLeaseForCert(lease);
+                                    }}
+                                  >
+                                    <Shield className="h-4 w-4 mr-2" /> Certificate
+                                  </Button>
+                                </>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <Badge 
-                            variant="outline"
-                            className={
-                              lease.status === 'completed' ? 'border-success text-success' :
-                              lease.status === 'expired' ? 'border-muted text-muted-foreground' :
-                              'border-warning text-warning'
-                            }
-                          >
-                            {lease.status.replace(/_/g, ' ')}
-                          </Badge>
-                          
-                          {lease.status === 'pending_manager_signature' && (
-                            <Link to={`/sign-lease/${lease.id}`}>
-                              <Button size="sm">
-                                <PenTool className="h-4 w-4 mr-2" /> Sign
-                              </Button>
-                            </Link>
-                          )}
-                          
-                          {lease.status === 'completed' && (
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => setSelectedLeaseForCert(lease)}
-                            >
-                              <Shield className="h-4 w-4 mr-2" /> Certificate
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
+                        </Card>
+                      </Link>
+                    );
+                  })}
                 </div>
               ) : (
                 <Card className="p-12 text-center border-dashed">
