@@ -15,7 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { MessagingCenter } from '@/components/messages/MessagingCenter';
+import { TenantMessagingCenter } from '@/components/messages/TenantMessagingCenter';
 import { AuditCertificate } from '@/components/leases/AuditCertificate';
 import { 
   Building2, 
@@ -426,7 +426,7 @@ export default function TenantPortal() {
                 <p className="text-muted-foreground">Communicate with your property manager</p>
               </div>
 
-              <MessagingCenter />
+              <TenantMessagingCenter />
             </div>
           )}
         </main>
