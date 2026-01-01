@@ -7,9 +7,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Application fee price ID from Stripe
-const APPLICATION_FEE_PRICE_ID = "price_1Sks7rCx5Tw1RijgNTGwxthX";
-
 interface CheckoutRequest {
   payment_type: 'application_fee' | 'security_deposit' | 'rent';
   property_id?: string;
@@ -69,6 +66,24 @@ serve(async (req) => {
       throw new Error("amount is required for deposit/rent payments");
     }
 
+    // Fetch application fee from settings if needed
+    let applicationFeeAmount = 5000; // Default $50 in cents
+    if (payment_type === 'application_fee') {
+      const { data: settingsData } = await supabaseClient
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'application_fee')
+        .single();
+      
+      if (settingsData?.value) {
+        const feeValue = settingsData.value as { amount?: number };
+        if (feeValue.amount) {
+          applicationFeeAmount = feeValue.amount;
+        }
+      }
+      console.log("[CREATE-CHECKOUT] Application fee amount:", applicationFeeAmount);
+    }
+
     // Initialize Stripe
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
       apiVersion: "2025-08-27.basil",
@@ -87,8 +102,15 @@ serve(async (req) => {
     let paymentDescription: string;
 
     if (payment_type === 'application_fee') {
+      // Use dynamic price_data for application fee from settings
       lineItems = [{
-        price: APPLICATION_FEE_PRICE_ID,
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: 'Application Fee',
+          },
+          unit_amount: applicationFeeAmount,
+        },
         quantity: 1,
       }];
       paymentDescription = "Application Fee";

@@ -1,4 +1,4 @@
-import { Settings, Bell, Webhook } from 'lucide-react';
+import { Settings, Bell, Webhook, DollarSign } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -11,6 +11,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNotificationSettings } from '@/hooks/useNotificationSettings';
 import { DiscordSettings } from './DiscordSettings';
+import { FeesSettings } from './FeesSettings';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -45,8 +46,12 @@ export function SettingsDialog() {
             <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" />
           </div>
         ) : settings ? (
-          <Tabs defaultValue="discord" className="mt-4">
-            <TabsList className="grid w-full grid-cols-2">
+          <Tabs defaultValue="fees" className="mt-4">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="fees" className="gap-2">
+                <DollarSign className="h-4 w-4" />
+                Fees
+              </TabsTrigger>
               <TabsTrigger value="discord" className="gap-2">
                 <Webhook className="h-4 w-4" />
                 Discord
@@ -56,6 +61,10 @@ export function SettingsDialog() {
                 In-App
               </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="fees" className="mt-4 max-h-[55vh] overflow-y-auto pr-1">
+              <FeesSettings />
+            </TabsContent>
 
             <TabsContent value="discord" className="mt-4 max-h-[55vh] overflow-y-auto pr-1">
               <DiscordSettings
