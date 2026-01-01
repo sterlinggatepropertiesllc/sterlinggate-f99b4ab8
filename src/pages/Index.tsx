@@ -314,7 +314,22 @@ export default function Index() {
               {properties.slice(0, 6).map((property) => (
                 <Card key={property.id} className="overflow-hidden hover-lift group silver-border bg-card">
                   <div className="h-56 bg-secondary flex items-center justify-center relative overflow-hidden">
-                    <Building2 className="h-16 w-16 text-muted-foreground/20 image-zoom" />
+                    {property.photos && property.photos.length > 0 ? (
+                      <>
+                        <img 
+                          src={property.photos[0]} 
+                          alt={`${property.address}`}
+                          className="w-full h-full object-cover image-zoom"
+                        />
+                        {property.photos.length > 1 && (
+                          <div className="absolute bottom-4 left-4 bg-background/80 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium">
+                            +{property.photos.length - 1} photos
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <Building2 className="h-16 w-16 text-muted-foreground/20 image-zoom" />
+                    )}
                     <Badge className="absolute top-4 right-4 bg-success/90 text-success-foreground border-0">
                       Available
                     </Badge>

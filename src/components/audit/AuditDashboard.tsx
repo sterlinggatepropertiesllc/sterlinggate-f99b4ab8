@@ -29,7 +29,7 @@ type DatePreset = 'this_week' | 'this_month' | 'this_quarter' | 'this_year' | 'l
 export function AuditDashboard() {
   const { user } = useAuth();
   const { data: properties = [] } = useManagerProperties(user?.id);
-  const { data: tenants = [] } = useTenants();
+  const { data: tenants = [] } = useTenants(user?.id);
   const { data: payments = [] } = useAllPayments();
 
   const [viewMode, setViewMode] = useState<ViewMode>('property');

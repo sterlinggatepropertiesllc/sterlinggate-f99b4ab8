@@ -8,8 +8,8 @@ import { startOfMonth, endOfMonth, subMonths, format, parseISO, isWithinInterval
 
 export function useAnalytics(managerId: string | undefined) {
   const { data: properties = [] } = useManagerProperties(managerId);
-  const { data: tenants = [] } = useTenants();
-  const { data: leases = [] } = useLeases();
+  const { data: tenants = [] } = useTenants(managerId);
+  const { data: leases = [] } = useLeases(managerId, 'property_manager');
   const { data: payments = [] } = useAllPayments();
   const { data: applications = [] } = useApplications();
 
