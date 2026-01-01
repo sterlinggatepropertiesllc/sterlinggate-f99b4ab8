@@ -1,5 +1,6 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useEffect } from 'react';
 import { useAvailableProperties } from '@/hooks/useProperties';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -26,6 +27,14 @@ import logo from '@/assets/logo.jpg';
 export default function Index() {
   const { user, role, loading, signOut } = useAuth();
   const { data: properties, isLoading: propertiesLoading } = useAvailableProperties();
+  const navigate = useNavigate();
+
+  // Auto-redirect logged-in tenants to tenant portal
+  useEffect(() => {
+    if (!loading && user && role === 'tenant') {
+      navigate('/tenant');
+    }
+  }, [user, role, loading, navigate]);
 
   if (loading) {
     return (
@@ -65,26 +74,16 @@ export default function Index() {
     );
   }
 
+  // Show loading while tenant is being redirected
   if (user && role === 'tenant') {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="p-10 text-center max-w-md w-full animate-scale-in silver-border bg-card">
-          <div className="w-16 h-16 border border-primary/30 rounded-lg flex items-center justify-center mx-auto mb-8">
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center animate-fade-in">
+          <div className="w-16 h-16 border border-primary/30 rounded-lg flex items-center justify-center mx-auto mb-6">
             <Key className="h-8 w-8 text-primary" />
           </div>
-          <h2 className="text-3xl font-serif mb-3">Welcome back</h2>
-          <p className="text-muted-foreground mb-10">Access your tenant portal</p>
-          <div className="space-y-4">
-            <Link to="/tenant" className="block">
-              <Button size="lg" className="w-full h-14 btn-platinum">
-                Go to Tenant Portal <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-            </Link>
-            <Button variant="ghost" onClick={() => signOut()} className="w-full h-12 text-muted-foreground hover:text-foreground">
-              <LogOut className="mr-2 h-4 w-4" /> Sign Out
-            </Button>
-          </div>
-        </Card>
+          <p className="text-muted-foreground">Redirecting to portal...</p>
+        </div>
       </div>
     );
   }
@@ -110,16 +109,26 @@ export default function Index() {
             <span className="text-xl font-serif font-medium text-foreground tracking-tight">Sterling Gate</span>
           </div>
           <div className="flex items-center gap-4">
-            <Link to="/auth">
-              <Button variant="ghost" className="hidden sm:flex text-muted-foreground hover:text-foreground hover:bg-secondary">
-                Sign In
-              </Button>
-            </Link>
-            <Link to="/auth">
-              <Button className="btn-platinum">
-                Get Started
-              </Button>
-            </Link>
+            {user && role === 'property_manager' ? (
+              <Link to="/dashboard">
+                <Button className="btn-platinum">
+                  Dashboard <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+            ) : !user ? (
+              <>
+                <Link to="/auth">
+                  <Button variant="ghost" className="hidden sm:flex text-muted-foreground hover:text-foreground hover:bg-secondary">
+                    Sign In
+                  </Button>
+                </Link>
+                <Link to="/auth">
+                  <Button className="btn-platinum">
+                    Get Started
+                  </Button>
+                </Link>
+              </>
+            ) : null}
           </div>
         </nav>
 
