@@ -8,8 +8,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useUpdateTenant, useDeleteTenant, useRevokeTenantAccess } from '@/hooks/useTenants';
-import { Users, Mail, Phone, MapPin, DollarSign, Calendar, FileText, Shield, Trash2, Save, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { format, parseISO } from 'date-fns';
+import { Users, Mail, Phone, MapPin, DollarSign, CalendarIcon, FileText, Shield, Trash2, Save, X } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
 
 type Property = Database['public']['Tables']['properties']['Row'];
@@ -191,36 +195,73 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
 
             {/* Lease Start Date */}
             <div>
-              <Label htmlFor="lease_start" className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" /> Lease Start
+              <Label className="flex items-center gap-2">
+                <CalendarIcon className="h-4 w-4 text-primary" /> Lease Start
               </Label>
-              <Input
-                id="lease_start"
-                type="date"
-                value={editedTenant.lease_start_date || ''}
-                onChange={(e) => setEditedTenant(prev => ({ 
-                  ...prev, 
-                  lease_start_date: e.target.value || null 
-                }))}
-                className="mt-1.5"
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10 mt-1.5 bg-background hover:bg-muted/50 border-input",
+                      !editedTenant.lease_start_date && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                    {editedTenant.lease_start_date 
+                      ? format(parseISO(editedTenant.lease_start_date), "MMMM d, yyyy") 
+                      : "Select start date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={editedTenant.lease_start_date ? parseISO(editedTenant.lease_start_date) : undefined}
+                    onSelect={(date) => setEditedTenant(prev => ({ 
+                      ...prev, 
+                      lease_start_date: date ? format(date, 'yyyy-MM-dd') : null 
+                    }))}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Lease End Date */}
             <div>
-              <Label htmlFor="lease_end" className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" /> Lease End
+              <Label className="flex items-center gap-2">
+                <CalendarIcon className="h-4 w-4 text-primary" /> Lease End
               </Label>
-              <Input
-                id="lease_end"
-                type="date"
-                value={editedTenant.lease_end_date || ''}
-                onChange={(e) => setEditedTenant(prev => ({ 
-                  ...prev, 
-                  lease_end_date: e.target.value || null 
-                }))}
-                className="mt-1.5"
-              />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10 mt-1.5 bg-background hover:bg-muted/50 border-input",
+                      !editedTenant.lease_end_date && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                    {editedTenant.lease_end_date 
+                      ? format(parseISO(editedTenant.lease_end_date), "MMMM d, yyyy") 
+                      : "Select end date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={editedTenant.lease_end_date ? parseISO(editedTenant.lease_end_date) : undefined}
+                    onSelect={(date) => setEditedTenant(prev => ({ 
+                      ...prev, 
+                      lease_end_date: date ? format(date, 'yyyy-MM-dd') : null 
+                    }))}
+                    disabled={(date) => editedTenant.lease_start_date ? date < parseISO(editedTenant.lease_start_date) : false}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
           </div>
 
