@@ -338,8 +338,10 @@ export type Database = {
           notes: string | null
           payment_date: string
           payment_method: string | null
+          payment_type: string | null
           property_id: string
           status: string
+          stripe_session_id: string | null
           tenant_id: string
         }
         Insert: {
@@ -350,8 +352,10 @@ export type Database = {
           notes?: string | null
           payment_date: string
           payment_method?: string | null
+          payment_type?: string | null
           property_id: string
           status?: string
+          stripe_session_id?: string | null
           tenant_id: string
         }
         Update: {
@@ -362,8 +366,10 @@ export type Database = {
           notes?: string | null
           payment_date?: string
           payment_method?: string | null
+          payment_type?: string | null
           property_id?: string
           status?: string
+          stripe_session_id?: string | null
           tenant_id?: string
         }
         Relationships: [
