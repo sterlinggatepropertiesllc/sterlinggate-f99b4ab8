@@ -29,12 +29,6 @@ export default function Index() {
   const { data: properties, isLoading: propertiesLoading } = useAvailableProperties();
   const navigate = useNavigate();
 
-  // Auto-redirect logged-in tenants to tenant portal
-  useEffect(() => {
-    if (!loading && user && role === 'tenant') {
-      navigate('/tenant');
-    }
-  }, [user, role, loading, navigate]);
 
   if (loading) {
     return (
@@ -74,19 +68,6 @@ export default function Index() {
     );
   }
 
-  // Show loading while tenant is being redirected
-  if (user && role === 'tenant') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-center animate-fade-in">
-          <div className="w-16 h-16 border border-primary/30 rounded-lg flex items-center justify-center mx-auto mb-6">
-            <Key className="h-8 w-8 text-primary" />
-          </div>
-          <p className="text-muted-foreground">Redirecting to portal...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -115,7 +96,18 @@ export default function Index() {
                   Dashboard <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
-            ) : !user ? (
+            ) : user && role === 'tenant' ? (
+              <>
+                <Link to="/tenant">
+                  <Button variant="ghost" className="text-muted-foreground hover:text-foreground hover:bg-secondary">
+                    Tenant Portal
+                  </Button>
+                </Link>
+                <Button variant="ghost" onClick={() => signOut()} className="text-muted-foreground hover:text-foreground hover:bg-secondary">
+                  Sign Out
+                </Button>
+              </>
+            ) : (
               <>
                 <Link to="/auth">
                   <Button variant="ghost" className="hidden sm:flex text-muted-foreground hover:text-foreground hover:bg-secondary">
@@ -128,7 +120,7 @@ export default function Index() {
                   </Button>
                 </Link>
               </>
-            ) : null}
+            )}
           </div>
         </nav>
 
