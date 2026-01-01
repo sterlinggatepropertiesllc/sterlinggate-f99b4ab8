@@ -559,38 +559,48 @@ export type Database = {
       tenants: {
         Row: {
           created_at: string
+          created_by: string | null
           id: string
           is_active: boolean
           lease_end_date: string | null
           lease_start_date: string | null
-          property_id: string
-          rent_amount: number
+          property_id: string | null
+          rent_amount: number | null
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          created_by?: string | null
           id?: string
           is_active?: boolean
           lease_end_date?: string | null
           lease_start_date?: string | null
-          property_id: string
-          rent_amount: number
+          property_id?: string | null
+          rent_amount?: number | null
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
+          created_by?: string | null
           id?: string
           is_active?: boolean
           lease_end_date?: string | null
           lease_start_date?: string | null
-          property_id?: string
-          rent_amount?: number
+          property_id?: string | null
+          rent_amount?: number | null
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tenants_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tenants_property_id_fkey"
             columns: ["property_id"]

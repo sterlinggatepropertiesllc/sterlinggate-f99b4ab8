@@ -604,17 +604,25 @@ export default function Dashboard() {
                           <Users className="h-6 w-6 text-accent" />
                         </div>
                         <div className="flex-1">
-                          <h3 className="font-serif text-xl mb-1">{tenant.user?.full_name}</h3>
+                          <h3 className="font-serif text-xl mb-1">{tenant.user?.full_name || 'Unnamed User'}</h3>
                           <p className="text-sm text-muted-foreground">{tenant.user?.email}</p>
-                          <p className="text-sm text-muted-foreground mt-2">
-                            <MapPin className="h-3 w-3 inline mr-1" />
-                            {tenant.property?.address}
-                          </p>
-                          <div className="flex items-center gap-4 mt-3">
-                            <Badge variant="secondary">
-                              <DollarSign className="h-3 w-3 mr-1" />
-                              ${Number(tenant.rent_amount).toLocaleString()}/mo
+                          {tenant.property ? (
+                            <p className="text-sm text-muted-foreground mt-2">
+                              <MapPin className="h-3 w-3 inline mr-1" />
+                              {tenant.property.address}
+                            </p>
+                          ) : (
+                            <Badge variant="outline" className="mt-2 border-warning text-warning">
+                              No Property Assigned
                             </Badge>
+                          )}
+                          <div className="flex items-center gap-4 mt-3">
+                            {tenant.property && tenant.rent_amount > 0 && (
+                              <Badge variant="secondary">
+                                <DollarSign className="h-3 w-3 mr-1" />
+                                ${Number(tenant.rent_amount).toLocaleString()}/mo
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -855,6 +863,7 @@ export default function Dashboard() {
         onOpenChange={setIsAddTenantOpen}
         properties={properties || []}
         existingTenantUserIds={tenants?.map((t: any) => t.user_id) || []}
+        managerId={user.id}
       />
     </div>
   );

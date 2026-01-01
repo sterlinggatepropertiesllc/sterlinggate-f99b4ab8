@@ -16,13 +16,13 @@ export function useTenants(managerId: string | undefined) {
         .from('tenants')
         .select(`
           *,
-          user:user_id (
+          user:profiles!tenants_user_id_fkey (
             id,
             email,
             full_name,
             phone
           ),
-          property:property_id (
+          property:properties (
             id,
             address,
             city,
@@ -90,10 +90,11 @@ export function useUpdateTenant() {
 
 interface AddTenantInput {
   user_id: string;
-  property_id: string;
-  rent_amount: number;
+  property_id?: string | null;
+  rent_amount?: number | null;
   lease_start_date?: string | null;
   lease_end_date?: string | null;
+  created_by: string;
 }
 
 export function useAddTenant() {
@@ -106,10 +107,11 @@ export function useAddTenant() {
         .from('tenants')
         .insert({
           user_id: input.user_id,
-          property_id: input.property_id,
-          rent_amount: input.rent_amount,
+          property_id: input.property_id || null,
+          rent_amount: input.rent_amount || 0,
           lease_start_date: input.lease_start_date,
           lease_end_date: input.lease_end_date,
+          created_by: input.created_by,
           is_active: true,
         })
         .select()
