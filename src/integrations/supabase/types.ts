@@ -657,6 +657,16 @@ export type Database = {
     }
     Functions: {
       assign_tenant_role: { Args: { _user_id: string }; Returns: undefined }
+      create_notification: {
+        Args: {
+          _message: string
+          _metadata?: Json
+          _title: string
+          _type: Database["public"]["Enums"]["notification_type"]
+          _user_id: string
+        }
+        Returns: string
+      }
       get_user_role: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"]
