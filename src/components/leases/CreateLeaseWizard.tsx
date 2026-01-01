@@ -7,11 +7,15 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useTenantProfiles } from '@/hooks/useProfiles';
 import { useCreateLease } from '@/hooks/useLeases';
 import { generateLeaseHTML, LeaseTerms, LeaseType, LEASE_TYPE_LABELS, LEASE_TYPE_DESCRIPTIONS } from '@/lib/leaseTemplates';
 import { generateDocumentHash } from '@/hooks/useSignatures';
 import { supabase } from '@/integrations/supabase/client';
+import { cn } from '@/lib/utils';
+import { format, parse } from 'date-fns';
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -22,7 +26,7 @@ import {
   DollarSign, 
   Send,
   Building2,
-  Calendar,
+  CalendarIcon,
   Shield
 } from 'lucide-react';
 
@@ -344,20 +348,63 @@ export function CreateLeaseWizard({
           <div className="space-y-6">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Start Date</Label>
-                <Input
-                  type="date"
-                  value={formData.startDate}
-                  onChange={(e) => updateFormData({ startDate: e.target.value })}
-                />
+                <Label className="flex items-center gap-2">
+                  <CalendarIcon className="h-4 w-4 text-primary" />
+                  Start Date
+                </Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal h-11 bg-background hover:bg-muted/50 border-input",
+                        !formData.startDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                      {formData.startDate ? format(parse(formData.startDate, 'yyyy-MM-dd', new Date()), "MMMM d, yyyy") : "Select start date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={formData.startDate ? parse(formData.startDate, 'yyyy-MM-dd', new Date()) : undefined}
+                      onSelect={(date) => updateFormData({ startDate: date ? format(date, 'yyyy-MM-dd') : '' })}
+                      initialFocus
+                      className="p-3 pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
               <div className="space-y-2">
-                <Label>End Date</Label>
-                <Input
-                  type="date"
-                  value={formData.endDate}
-                  onChange={(e) => updateFormData({ endDate: e.target.value })}
-                />
+                <Label className="flex items-center gap-2">
+                  <CalendarIcon className="h-4 w-4 text-primary" />
+                  End Date
+                </Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal h-11 bg-background hover:bg-muted/50 border-input",
+                        !formData.endDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
+                      {formData.endDate ? format(parse(formData.endDate, 'yyyy-MM-dd', new Date()), "MMMM d, yyyy") : "Select end date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={formData.endDate ? parse(formData.endDate, 'yyyy-MM-dd', new Date()) : undefined}
+                      onSelect={(date) => updateFormData({ endDate: date ? format(date, 'yyyy-MM-dd') : '' })}
+                      disabled={(date) => formData.startDate ? date < parse(formData.startDate, 'yyyy-MM-dd', new Date()) : false}
+                      initialFocus
+                      className="p-3 pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
 
