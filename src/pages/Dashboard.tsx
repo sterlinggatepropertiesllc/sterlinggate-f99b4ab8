@@ -251,71 +251,9 @@ export default function Dashboard() {
                   <h1 className="text-3xl font-serif">Dashboard</h1>
                   <p className="text-muted-foreground">Welcome back! Here's your property overview.</p>
                 </div>
-                <Dialog open={isAddPropertyOpen} onOpenChange={setIsAddPropertyOpen}>
-                  <DialogTrigger asChild>
-                    <Button>
-                      <Plus className="mr-2 h-4 w-4" /> Add Property
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-lg max-h-[90vh] flex flex-col">
-                    <DialogHeader className="flex-shrink-0">
-                      <DialogTitle className="font-serif text-2xl">Add New Property</DialogTitle>
-                      <DialogDescription>Enter the property details below.</DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={handleAddProperty} className="flex flex-col flex-1 min-h-0">
-                      <ScrollArea className="flex-1 pr-4">
-                        <div className="grid grid-cols-2 gap-4 pb-4">
-                          <div className="col-span-2">
-                            <Label htmlFor="address">Street Address</Label>
-                            <Input id="address" name="address" required placeholder="123 Main St" />
-                          </div>
-                          <div>
-                            <Label htmlFor="city">City</Label>
-                            <Input id="city" name="city" required placeholder="Los Angeles" />
-                          </div>
-                          <div>
-                            <Label htmlFor="state">State</Label>
-                            <Input id="state" name="state" required placeholder="CA" />
-                          </div>
-                          <div>
-                            <Label htmlFor="zip_code">ZIP Code</Label>
-                            <Input id="zip_code" name="zip_code" required placeholder="90001" />
-                          </div>
-                          <div>
-                            <Label htmlFor="rent_amount">Monthly Rent ($)</Label>
-                            <Input id="rent_amount" name="rent_amount" type="number" required placeholder="2500" />
-                          </div>
-                          <div className="col-span-2">
-                            <Label htmlFor="square_feet">Square Feet (optional)</Label>
-                            <Input id="square_feet" name="square_feet" type="number" placeholder="5000" />
-                          </div>
-                          <div className="col-span-2">
-                            <Label htmlFor="description">Description (optional)</Label>
-                            <Textarea id="description" name="description" placeholder="Modern commercial space with excellent visibility..." />
-                          </div>
-                          <div className="col-span-2">
-                            <Label>Property Photos (up to {maxImages})</Label>
-                            <ImageUploader
-                              images={propertyImages}
-                              onImagesChange={handleImagesChange}
-                              onFilesSelect={handleFilesSelect}
-                              maxImages={maxImages}
-                              uploading={uploading}
-                            />
-                          </div>
-                        </div>
-                      </ScrollArea>
-                      <DialogFooter className="flex-shrink-0 pt-4 border-t border-border mt-4">
-                        <Button type="button" variant="outline" onClick={() => setIsAddPropertyOpen(false)}>
-                          Cancel
-                        </Button>
-                        <Button type="submit" disabled={createProperty.isPending || uploading}>
-                          {createProperty.isPending || uploading ? 'Adding...' : 'Add Property'}
-                        </Button>
-                      </DialogFooter>
-                    </form>
-                  </DialogContent>
-                </Dialog>
+                <Button onClick={() => setIsAddPropertyOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" /> Add Property
+                </Button>
               </div>
 
               {/* Stats Grid */}
@@ -728,71 +666,76 @@ export default function Dashboard() {
 
       {/* Add Property Dialog */}
       <Dialog open={isAddPropertyOpen} onOpenChange={setIsAddPropertyOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
+        <DialogContent className="max-w-lg h-[90vh] sm:h-auto sm:max-h-[90vh] flex flex-col overflow-hidden">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="font-serif text-2xl">Add New Property</DialogTitle>
             <DialogDescription>Enter the property details below.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleAddProperty} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <Label htmlFor="address">Street Address</Label>
-                <Input id="address" name="address" required placeholder="123 Main St" />
-              </div>
-              <div>
-                <Label htmlFor="city">City</Label>
-                <Input id="city" name="city" required placeholder="Los Angeles" />
-              </div>
-              <div>
-                <Label htmlFor="state">State</Label>
-                <Input id="state" name="state" required placeholder="CA" />
-              </div>
-              <div>
-                <Label htmlFor="zip_code">ZIP Code</Label>
-                <Input id="zip_code" name="zip_code" required placeholder="90001" />
-              </div>
-              <div>
-                <Label htmlFor="rent_amount">Monthly Rent ($)</Label>
-                <Input id="rent_amount" name="rent_amount" type="number" required placeholder="2500" />
-              </div>
-              <div>
-                <Label htmlFor="bedrooms">Bedrooms</Label>
-                <Input id="bedrooms" name="bedrooms" type="number" required placeholder="2" />
-              </div>
-              <div>
-                <Label htmlFor="bathrooms">Bathrooms</Label>
-                <Input id="bathrooms" name="bathrooms" type="number" step="0.5" required placeholder="1.5" />
-              </div>
-              <div className="col-span-2">
-                <Label htmlFor="square_feet">Square Feet (optional)</Label>
-                <Input id="square_feet" name="square_feet" type="number" placeholder="1200" />
-              </div>
-              <div className="col-span-2">
-                <Label htmlFor="description">Description (optional)</Label>
-                <Textarea id="description" name="description" placeholder="Beautiful apartment with modern amenities..." />
-              </div>
-              <div className="col-span-2">
-                <ImageUploader
-                  images={propertyImages}
-                  onImagesChange={handleImagesChange}
-                  onFilesSelect={handleFilesSelect}
-                  maxImages={maxImages}
-                  uploading={uploading}
-                />
+
+          <form onSubmit={handleAddProperty} className="flex flex-col flex-1 min-h-0">
+            <div className="flex-1 min-h-0 overflow-y-auto pr-4">
+              <div className="grid grid-cols-2 gap-4 pb-4">
+                <div className="col-span-2">
+                  <Label htmlFor="address">Street Address</Label>
+                  <Input id="address" name="address" required placeholder="123 Main St" />
+                </div>
+                <div>
+                  <Label htmlFor="city">City</Label>
+                  <Input id="city" name="city" required placeholder="Los Angeles" />
+                </div>
+                <div>
+                  <Label htmlFor="state">State</Label>
+                  <Input id="state" name="state" required placeholder="CA" />
+                </div>
+                <div>
+                  <Label htmlFor="zip_code">ZIP Code</Label>
+                  <Input id="zip_code" name="zip_code" required placeholder="90001" />
+                </div>
+                <div>
+                  <Label htmlFor="rent_amount">Monthly Rent ($)</Label>
+                  <Input id="rent_amount" name="rent_amount" type="number" required placeholder="2500" />
+                </div>
+                <div className="col-span-2">
+                  <Label htmlFor="square_feet">Square Feet (optional)</Label>
+                  <Input id="square_feet" name="square_feet" type="number" placeholder="5000" />
+                </div>
+                <div className="col-span-2">
+                  <Label htmlFor="description">Description (optional)</Label>
+                  <Textarea
+                    id="description"
+                    name="description"
+                    placeholder="Modern commercial space with excellent visibility..."
+                  />
+                </div>
+                <div className="col-span-2">
+                  <Label>Property Photos (up to {maxImages})</Label>
+                  <ImageUploader
+                    images={propertyImages}
+                    onImagesChange={handleImagesChange}
+                    onFilesSelect={handleFilesSelect}
+                    maxImages={maxImages}
+                    uploading={uploading}
+                  />
+                </div>
               </div>
             </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => {
-                setPropertyImages([]);
-                setPendingImageFiles([]);
-                setIsAddPropertyOpen(false);
-              }}>
+
+            <div className="flex-shrink-0 pt-4 border-t border-border mt-4 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setPropertyImages([]);
+                  setPendingImageFiles([]);
+                  setIsAddPropertyOpen(false);
+                }}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={createProperty.isPending || uploading}>
                 {createProperty.isPending || uploading ? 'Adding...' : 'Add Property'}
               </Button>
-            </DialogFooter>
+            </div>
           </form>
         </DialogContent>
       </Dialog>
