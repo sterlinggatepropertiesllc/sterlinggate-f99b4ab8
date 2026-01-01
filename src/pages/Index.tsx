@@ -84,9 +84,9 @@ export default function Index() {
         </div>
         
         {/* Navigation */}
-        <nav className="container mx-auto px-6 py-6 flex items-center justify-between relative z-20">
+        <nav className="container mx-auto px-4 py-4 flex items-center justify-between relative z-20">
           <div className="flex items-center gap-3">
-            <img src={logo} alt="Sterling Gate Properties" className="h-14 w-auto object-contain" />
+            <img src={logo} alt="Sterling Gate Properties" className="h-20 w-auto object-contain" />
           </div>
           <div className="flex items-center gap-4">
             {user && role === 'property_manager' ? (
