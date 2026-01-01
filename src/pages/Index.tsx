@@ -10,8 +10,6 @@ import {
   FileText, 
   MessageSquare, 
   ArrowRight, 
-  Bed, 
-  Bath, 
   MapPin,
   CheckCircle2,
   Users,
@@ -19,8 +17,9 @@ import {
   LogOut,
   ChevronDown,
   Star,
-  Clock,
-  Sparkles
+  BarChart3,
+  Layers,
+  Clock
 } from 'lucide-react';
 
 export default function Index() {
@@ -31,10 +30,10 @@ export default function Index() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center animate-fade-in">
-          <div className="w-20 h-20 bg-accent rounded-2xl flex items-center justify-center mx-auto mb-6 animate-pulse-glow">
-            <Building2 className="h-10 w-10 text-accent-foreground" />
+          <div className="w-16 h-16 border border-primary/30 rounded-lg flex items-center justify-center mx-auto mb-6">
+            <Building2 className="h-8 w-8 text-primary" />
           </div>
-          <p className="text-muted-foreground text-lg">Loading...</p>
+          <p className="text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
@@ -44,19 +43,19 @@ export default function Index() {
   if (user && role === 'property_manager') {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="p-10 text-center shadow-elevated max-w-md w-full animate-scale-in border-0">
-          <div className="w-20 h-20 bg-accent rounded-2xl flex items-center justify-center mx-auto mb-8 glow-accent">
-            <Building2 className="h-10 w-10 text-accent-foreground" />
+        <Card className="p-10 text-center max-w-md w-full animate-scale-in silver-border bg-card">
+          <div className="w-16 h-16 border border-primary/30 rounded-lg flex items-center justify-center mx-auto mb-8">
+            <Building2 className="h-8 w-8 text-primary" />
           </div>
-          <h2 className="text-4xl font-serif mb-3">Welcome back</h2>
-          <p className="text-muted-foreground mb-10 text-lg">Access your property management dashboard</p>
+          <h2 className="text-3xl font-serif mb-3">Welcome back</h2>
+          <p className="text-muted-foreground mb-10">Access your property management dashboard</p>
           <div className="space-y-4">
             <Link to="/dashboard" className="block">
-              <Button size="lg" className="w-full h-14 text-base glow-button">
+              <Button size="lg" className="w-full h-14 btn-platinum">
                 Go to Dashboard <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
             </Link>
-            <Button variant="ghost" onClick={() => signOut()} className="w-full h-12">
+            <Button variant="ghost" onClick={() => signOut()} className="w-full h-12 text-muted-foreground hover:text-foreground">
               <LogOut className="mr-2 h-4 w-4" /> Sign Out
             </Button>
           </div>
@@ -68,19 +67,19 @@ export default function Index() {
   if (user && role === 'tenant') {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="p-10 text-center shadow-elevated max-w-md w-full animate-scale-in border-0">
-          <div className="w-20 h-20 bg-accent rounded-2xl flex items-center justify-center mx-auto mb-8 glow-accent">
-            <Key className="h-10 w-10 text-accent-foreground" />
+        <Card className="p-10 text-center max-w-md w-full animate-scale-in silver-border bg-card">
+          <div className="w-16 h-16 border border-primary/30 rounded-lg flex items-center justify-center mx-auto mb-8">
+            <Key className="h-8 w-8 text-primary" />
           </div>
-          <h2 className="text-4xl font-serif mb-3">Welcome back</h2>
-          <p className="text-muted-foreground mb-10 text-lg">Access your tenant portal</p>
+          <h2 className="text-3xl font-serif mb-3">Welcome back</h2>
+          <p className="text-muted-foreground mb-10">Access your tenant portal</p>
           <div className="space-y-4">
             <Link to="/tenant" className="block">
-              <Button size="lg" className="w-full h-14 text-base glow-button">
+              <Button size="lg" className="w-full h-14 btn-platinum">
                 Go to Tenant Portal <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
             </Link>
-            <Button variant="ghost" onClick={() => signOut()} className="w-full h-12">
+            <Button variant="ghost" onClick={() => signOut()} className="w-full h-12 text-muted-foreground hover:text-foreground">
               <LogOut className="mr-2 h-4 w-4" /> Sign Out
             </Button>
           </div>
@@ -91,38 +90,34 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Hero Section - Full viewport with background image */}
+      {/* Hero Section - Full viewport with commercial building background */}
       <header className="relative min-h-screen flex flex-col overflow-hidden">
-        {/* Background Image with Ken Burns effect */}
+        {/* Background Image - Commercial building at night */}
         <div className="absolute inset-0">
           <img 
-            src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?auto=format&fit=crop&w=2000&q=80" 
-            alt="Luxury home interior"
+            src="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=2000&q=80" 
+            alt="Modern commercial building"
             className="w-full h-full object-cover animate-ken-burns"
           />
           <div className="absolute inset-0 hero-overlay" />
         </div>
-
-        {/* Decorative floating elements */}
-        <div className="absolute top-1/4 right-[15%] w-32 h-32 bg-accent/10 rounded-full blur-3xl animate-float-slow" />
-        <div className="absolute bottom-1/3 left-[10%] w-48 h-48 bg-accent/5 rounded-full blur-3xl animate-float-delayed" />
         
         {/* Navigation */}
         <nav className="container mx-auto px-6 py-6 flex items-center justify-between relative z-20">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-accent rounded-xl flex items-center justify-center shadow-glow">
-              <Building2 className="h-6 w-6 text-accent-foreground" />
+            <div className="w-10 h-10 border border-primary/40 rounded-lg flex items-center justify-center">
+              <Building2 className="h-5 w-5 text-primary" />
             </div>
-            <span className="text-2xl font-serif font-medium text-white tracking-tight">PropertyFlow</span>
+            <span className="text-xl font-serif font-medium text-foreground tracking-tight">Sterling Gate</span>
           </div>
           <div className="flex items-center gap-4">
             <Link to="/auth">
-              <Button variant="ghost" className="hidden sm:flex text-white/90 hover:text-white hover:bg-white/10">
+              <Button variant="ghost" className="hidden sm:flex text-muted-foreground hover:text-foreground hover:bg-secondary">
                 Sign In
               </Button>
             </Link>
             <Link to="/auth">
-              <Button className="bg-accent text-accent-foreground hover:bg-accent/90 shadow-glow">
+              <Button className="btn-platinum">
                 Get Started
               </Button>
             </Link>
@@ -134,29 +129,29 @@ export default function Index() {
           <div className="container mx-auto px-6 py-20">
             <div className="max-w-3xl">
               <div className="flex items-center gap-3 mb-8 animate-fade-in">
-                <Sparkles className="h-5 w-5 text-accent" />
-                <span className="text-accent font-medium tracking-wide uppercase text-sm">Where Living Begins</span>
+                <div className="h-px w-12 bg-primary/50" />
+                <span className="text-primary font-medium tracking-widest uppercase text-xs">Commercial Real Estate</span>
               </div>
               
-              <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-serif font-medium text-white mb-8 leading-[1.1] animate-slide-up">
-                Find Your
+              <h1 className="text-5xl sm:text-6xl md:text-7xl font-serif font-medium text-foreground mb-8 leading-[1.1] animate-slide-up">
+                Sterling Gate
                 <br />
-                <span className="text-gradient-gold">Next Home</span>
+                <span className="text-gradient-silver">Properties</span>
               </h1>
               
-              <p className="text-xl md:text-2xl text-white/70 max-w-xl mb-12 animate-slide-up-delay-1 leading-relaxed">
-                Streamlined applications, digital leases, and seamless communication — all in one elegant platform.
+              <p className="text-lg md:text-xl text-muted-foreground max-w-xl mb-12 animate-slide-up-delay-1 leading-relaxed">
+                Sophisticated commercial property management. Streamlined leasing, digital documentation, and seamless portfolio oversight.
               </p>
               
               <div className="flex flex-col sm:flex-row items-start gap-4 animate-slide-up-delay-2">
                 <Link to="/auth">
-                  <Button size="lg" className="h-14 px-10 text-lg bg-accent text-accent-foreground hover:bg-accent/90 shadow-glow glow-button">
-                    Start Your Search <ArrowRight className="ml-3 h-5 w-5" />
+                  <Button size="lg" className="h-14 px-10 text-base btn-platinum">
+                    Explore Properties <ArrowRight className="ml-3 h-5 w-5" />
                   </Button>
                 </Link>
                 <Link to="/auth">
-                  <Button size="lg" variant="outline" className="h-14 px-10 text-lg border-white/30 text-white hover:bg-white/10 hover:border-white/50">
-                    I'm a Property Manager
+                  <Button size="lg" variant="outline" className="h-14 px-10 text-base btn-outline-silver">
+                    Property Managers
                   </Button>
                 </Link>
               </div>
@@ -165,18 +160,21 @@ export default function Index() {
         </div>
 
         {/* Stats Bar */}
-        <div className="relative z-10 border-t border-white/10">
+        <div className="relative z-10 border-t border-border/30">
           <div className="container mx-auto px-6 py-8">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 animate-fade-in-delay-3">
+            <div className="flex flex-wrap items-center justify-center md:justify-between gap-8 animate-fade-in-delay-3">
               {[
-                { value: '10K+', label: 'Properties Managed' },
-                { value: '98%', label: 'Satisfaction Rate' },
-                { value: '24/7', label: 'Support Available' },
-                { value: '50+', label: 'Cities Covered' },
+                { value: '2.5M+', label: 'Sq Ft Managed' },
+                { value: '150+', label: 'Commercial Properties' },
+                { value: '98%', label: 'Client Retention' },
+                { value: '24/7', label: 'Support' },
               ].map((stat, i) => (
-                <div key={i} className="text-center">
-                  <div className="text-3xl md:text-4xl font-serif text-white mb-1">{stat.value}</div>
-                  <div className="text-white/50 text-sm">{stat.label}</div>
+                <div key={i} className="text-center flex items-center gap-8">
+                  <div>
+                    <div className="text-3xl md:text-4xl font-serif text-foreground mb-1">{stat.value}</div>
+                    <div className="text-muted-foreground text-sm tracking-wide">{stat.label}</div>
+                  </div>
+                  {i < 3 && <div className="hidden md:block silver-divider" />}
                 </div>
               ))}
             </div>
@@ -185,7 +183,7 @@ export default function Index() {
 
         {/* Scroll Indicator */}
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 animate-bounce-subtle">
-          <ChevronDown className="h-8 w-8 text-white/50" />
+          <ChevronDown className="h-6 w-6 text-muted-foreground" />
         </div>
       </header>
 
@@ -193,42 +191,46 @@ export default function Index() {
       <section className="py-24 md:py-32 bg-background">
         <div className="container mx-auto px-6">
           <div className="text-center mb-20">
-            <span className="text-accent font-medium tracking-wide uppercase text-sm">Why Choose Us</span>
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-serif mt-4 mb-6">
-              Everything You Need
+            <div className="flex items-center justify-center gap-3 mb-6">
+              <div className="h-px w-12 bg-border" />
+              <span className="text-muted-foreground font-medium tracking-widest uppercase text-xs">Platform</span>
+              <div className="h-px w-12 bg-border" />
+            </div>
+            <h2 className="text-4xl md:text-5xl font-serif mb-6">
+              Built for Commercial
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto text-lg leading-relaxed">
-              Property management reimagined with modern tools and thoughtful design.
+              Enterprise-grade tools designed specifically for commercial property management.
             </p>
           </div>
           
-          <div className="grid md:grid-cols-3 gap-8 md:gap-12">
+          <div className="grid md:grid-cols-3 gap-6">
             {[
               { 
                 icon: Shield, 
-                title: 'Secure Documents', 
-                desc: 'Bank-level encryption for all sensitive documents. SSN, licenses, and financial records protected with enterprise security.' 
+                title: 'Secure Documentation', 
+                desc: 'Bank-level encryption for sensitive commercial documents. Contracts, leases, and financial records fully protected.' 
               },
               { 
                 icon: FileText, 
-                title: 'Digital Leases', 
-                desc: 'Complete e-signature system with hash verification and audit trails. Legally binding, paperless, and instant.' 
+                title: 'Digital Lease Management', 
+                desc: 'Complete e-signature system with audit trails and hash verification. Legally binding, paperless, instant.' 
               },
               { 
                 icon: MessageSquare, 
-                title: 'Direct Messaging', 
-                desc: 'Real-time communication between tenants and managers. Important updates delivered instantly.' 
+                title: 'Tenant Communication', 
+                desc: 'Centralized messaging for all commercial tenants. Important updates and maintenance requests in one place.' 
               },
             ].map((feature, i) => (
               <div 
                 key={i} 
-                className="group p-8 md:p-10 rounded-2xl bg-card hover:shadow-elevated transition-all duration-500 hover:-translate-y-2 border border-border/50"
+                className="group p-8 rounded-lg bg-card silver-border hover:border-primary/30 transition-all duration-300"
               >
-                <div className="w-16 h-16 bg-accent/10 rounded-2xl flex items-center justify-center mb-8 group-hover:bg-accent/20 transition-colors duration-300">
-                  <feature.icon className="h-8 w-8 text-accent" />
+                <div className="w-12 h-12 border border-border rounded-lg flex items-center justify-center mb-6 group-hover:border-primary/40 transition-colors duration-300">
+                  <feature.icon className="h-6 w-6 text-primary" />
                 </div>
-                <h3 className="text-2xl font-serif mb-4">{feature.title}</h3>
-                <p className="text-muted-foreground leading-relaxed text-lg">{feature.desc}</p>
+                <h3 className="text-xl font-serif mb-4">{feature.title}</h3>
+                <p className="text-muted-foreground leading-relaxed">{feature.desc}</p>
               </div>
             ))}
           </div>
@@ -236,35 +238,39 @@ export default function Index() {
       </section>
 
       {/* How It Works */}
-      <section className="py-24 md:py-32 bg-secondary/50">
+      <section className="py-24 md:py-32 bg-secondary/30">
         <div className="container mx-auto px-6">
           <div className="text-center mb-20">
-            <span className="text-accent font-medium tracking-wide uppercase text-sm">Simple Process</span>
-            <h2 className="text-4xl md:text-5xl lg:text-6xl font-serif mt-4 mb-6">
+            <div className="flex items-center justify-center gap-3 mb-6">
+              <div className="h-px w-12 bg-border" />
+              <span className="text-muted-foreground font-medium tracking-widest uppercase text-xs">Process</span>
+              <div className="h-px w-12 bg-border" />
+            </div>
+            <h2 className="text-4xl md:text-5xl font-serif mb-6">
               How It Works
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto text-lg">
-              From search to move-in, completely digital.
+              From property listing to lease execution, fully digital.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-4 gap-8 md:gap-6 relative">
-            {/* Connection line - hidden on mobile */}
-            <div className="hidden md:block absolute top-16 left-[12%] right-[12%] h-0.5 bg-border" />
+          <div className="grid md:grid-cols-4 gap-8 md:gap-4 relative">
+            {/* Connection line */}
+            <div className="hidden md:block absolute top-10 left-[15%] right-[15%] h-px bg-border" />
             
             {[
-              { step: '01', title: 'Browse', desc: 'Explore available properties with photos and details', icon: Building2 },
-              { step: '02', title: 'Apply', desc: 'Submit your application with secure uploads', icon: FileText },
-              { step: '03', title: 'Approve', desc: 'Quick review and approval process', icon: CheckCircle2 },
-              { step: '04', title: 'Move In', desc: 'Sign digitally and get your keys', icon: Key },
+              { step: '01', title: 'List', desc: 'Add commercial properties to your portfolio', icon: Building2 },
+              { step: '02', title: 'Review', desc: 'Evaluate tenant applications efficiently', icon: FileText },
+              { step: '03', title: 'Approve', desc: 'Streamlined approval workflow', icon: CheckCircle2 },
+              { step: '04', title: 'Execute', desc: 'Digital lease signing and onboarding', icon: Key },
             ].map((item, i) => (
               <div key={i} className="text-center relative">
-                <div className="w-16 h-16 rounded-full bg-card border-2 border-accent flex items-center justify-center mx-auto mb-6 relative z-10 shadow-soft">
-                  <item.icon className="h-7 w-7 text-accent" />
+                <div className="w-20 h-20 rounded-lg bg-card border border-border flex items-center justify-center mx-auto mb-6 relative z-10">
+                  <item.icon className="h-8 w-8 text-primary" />
                 </div>
-                <span className="text-accent font-serif text-lg mb-2 block">{item.step}</span>
+                <span className="text-primary font-serif text-sm mb-2 block tracking-wider">{item.step}</span>
                 <h3 className="font-serif text-xl mb-3">{item.title}</h3>
-                <p className="text-muted-foreground">{item.desc}</p>
+                <p className="text-muted-foreground text-sm">{item.desc}</p>
               </div>
             ))}
           </div>
@@ -276,79 +282,83 @@ export default function Index() {
         <div className="container mx-auto px-6">
           <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-16">
             <div>
-              <span className="text-accent font-medium tracking-wide uppercase text-sm">Featured Listings</span>
-              <h2 className="text-4xl md:text-5xl lg:text-6xl font-serif mt-4">
-                Available Now
+              <div className="flex items-center gap-3 mb-4">
+                <div className="h-px w-12 bg-border" />
+                <span className="text-muted-foreground font-medium tracking-widest uppercase text-xs">Portfolio</span>
+              </div>
+              <h2 className="text-4xl md:text-5xl font-serif">
+                Featured Spaces
               </h2>
             </div>
             <Link to="/auth">
-              <Button variant="outline" size="lg" className="animated-underline">
-                View All Properties <ArrowRight className="ml-2 h-4 w-4" />
+              <Button variant="outline" size="lg" className="btn-outline-silver">
+                View All <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </Link>
           </div>
           
           {propertiesLoading ? (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3].map((i) => (
-                <Card key={i} className="overflow-hidden animate-pulse border-0 shadow-card">
-                  <div className="h-64 bg-muted" />
-                  <CardContent className="p-8">
-                    <div className="h-8 bg-muted rounded w-1/2 mb-4" />
-                    <div className="h-5 bg-muted rounded w-3/4 mb-4" />
-                    <div className="h-5 bg-muted rounded w-1/3" />
+                <Card key={i} className="overflow-hidden animate-pulse silver-border bg-card">
+                  <div className="h-56 bg-secondary" />
+                  <CardContent className="p-6">
+                    <div className="h-8 bg-secondary rounded w-1/2 mb-4" />
+                    <div className="h-5 bg-secondary rounded w-3/4 mb-4" />
+                    <div className="h-5 bg-secondary rounded w-1/3" />
                   </CardContent>
                 </Card>
               ))}
             </div>
           ) : properties && properties.length > 0 ? (
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {properties.slice(0, 6).map((property) => (
-                <Card key={property.id} className="overflow-hidden hover-lift group border-0 shadow-card">
-                  <div className="h-64 bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center relative overflow-hidden">
-                    <Building2 className="h-20 w-20 text-muted-foreground/20 image-zoom" />
-                    <Badge className="absolute top-5 right-5 bg-success text-success-foreground px-3 py-1">
+                <Card key={property.id} className="overflow-hidden hover-lift group silver-border bg-card">
+                  <div className="h-56 bg-secondary flex items-center justify-center relative overflow-hidden">
+                    <Building2 className="h-16 w-16 text-muted-foreground/20 image-zoom" />
+                    <Badge className="absolute top-4 right-4 bg-success/90 text-success-foreground border-0">
                       Available
                     </Badge>
                   </div>
-                  <CardContent className="p-8">
+                  <CardContent className="p-6">
                     <div className="flex items-start justify-between mb-4">
-                      <h3 className="font-serif text-3xl">
+                      <h3 className="font-serif text-2xl">
                         ${Number(property.rent_amount).toLocaleString()}
-                        <span className="text-lg text-muted-foreground">/mo</span>
+                        <span className="text-base text-muted-foreground">/mo</span>
                       </h3>
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground mb-4">
                       <MapPin className="h-4 w-4 flex-shrink-0" />
-                      <span className="truncate">{property.address}, {property.city}</span>
+                      <span className="truncate text-sm">{property.address}, {property.city}</span>
                     </div>
-                    <div className="flex items-center gap-6 text-muted-foreground mb-6">
-                      <span className="flex items-center gap-2">
-                        <Bed className="h-4 w-4" /> {property.bedrooms} bed
-                      </span>
-                      <span className="flex items-center gap-2">
-                        <Bath className="h-4 w-4" /> {property.bathrooms} bath
-                      </span>
+                    <div className="flex items-center gap-4 text-muted-foreground text-sm mb-6">
                       {property.square_feet && (
-                        <span>{property.square_feet.toLocaleString()} sqft</span>
+                        <span className="flex items-center gap-1.5">
+                          <Layers className="h-4 w-4" />
+                          {property.square_feet.toLocaleString()} sqft
+                        </span>
                       )}
+                      <span className="flex items-center gap-1.5">
+                        <Building2 className="h-4 w-4" />
+                        Commercial
+                      </span>
                     </div>
                     <Link to="/auth">
-                      <Button className="w-full h-12 glow-button">Apply Now</Button>
+                      <Button className="w-full h-11 btn-platinum">Inquire</Button>
                     </Link>
                   </CardContent>
                 </Card>
               ))}
             </div>
           ) : (
-            <Card className="p-16 text-center border-dashed border-2 bg-transparent">
-              <Building2 className="h-20 w-20 mx-auto text-muted-foreground/20 mb-6" />
-              <h3 className="text-2xl font-serif mb-3">No Properties Listed Yet</h3>
-              <p className="text-muted-foreground mb-8 text-lg max-w-md mx-auto">
-                Properties will appear here once managers add them to the platform.
+            <Card className="p-16 text-center border-dashed silver-border bg-transparent">
+              <Building2 className="h-16 w-16 mx-auto text-muted-foreground/20 mb-6" />
+              <h3 className="text-2xl font-serif mb-3">No Properties Listed</h3>
+              <p className="text-muted-foreground mb-8 max-w-md mx-auto">
+                Commercial spaces will appear here once added to the platform.
               </p>
               <Link to="/auth">
-                <Button variant="outline" size="lg">
+                <Button variant="outline" size="lg" className="btn-outline-silver">
                   Sign in as Property Manager <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
@@ -357,25 +367,83 @@ export default function Index() {
         </div>
       </section>
 
-      {/* Testimonial / Trust Section */}
-      <section className="py-24 md:py-32 bg-secondary/50">
+      {/* Testimonial Section */}
+      <section className="py-24 md:py-32 bg-secondary/30">
         <div className="container mx-auto px-6">
           <div className="max-w-4xl mx-auto text-center">
             <div className="flex justify-center gap-1 mb-8">
               {[1, 2, 3, 4, 5].map((i) => (
-                <Star key={i} className="h-6 w-6 text-accent fill-accent" />
+                <Star key={i} className="h-5 w-5 text-primary fill-primary" />
               ))}
             </div>
-            <blockquote className="text-3xl md:text-4xl lg:text-5xl font-serif leading-tight mb-10">
-              "PropertyFlow transformed how we manage our properties. Everything is seamless, from applications to lease signing."
+            <blockquote className="text-2xl md:text-3xl lg:text-4xl font-serif leading-tight mb-10">
+              "Sterling Gate transformed how we manage our commercial portfolio. The digital lease system alone saved us countless hours."
             </blockquote>
             <div className="flex items-center justify-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-accent/20 flex items-center justify-center">
-                <Users className="h-6 w-6 text-accent" />
+              <div className="w-12 h-12 rounded-lg bg-card border border-border flex items-center justify-center">
+                <Users className="h-5 w-5 text-primary" />
               </div>
               <div className="text-left">
-                <div className="font-medium text-lg">Sarah Mitchell</div>
-                <div className="text-muted-foreground">Property Manager, 50+ Units</div>
+                <div className="font-medium">Michael Chen</div>
+                <div className="text-muted-foreground text-sm">Portfolio Manager, 85+ Commercial Units</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Why Sterling Gate */}
+      <section className="py-24 md:py-32 bg-background">
+        <div className="container mx-auto px-6">
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+            <div>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="h-px w-12 bg-border" />
+                <span className="text-muted-foreground font-medium tracking-widest uppercase text-xs">Why Us</span>
+              </div>
+              <h2 className="text-4xl md:text-5xl font-serif mb-6">
+                Built for Scale
+              </h2>
+              <p className="text-muted-foreground text-lg leading-relaxed mb-10">
+                Whether you manage a single building or an entire portfolio, Sterling Gate provides the tools you need to operate efficiently.
+              </p>
+              
+              <div className="space-y-6">
+                {[
+                  { icon: BarChart3, title: 'Portfolio Analytics', desc: 'Real-time insights across all properties' },
+                  { icon: Clock, title: 'Time Savings', desc: 'Automate repetitive management tasks' },
+                  { icon: Shield, title: 'Enterprise Security', desc: 'Bank-grade protection for all data' },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-start gap-4">
+                    <div className="w-10 h-10 border border-border rounded-lg flex items-center justify-center flex-shrink-0">
+                      <item.icon className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h4 className="font-serif text-lg mb-1">{item.title}</h4>
+                      <p className="text-muted-foreground text-sm">{item.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            <div className="relative">
+              <div className="aspect-[4/3] rounded-lg overflow-hidden silver-border">
+                <img 
+                  src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80" 
+                  alt="Modern office interior"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              {/* Floating card */}
+              <div className="absolute -bottom-8 -left-8 bg-card silver-border rounded-lg p-6 shadow-elevated max-w-xs">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
+                    <CheckCircle2 className="h-5 w-5 text-success" />
+                  </div>
+                  <div className="font-serif text-lg">Trusted Platform</div>
+                </div>
+                <p className="text-muted-foreground text-sm">Managing over 2.5 million square feet of commercial space</p>
               </div>
             </div>
           </div>
@@ -383,52 +451,53 @@ export default function Index() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-24 md:py-32 bg-background">
-        <div className="container mx-auto px-6">
-          <Card className="p-12 md:p-20 text-center bg-primary text-primary-foreground overflow-hidden relative border-0">
-            {/* Decorative elements */}
-            <div className="absolute top-0 right-0 w-96 h-96 bg-accent/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-            <div className="absolute bottom-0 left-0 w-64 h-64 bg-accent/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
-            
-            <div className="relative z-10">
-              <h2 className="text-4xl md:text-5xl lg:text-6xl font-serif mb-6">Ready to Get Started?</h2>
-              <p className="text-primary-foreground/70 max-w-2xl mx-auto mb-12 text-xl leading-relaxed">
-                Join thousands of property managers and tenants who trust PropertyFlow for seamless property management.
-              </p>
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-5">
-                <Link to="/auth">
-                  <Button size="lg" className="h-14 px-10 text-lg bg-accent text-accent-foreground hover:bg-accent/90 shadow-glow">
-                    Create Free Account
-                  </Button>
-                </Link>
-                <Link to="/auth">
-                  <Button size="lg" variant="outline" className="h-14 px-10 text-lg border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10">
-                    Sign In
-                  </Button>
-                </Link>
-              </div>
+      <section className="relative py-24 md:py-32 overflow-hidden">
+        <div className="absolute inset-0">
+          <img 
+            src="https://images.unsplash.com/photo-1464938050520-ef2571e0a0f2?auto=format&fit=crop&w=2000&q=80" 
+            alt="City skyline"
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 hero-overlay" />
+        </div>
+        
+        <div className="container mx-auto px-6 relative z-10">
+          <div className="max-w-2xl mx-auto text-center">
+            <h2 className="text-4xl md:text-5xl font-serif mb-6 text-foreground">
+              Elevate Your Portfolio
+            </h2>
+            <p className="text-lg text-muted-foreground mb-10 leading-relaxed">
+              Join property managers who trust Sterling Gate for their commercial real estate operations.
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+              <Link to="/auth">
+                <Button size="lg" className="h-14 px-12 text-base btn-platinum">
+                  Get Started <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              </Link>
+              <Link to="/auth">
+                <Button size="lg" variant="outline" className="h-14 px-12 text-base btn-outline-silver">
+                  Schedule Demo
+                </Button>
+              </Link>
             </div>
-          </Card>
+          </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="bg-sidebar text-sidebar-foreground py-16">
+      <footer className="py-12 border-t border-border bg-background">
         <div className="container mx-auto px-6">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-8">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-sidebar-primary rounded-xl flex items-center justify-center">
-                <Building2 className="h-6 w-6 text-sidebar-primary-foreground" />
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 border border-border rounded flex items-center justify-center">
+                <Building2 className="h-4 w-4 text-primary" />
               </div>
-              <span className="text-2xl font-serif">PropertyFlow</span>
+              <span className="font-serif text-lg">Sterling Gate Properties</span>
             </div>
-            <p className="text-sidebar-foreground/50 text-center md:text-left">
-              © 2026 PropertyFlow. Modern property management, simplified.
+            <p className="text-muted-foreground text-sm">
+              © 2026 Sterling Gate Properties. All rights reserved.
             </p>
-            <div className="flex items-center gap-3 text-sidebar-foreground/50">
-              <Shield className="h-5 w-5 text-sidebar-primary" />
-              <span>Bank-Level Security</span>
-            </div>
           </div>
         </div>
       </footer>
