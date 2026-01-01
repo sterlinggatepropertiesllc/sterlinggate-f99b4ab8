@@ -11,23 +11,15 @@ export function useAllPropertyManagers() {
   return useQuery({
     queryKey: ['all-property-managers'],
     queryFn: async (): Promise<PropertyManager[]> => {
-      // Get all users with property_manager role
-      const { data: managerRoles } = await supabase
-        .from('user_roles')
-        .select('user_id')
-        .eq('role', 'property_manager');
+      // Use secure RPC function to get property managers
+      const { data, error } = await supabase.rpc('list_property_managers_for_messaging');
 
-      if (!managerRoles || managerRoles.length === 0) return [];
+      if (error) {
+        console.error('Error fetching property managers:', error);
+        return [];
+      }
 
-      const managerIds = managerRoles.map((r) => r.user_id);
-
-      // Get their profiles
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name, email')
-        .in('id', managerIds);
-
-      return profiles || [];
+      return data || [];
     },
   });
 }
