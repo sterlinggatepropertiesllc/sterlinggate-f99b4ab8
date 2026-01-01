@@ -760,7 +760,7 @@ export function CreateLeaseWizard({
         </div>
 
         {/* Step Content */}
-        <ScrollArea className="flex-1 px-1">
+        <ScrollArea className="flex-1 min-h-0 overflow-hidden px-1">
           <div className="py-4">
             {renderStepContent()}
           </div>
