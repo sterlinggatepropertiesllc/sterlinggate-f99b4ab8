@@ -22,13 +22,15 @@ interface AddTenantDialogProps {
   onOpenChange: (open: boolean) => void;
   properties: Property[];
   existingTenantUserIds: string[];
+  managerId: string;
 }
 
 export function AddTenantDialog({ 
   open, 
   onOpenChange, 
   properties,
-  existingTenantUserIds 
+  existingTenantUserIds,
+  managerId
 }: AddTenantDialogProps) {
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
@@ -67,14 +69,15 @@ export function AddTenantDialog({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!selectedUserId || !selectedPropertyId || !rentAmount) return;
+    if (!selectedUserId) return;
 
     await addTenant.mutateAsync({
       user_id: selectedUserId,
-      property_id: selectedPropertyId,
-      rent_amount: parseFloat(rentAmount),
+      property_id: selectedPropertyId || null,
+      rent_amount: selectedPropertyId && rentAmount ? parseFloat(rentAmount) : null,
       lease_start_date: leaseStartDate ? format(leaseStartDate, 'yyyy-MM-dd') : null,
       lease_end_date: leaseEndDate ? format(leaseEndDate, 'yyyy-MM-dd') : null,
+      created_by: managerId,
     });
 
     // Reset form
@@ -105,7 +108,7 @@ export function AddTenantDialog({
         <DialogHeader>
           <DialogTitle className="font-serif text-2xl">Add Tenant</DialogTitle>
           <DialogDescription>
-            Link an existing user to one of your properties as a tenant
+            Add a user as a tenant. Property assignment is optional.
           </DialogDescription>
         </DialogHeader>
 
@@ -174,52 +177,53 @@ export function AddTenantDialog({
             )}
           </div>
 
-          {/* Property Selection */}
+          {/* Property Selection (Optional) */}
           <div className="space-y-2">
-            <Label htmlFor="property">Property</Label>
+            <Label htmlFor="property">Property (Optional)</Label>
             <Select value={selectedPropertyId} onValueChange={(value) => {
-              setSelectedPropertyId(value);
-              // Auto-fill rent amount from property
-              const property = properties.find(p => p.id === value);
-              if (property) {
-                setRentAmount(property.rent_amount.toString());
+              if (value === 'none') {
+                setSelectedPropertyId('');
+                setRentAmount('');
+              } else {
+                setSelectedPropertyId(value);
+                // Auto-fill rent amount from property
+                const property = properties.find(p => p.id === value);
+                if (property) {
+                  setRentAmount(property.rent_amount.toString());
+                }
               }
             }}>
               <SelectTrigger>
-                <SelectValue placeholder="Select a property" />
+                <SelectValue placeholder="No property assigned yet" />
               </SelectTrigger>
               <SelectContent>
-                {availableProperties.length === 0 ? (
-                  <div className="p-2 text-center text-sm text-muted-foreground">
-                    No available properties
-                  </div>
-                ) : (
-                  availableProperties.map((property) => (
-                    <SelectItem key={property.id} value={property.id}>
-                      {property.address}, {property.city}
-                    </SelectItem>
-                  ))
-                )}
+                <SelectItem value="none">No property assigned yet</SelectItem>
+                {availableProperties.map((property) => (
+                  <SelectItem key={property.id} value={property.id}>
+                    {property.address}, {property.city}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
 
-          {/* Rent Amount */}
-          <div className="space-y-2">
-            <Label htmlFor="rentAmount">Monthly Rent</Label>
-            <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="rentAmount"
-                type="number"
-                placeholder="0.00"
-                value={rentAmount}
-                onChange={(e) => setRentAmount(e.target.value)}
-                className="pl-9"
-                required
-              />
+          {/* Rent Amount - only show if property is selected */}
+          {selectedPropertyId && (
+            <div className="space-y-2">
+              <Label htmlFor="rentAmount">Monthly Rent</Label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="rentAmount"
+                  type="number"
+                  placeholder="0.00"
+                  value={rentAmount}
+                  onChange={(e) => setRentAmount(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Lease Dates with Premium Calendar Pickers */}
           <div className="grid grid-cols-2 gap-4">
@@ -294,7 +298,7 @@ export function AddTenantDialog({
             </Button>
             <Button 
               type="submit" 
-              disabled={!selectedUserId || !selectedPropertyId || !rentAmount || addTenant.isPending}
+              disabled={!selectedUserId || addTenant.isPending}
             >
               {addTenant.isPending ? 'Adding...' : 'Add Tenant'}
             </Button>
