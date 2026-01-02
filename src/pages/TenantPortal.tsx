@@ -98,6 +98,48 @@ export default function TenantPortal() {
   // Fetch tenant's payment history using tenant record ID (not user ID)
   const { data: payments, isLoading: paymentsLoading } = usePayments(undefined, tenantRecord?.id);
 
+  // Filter payments by date range (must be declared before any early returns)
+  const filteredPayments = useMemo(() => {
+    if (!payments) return [];
+
+    const now = new Date();
+    let startDate: Date | undefined;
+    let endDate: Date | undefined;
+
+    switch (dateFilter) {
+      case 'this-month':
+        startDate = startOfMonth(now);
+        endDate = now;
+        break;
+      case 'last-30':
+        startDate = subDays(now, 30);
+        endDate = now;
+        break;
+      case 'last-3-months':
+        startDate = subMonths(now, 3);
+        endDate = now;
+        break;
+      case 'this-year':
+        startDate = startOfYear(now);
+        endDate = now;
+        break;
+      case 'custom':
+        startDate = customStartDate;
+        endDate = customEndDate;
+        break;
+      default:
+        // 'all' - no filtering
+        return payments;
+    }
+
+    return payments.filter((payment) => {
+      const paymentDate = new Date(payment.payment_date);
+      if (startDate && paymentDate < startDate) return false;
+      if (endDate && paymentDate > endDate) return false;
+      return true;
+    });
+  }, [payments, dateFilter, customStartDate, customEndDate]);
+
   // Realtime subscription for tenant's balance
   useEffect(() => {
     if (!user?.id) return;
@@ -209,49 +251,9 @@ export default function TenantPortal() {
     setPendingPayment(null);
   };
 
-  // Filter payments by date range
-  const filteredPayments = useMemo(() => {
-    if (!payments) return [];
-    
-    const now = new Date();
-    let startDate: Date | undefined;
-    let endDate: Date | undefined;
-    
-    switch (dateFilter) {
-      case 'this-month':
-        startDate = startOfMonth(now);
-        endDate = now;
-        break;
-      case 'last-30':
-        startDate = subDays(now, 30);
-        endDate = now;
-        break;
-      case 'last-3-months':
-        startDate = subMonths(now, 3);
-        endDate = now;
-        break;
-      case 'this-year':
-        startDate = startOfYear(now);
-        endDate = now;
-        break;
-      case 'custom':
-        startDate = customStartDate;
-        endDate = customEndDate;
-        break;
-      default:
-        // 'all' - no filtering
-        return payments;
-    }
-    
-    return payments.filter(payment => {
-      const paymentDate = new Date(payment.payment_date);
-      if (startDate && paymentDate < startDate) return false;
-      if (endDate && paymentDate > endDate) return false;
-      return true;
-    });
-  }, [payments, dateFilter, customStartDate, customEndDate]);
 
-  // Dashboard calculations
+  // (moved) filteredPayments useMemo is declared above to avoid hook order issues
+
   const pendingLeases = leases?.filter((l: any) => l.status === 'pending_tenant_signature') || [];
   const activeLeases = leases?.filter((l: any) => l.status === 'completed') || [];
   const nextRent = activeLeases.length > 0 ? Number(activeLeases[0].monthly_rent) : 0;
