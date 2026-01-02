@@ -18,6 +18,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { format, parse } from 'date-fns';
 import { toast } from 'sonner';
+import { LeasePreviewDialog } from './LeasePreviewDialog';
+import { ValidationIssuesPanel } from './ValidationIssuesPanel';
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -32,8 +34,16 @@ import {
   Shield,
   Eye,
   Sparkles,
-  Loader2
+  Loader2,
+  Maximize2
 } from 'lucide-react';
+
+interface ValidationIssue {
+  field: string;
+  message: string;
+  step: number;
+  stepName: string;
+}
 
 interface Property {
   id: string;
@@ -109,11 +119,27 @@ export function CreateLeaseWizard({
   });
   const [generatedLeaseHTML, setGeneratedLeaseHTML] = useState<string>('');
   const [isGeneratingLease, setIsGeneratingLease] = useState(false);
+  const [validationIssues, setValidationIssues] = useState<ValidationIssue[]>([]);
+  const [fullscreenPreviewOpen, setFullscreenPreviewOpen] = useState(false);
 
   const { data: tenants, isLoading: tenantsLoading } = useTenantProfiles();
   const createLease = useCreateLease();
 
   const selectedProperty = properties.find(p => p.id === formData.propertyId);
+
+  // Helper to check if lease HTML is valid (not an error message)
+  const isValidLeaseHTML = (html: string): boolean => {
+    if (!html || typeof html !== 'string') return false;
+    const trimmed = html.trim().toLowerCase();
+    const hasHTMLTags = html.includes('<') && html.includes('>');
+    const hasHeading = /<h[1-3][^>]*>/i.test(html);
+    const hasParagraphs = /<p[^>]*>/i.test(html);
+    const startsWithError = trimmed.startsWith('lease generation error') || 
+                            trimmed.startsWith('error:') ||
+                            trimmed.startsWith('i cannot') ||
+                            trimmed.startsWith('i am unable');
+    return hasHTMLTags && hasHeading && hasParagraphs && !startsWithError;
+  };
 
   const updateFormData = (updates: Partial<typeof formData>) => {
     setFormData(prev => ({ ...prev, ...updates }));
@@ -152,10 +178,16 @@ export function CreateLeaseWizard({
       case 2: return !!formData.leaseType;
       case 3: return formData.startDate && formData.endDate && formData.monthlyRent > 0;
       case 4: return true;
-      case 5: return !!generatedLeaseHTML; // Must generate document before proceeding
+      case 5: return !!generatedLeaseHTML && isValidLeaseHTML(generatedLeaseHTML); // Must have VALID document
       case 6: return true; // Confirm & send
       default: return false;
     }
+  };
+
+  // Navigate to a specific step (used by validation panel)
+  const goToStep = (step: number) => {
+    setCurrentStep(step);
+    setValidationIssues([]); // Clear issues when navigating
   };
 
   // Helper to check if name looks like a placeholder
@@ -210,21 +242,11 @@ export function CreateLeaseWizard({
       return;
     }
 
-    // Validate names are not placeholders
-    const landlordName = formData.landlordLegalName || managerName;
-    const tenantName = formData.tenantName;
-
-    if (isPlaceholderName(landlordName)) {
-      toast.error('Please enter a valid legal name for the Landlord (not "admin", "owner", etc.)');
-      return;
-    }
-
-    if (isPlaceholderName(tenantName)) {
-      toast.error('Please enter a valid legal name for the Tenant (not "tenant", "user", etc.)');
-      return;
-    }
-
+    // Clear any previous validation issues
+    setValidationIssues([]);
+    setGeneratedLeaseHTML('');
     setIsGeneratingLease(true);
+
     try {
       const leaseData = {
         leaseType: formData.leaseType,
@@ -265,16 +287,39 @@ export function CreateLeaseWizard({
         body: leaseData,
       });
 
+      // Handle HTTP errors from edge function
       if (error) {
         console.error('Error generating lease:', error);
         throw new Error(error.message || 'Failed to generate lease document');
       }
 
+      // Handle structured validation errors (422 response)
+      if (data.type === 'VALIDATION_ERROR' || data.type === 'AI_ERROR') {
+        console.log('Validation issues received:', data.issues);
+        setValidationIssues(data.issues || []);
+        toast.error(data.message || 'Please fix the issues before generating');
+        return;
+      }
+
+      // Handle generic error response
       if (data.error) {
         throw new Error(data.error);
       }
 
+      // Validate the generated content
+      if (!isValidLeaseHTML(data.leaseDocument)) {
+        toast.error('The AI generated invalid content. Please review your inputs and try again.');
+        setValidationIssues([{
+          field: 'general',
+          message: 'The generated document was invalid. Please ensure all names are complete legal names (first and last) and all required fields are filled.',
+          step: 0,
+          stepName: 'Select Tenant'
+        }]);
+        return;
+      }
+
       setGeneratedLeaseHTML(data.leaseDocument);
+      setValidationIssues([]);
       toast.success('Lease document generated successfully');
     } catch (error) {
       console.error('Error generating lease:', error);
@@ -979,26 +1024,43 @@ export function CreateLeaseWizard({
                   {formData.startDate} to {formData.endDate}
                 </Badge>
               </div>
-              <Button
-                onClick={generateLeaseWithAI}
-                disabled={isGeneratingLease}
-                className="gap-2"
-              >
-                {isGeneratingLease ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    Generate with AI
-                  </>
+              <div className="flex items-center gap-2">
+                {generatedLeaseHTML && isValidLeaseHTML(generatedLeaseHTML) && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setFullscreenPreviewOpen(true)}
+                    className="gap-2"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                    Fullscreen
+                  </Button>
                 )}
-              </Button>
+                <Button
+                  onClick={generateLeaseWithAI}
+                  disabled={isGeneratingLease}
+                  className="gap-2"
+                >
+                  {isGeneratingLease ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      {generatedLeaseHTML ? 'Regenerate' : 'Generate with AI'}
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
 
-            {!generatedLeaseHTML && !isGeneratingLease && (
+            {/* Show validation issues if any */}
+            {validationIssues.length > 0 && (
+              <ValidationIssuesPanel issues={validationIssues} onGoToStep={goToStep} />
+            )}
+
+            {!generatedLeaseHTML && !isGeneratingLease && validationIssues.length === 0 && (
               <div className="p-6 rounded-lg bg-secondary/30 border border-border text-center">
                 <Sparkles className="h-12 w-12 mx-auto mb-3 text-primary opacity-50" />
                 <p className="text-muted-foreground mb-2">Click "Generate with AI" to create a professional lease document</p>
@@ -1006,19 +1068,35 @@ export function CreateLeaseWizard({
               </div>
             )}
 
-            {generatedLeaseHTML && (
+            {generatedLeaseHTML && isValidLeaseHTML(generatedLeaseHTML) && (
               <>
-                <div className="p-4 rounded-lg bg-success/10 border border-success/20">
+                <div className="p-4 rounded-lg bg-success/10 border border-success/20 flex items-center justify-between">
                   <p className="text-sm font-medium text-success">
                     Lease document generated. Review below before sending to the tenant.
                   </p>
                 </div>
-                <div 
-                  className="p-6 rounded-lg bg-white dark:bg-slate-50 text-slate-900 border border-border max-h-[400px] overflow-y-auto prose prose-sm prose-slate"
-                  dangerouslySetInnerHTML={{ __html: generatedLeaseHTML }}
-                />
+                <div className="relative">
+                  <div className="absolute top-2 right-2 text-xs text-muted-foreground bg-white/80 px-2 py-1 rounded">
+                    Preview — Click "Fullscreen" for full view
+                  </div>
+                  <div 
+                    className="p-6 rounded-lg bg-white dark:bg-slate-50 text-slate-900 border border-border max-h-[400px] overflow-y-auto prose prose-sm prose-slate max-w-none"
+                    dangerouslySetInnerHTML={{ __html: generatedLeaseHTML }}
+                  />
+                </div>
               </>
             )}
+
+            {/* Fullscreen Preview Dialog */}
+            <LeasePreviewDialog
+              open={fullscreenPreviewOpen}
+              onOpenChange={setFullscreenPreviewOpen}
+              leaseHTML={generatedLeaseHTML}
+              propertyAddress={selectedProperty?.address}
+              leaseType={LEASE_TYPE_LABELS[formData.leaseType]}
+              startDate={formData.startDate}
+              endDate={formData.endDate}
+            />
           </div>
         );
 

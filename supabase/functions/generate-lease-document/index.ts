@@ -42,6 +42,165 @@ interface LeaseGenerationRequest {
   noticeAddressTenant?: string;
 }
 
+interface ValidationIssue {
+  field: string;
+  message: string;
+  step: number;
+  stepName: string;
+}
+
+// Helper to check if a name looks like a placeholder
+function isPlaceholderName(name: string): boolean {
+  const placeholders = ['admin', 'tenant', 'user', 'test', 'landlord', 'owner', 'manager', 'unknown'];
+  const lower = name.toLowerCase().trim();
+  return placeholders.includes(lower) || lower.length < 3;
+}
+
+// Helper to check if name is a "full legal name" (at least 2 words)
+function isFullLegalName(name: string): boolean {
+  const parts = name.trim().split(/\s+/);
+  return parts.length >= 2 && parts.every(p => p.length >= 2);
+}
+
+// Validate the lease data and return issues
+function validateLeaseData(data: LeaseGenerationRequest): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+
+  // Check landlord name
+  if (!data.landlordName || data.landlordName.trim().length < 3) {
+    issues.push({
+      field: 'landlordLegalName',
+      message: 'Landlord legal name is required',
+      step: 0,
+      stepName: 'Select Tenant'
+    });
+  } else if (isPlaceholderName(data.landlordName)) {
+    issues.push({
+      field: 'landlordLegalName',
+      message: `"${data.landlordName}" is not a valid legal name. Please enter the landlord's full legal name.`,
+      step: 0,
+      stepName: 'Select Tenant'
+    });
+  } else if (!isFullLegalName(data.landlordName) && data.landlordEntityType === 'individual') {
+    issues.push({
+      field: 'landlordLegalName',
+      message: `Please enter the landlord's full legal name (first and last name), not just "${data.landlordName}".`,
+      step: 0,
+      stepName: 'Select Tenant'
+    });
+  }
+
+  // Check tenant name
+  if (!data.tenantName || data.tenantName.trim().length < 3) {
+    issues.push({
+      field: 'tenantName',
+      message: 'Tenant legal name is required',
+      step: 0,
+      stepName: 'Select Tenant'
+    });
+  } else if (isPlaceholderName(data.tenantName)) {
+    issues.push({
+      field: 'tenantName',
+      message: `"${data.tenantName}" is not a valid legal name. Please enter the tenant's full legal name.`,
+      step: 0,
+      stepName: 'Select Tenant'
+    });
+  } else if (!isFullLegalName(data.tenantName) && data.tenantEntityType === 'individual') {
+    issues.push({
+      field: 'tenantName',
+      message: `Please enter the tenant's full legal name (first and last name), not just "${data.tenantName}".`,
+      step: 0,
+      stepName: 'Select Tenant'
+    });
+  }
+
+  // Check guarantor if entity tenant
+  if (data.tenantEntityType !== 'individual' && !data.guarantorName) {
+    issues.push({
+      field: 'guarantorName',
+      message: 'A personal guarantor is required when the tenant is a legal entity (LLC or Corporation).',
+      step: 0,
+      stepName: 'Select Tenant'
+    });
+  }
+
+  // Check property address
+  if (!data.propertyAddress || data.propertyAddress.trim().length < 5) {
+    issues.push({
+      field: 'propertyAddress',
+      message: 'Property address is required',
+      step: 1,
+      stepName: 'Select Property'
+    });
+  }
+
+  // Check dates
+  if (!data.startDate) {
+    issues.push({
+      field: 'startDate',
+      message: 'Lease start date is required',
+      step: 3,
+      stepName: 'Lease Terms'
+    });
+  }
+  if (!data.endDate) {
+    issues.push({
+      field: 'endDate',
+      message: 'Lease end date is required',
+      step: 3,
+      stepName: 'Lease Terms'
+    });
+  }
+  if (data.startDate && data.endDate) {
+    const start = new Date(data.startDate);
+    const end = new Date(data.endDate);
+    if (end <= start) {
+      issues.push({
+        field: 'endDate',
+        message: 'End date must be after start date',
+        step: 3,
+        stepName: 'Lease Terms'
+      });
+    }
+  }
+
+  // Check rent
+  if (!data.monthlyRent || data.monthlyRent <= 0) {
+    issues.push({
+      field: 'monthlyRent',
+      message: 'Monthly rent must be greater than $0',
+      step: 3,
+      stepName: 'Lease Terms'
+    });
+  }
+
+  return issues;
+}
+
+// Check if content is valid HTML lease document
+function isValidLeaseHTML(content: string): boolean {
+  if (!content || typeof content !== 'string') return false;
+  
+  const trimmed = content.trim().toLowerCase();
+  
+  // Must contain basic HTML structure
+  const hasHTMLTags = content.includes('<') && content.includes('>');
+  
+  // Must have a heading (title)
+  const hasHeading = /<h[1-3][^>]*>/i.test(content);
+  
+  // Must have paragraphs
+  const hasParagraphs = /<p[^>]*>/i.test(content);
+  
+  // Should NOT start with error messages
+  const startsWithError = trimmed.startsWith('lease generation error') || 
+                          trimmed.startsWith('error:') ||
+                          trimmed.startsWith('i cannot') ||
+                          trimmed.startsWith('i am unable');
+  
+  return hasHTMLTags && hasHeading && hasParagraphs && !startsWithError;
+}
+
 const SYSTEM_PROMPT = `You are acting as a commercial real estate lease drafting engine, not a generic writer.
 Your task is to generate legally consistent, professional commercial lease agreements using AI, suitable for execution in the United States.
 
@@ -229,16 +388,6 @@ No explanations in the final document
 
 Output must read like a document drafted by a commercial real estate attorney
 
-SYSTEM SAFETY RULE
-
-If required inputs are missing or contradictory:
-
-Stop generation
-
-Return a structured error explaining what must be fixed
-
-Do NOT guess or auto-fill legal assumptions
-
 FINAL OUTPUT FORMAT
 
 Title in all caps
@@ -276,24 +425,19 @@ serve(async (req) => {
       throw new Error("AI service is not configured");
     }
 
-    // Validate required fields
-    const requiredFields = [
-      "leaseType", "propertyAddress", "propertyCity", "propertyState", "propertyZip",
-      "landlordName", "landlordEmail", "tenantName", "tenantEmail",
-      "startDate", "endDate", "monthlyRent"
-    ];
+    // Validate lease data first - return structured errors
+    const validationIssues = validateLeaseData(leaseData);
     
-    const missingFields = requiredFields.filter(field => !leaseData[field as keyof LeaseGenerationRequest]);
-    
-    if (missingFields.length > 0) {
-      console.error("Missing required fields:", missingFields);
+    if (validationIssues.length > 0) {
+      console.log("Validation issues found:", validationIssues);
       return new Response(
-        JSON.stringify({ 
-          error: "Missing required fields", 
-          missingFields,
-          message: `The following fields are required: ${missingFields.join(", ")}`
+        JSON.stringify({
+          error: "Validation failed",
+          type: "VALIDATION_ERROR",
+          issues: validationIssues,
+          message: `Please fix ${validationIssues.length} issue(s) before generating the lease document.`
         }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -433,6 +577,26 @@ Generate the complete lease document now.`;
       .replace(/```html\n?/g, "")
       .replace(/```\n?/g, "")
       .trim();
+
+    // Validate that the output is actually valid HTML lease document
+    if (!isValidLeaseHTML(leaseDocument)) {
+      console.error("AI returned invalid or error content:", leaseDocument.substring(0, 200));
+      return new Response(
+        JSON.stringify({
+          error: "AI generated invalid content",
+          type: "AI_ERROR",
+          issues: [{
+            field: 'general',
+            message: 'The AI was unable to generate a valid lease document. This may be due to missing or invalid information. Please review all fields and try again.',
+            step: 5,
+            stepName: 'Preview Document'
+          }],
+          rawOutput: leaseDocument.substring(0, 500),
+          message: "The AI could not generate a valid lease. Please check all inputs and try again."
+        }),
+        { status: 422, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     console.log("Lease document generated successfully");
 
