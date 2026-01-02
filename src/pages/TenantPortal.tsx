@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,9 +15,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from 'sonner';
 import { TenantMessagingCenter } from '@/components/messages/TenantMessagingCenter';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { format, startOfMonth, subDays, subMonths, startOfYear } from 'date-fns';
+import { cn } from '@/lib/utils';
 import { 
   Building2, 
   Home, 
@@ -37,15 +41,14 @@ import {
   CreditCard,
   Loader2,
   Wallet,
-  TrendingUp,
-  TrendingDown,
   Receipt,
   Menu,
   User,
   LayoutDashboard,
   AlertCircle,
   CalendarDays,
-  Bell
+  Bell,
+  CalendarIcon
 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
@@ -55,6 +58,12 @@ export default function TenantPortal() {
   const { user, role, loading, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<PortalTab>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // Payment filter state
+  type DateFilter = 'all' | 'this-month' | 'last-30' | 'last-3-months' | 'this-year' | 'custom';
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [customStartDate, setCustomStartDate] = useState<Date | undefined>();
+  const [customEndDate, setCustomEndDate] = useState<Date | undefined>();
 
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
@@ -200,9 +209,47 @@ export default function TenantPortal() {
     setPendingPayment(null);
   };
 
-  // Calculate balance summary
-  const totalPaid = payments?.filter(p => p.status === 'completed').reduce((sum, p) => sum + Number(p.amount), 0) || 0;
-  const pendingPayments = payments?.filter(p => p.status === 'pending').reduce((sum, p) => sum + Number(p.amount), 0) || 0;
+  // Filter payments by date range
+  const filteredPayments = useMemo(() => {
+    if (!payments) return [];
+    
+    const now = new Date();
+    let startDate: Date | undefined;
+    let endDate: Date | undefined;
+    
+    switch (dateFilter) {
+      case 'this-month':
+        startDate = startOfMonth(now);
+        endDate = now;
+        break;
+      case 'last-30':
+        startDate = subDays(now, 30);
+        endDate = now;
+        break;
+      case 'last-3-months':
+        startDate = subMonths(now, 3);
+        endDate = now;
+        break;
+      case 'this-year':
+        startDate = startOfYear(now);
+        endDate = now;
+        break;
+      case 'custom':
+        startDate = customStartDate;
+        endDate = customEndDate;
+        break;
+      default:
+        // 'all' - no filtering
+        return payments;
+    }
+    
+    return payments.filter(payment => {
+      const paymentDate = new Date(payment.payment_date);
+      if (startDate && paymentDate < startDate) return false;
+      if (endDate && paymentDate > endDate) return false;
+      return true;
+    });
+  }, [payments, dateFilter, customStartDate, customEndDate]);
 
   // Dashboard calculations
   const pendingLeases = leases?.filter((l: any) => l.status === 'pending_tenant_signature') || [];
@@ -777,47 +824,118 @@ export default function TenantPortal() {
               <div className="animate-fade-in">
                 <div className="mb-8">
                   <h1 className="text-3xl font-serif">Payments</h1>
-                  <p className="text-muted-foreground">View your payment history and balance</p>
+                  <p className="text-muted-foreground">View your payment history</p>
                 </div>
 
-                {/* Balance Summary Cards */}
-                <div className="grid md:grid-cols-3 gap-6 mb-8">
-                  <Card className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-muted-foreground text-sm">Total Paid</p>
-                        <p className="text-3xl font-serif mt-1 text-success">${totalPaid.toLocaleString()}</p>
-                      </div>
-                      <div className="w-12 h-12 bg-success/10 rounded-xl flex items-center justify-center">
-                        <TrendingUp className="h-6 w-6 text-success" />
-                      </div>
+                {/* Date Filters */}
+                <Card className="p-4 mb-6">
+                  <div className="flex flex-col gap-4">
+                    {/* Quick Filters */}
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { key: 'all', label: 'All Time' },
+                        { key: 'this-month', label: 'This Month' },
+                        { key: 'last-30', label: 'Last 30 Days' },
+                        { key: 'last-3-months', label: 'Last 3 Months' },
+                        { key: 'this-year', label: 'This Year' },
+                      ].map(filter => (
+                        <Button
+                          key={filter.key}
+                          variant={dateFilter === filter.key ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => {
+                            setDateFilter(filter.key as DateFilter);
+                            if (filter.key !== 'custom') {
+                              setCustomStartDate(undefined);
+                              setCustomEndDate(undefined);
+                            }
+                          }}
+                        >
+                          {filter.label}
+                        </Button>
+                      ))}
                     </div>
-                  </Card>
 
-                  <Card className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-muted-foreground text-sm">Pending</p>
-                        <p className="text-3xl font-serif mt-1 text-warning">${pendingPayments.toLocaleString()}</p>
-                      </div>
-                      <div className="w-12 h-12 bg-warning/10 rounded-xl flex items-center justify-center">
-                        <Clock className="h-6 w-6 text-warning" />
-                      </div>
-                    </div>
-                  </Card>
+                    {/* Custom Date Range */}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className={cn(
+                              "justify-start text-left font-normal",
+                              !customStartDate && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {customStartDate ? format(customStartDate, "MMM d, yyyy") : "From"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={customStartDate}
+                            onSelect={(date) => {
+                              setCustomStartDate(date);
+                              setDateFilter('custom');
+                            }}
+                            initialFocus
+                            className="pointer-events-auto"
+                          />
+                        </PopoverContent>
+                      </Popover>
 
-                  <Card className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-muted-foreground text-sm">Total Transactions</p>
-                        <p className="text-3xl font-serif mt-1">{payments?.length || 0}</p>
-                      </div>
-                      <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
-                        <Receipt className="h-6 w-6 text-primary" />
-                      </div>
+                      <span className="text-muted-foreground">to</span>
+
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className={cn(
+                              "justify-start text-left font-normal",
+                              !customEndDate && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {customEndDate ? format(customEndDate, "MMM d, yyyy") : "To"}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={customEndDate}
+                            onSelect={(date) => {
+                              setCustomEndDate(date);
+                              setDateFilter('custom');
+                            }}
+                            initialFocus
+                            className="pointer-events-auto"
+                          />
+                        </PopoverContent>
+                      </Popover>
+
+                      {(customStartDate || customEndDate) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setCustomStartDate(undefined);
+                            setCustomEndDate(undefined);
+                            setDateFilter('all');
+                          }}
+                        >
+                          Clear
+                        </Button>
+                      )}
+
+                      <span className="ml-auto text-sm text-muted-foreground">
+                        {filteredPayments.length} payment{filteredPayments.length !== 1 ? 's' : ''}
+                      </span>
                     </div>
-                  </Card>
-                </div>
+                  </div>
+                </Card>
 
                 {/* Payment History */}
                 <Card>
@@ -830,9 +948,9 @@ export default function TenantPortal() {
                         <div key={i} className="h-16 bg-muted rounded animate-pulse" />
                       ))}
                     </div>
-                  ) : payments && payments.length > 0 ? (
+                  ) : filteredPayments.length > 0 ? (
                     <div className="divide-y divide-border">
-                      {payments.map((payment) => (
+                      {filteredPayments.map((payment) => (
                         <div key={payment.id} className="p-4 flex items-center justify-between hover:bg-muted/30 transition-colors">
                           <div className="flex items-center gap-4">
                             <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
@@ -877,8 +995,12 @@ export default function TenantPortal() {
                   ) : (
                     <div className="p-12 text-center">
                       <Wallet className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                      <h3 className="text-xl font-serif mb-2">No Payments Yet</h3>
-                      <p className="text-muted-foreground">Your payment history will appear here once you make your first payment</p>
+                      <h3 className="text-xl font-serif mb-2">No Payments Found</h3>
+                      <p className="text-muted-foreground">
+                        {payments && payments.length > 0 
+                          ? "No payments match your selected date range" 
+                          : "Your payment history will appear here once you make your first payment"}
+                      </p>
                     </div>
                   )}
                 </Card>
