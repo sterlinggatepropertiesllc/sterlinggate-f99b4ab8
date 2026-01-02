@@ -43,6 +43,7 @@ export default function SignLease() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [showCertificate, setShowCertificate] = useState(false);
   const [signing, setSigning] = useState(false);
+  const [downloadingCertificate, setDownloadingCertificate] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
   const isLoading = authLoading || leaseLoading;
@@ -169,14 +170,13 @@ export default function SignLease() {
     setDownloading(true);
     try {
       const response = await supabase.functions.invoke('generate-lease-pdf', {
-        body: { leaseId: lease.id }
+        body: { leaseId: lease.id, includeCertificate: true }
       });
 
       if (response.error) {
         throw new Error(response.error.message);
       }
 
-      // The edge function returns ArrayBuffer, convert to blob
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -193,6 +193,36 @@ export default function SignLease() {
       toast.error('Failed to download PDF. Please try again.');
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleDownloadCertificate = async () => {
+    setDownloadingCertificate(true);
+    try {
+      const response = await supabase.functions.invoke('generate-lease-pdf', {
+        body: { leaseId: lease.id, certificateOnly: true }
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `certificate-${lease.id.slice(0, 8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success('Certificate downloaded successfully!');
+    } catch (error) {
+      console.error('Certificate download error:', error);
+      toast.error('Failed to download certificate. Please try again.');
+    } finally {
+      setDownloadingCertificate(false);
     }
   };
 
@@ -252,6 +282,19 @@ export default function SignLease() {
                     <Download className="h-4 w-4 mr-2" />
                   )}
                   Download PDF
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleDownloadCertificate}
+                  disabled={downloadingCertificate}
+                >
+                  {downloadingCertificate ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Shield className="h-4 w-4 mr-2" />
+                  )}
+                  Download Certificate
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => setShowCertificate(true)}>
                   <Shield className="h-4 w-4 mr-2" /> View Certificate
