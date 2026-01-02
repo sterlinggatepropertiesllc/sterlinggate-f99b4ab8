@@ -16,7 +16,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Use service role for inserting payment records
+  // Use service role for inserting payment records and updating balances
   const supabaseAdmin = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -68,6 +68,7 @@ serve(async (req) => {
     });
 
     console.log("[VERIFY-PAYMENT] Session status:", session.payment_status);
+    console.log("[VERIFY-PAYMENT] Session metadata:", session.metadata);
 
     if (session.payment_status !== 'paid') {
       throw new Error("Payment not completed");
@@ -75,10 +76,11 @@ serve(async (req) => {
 
     // Verify the session belongs to this user
     if (session.metadata?.user_id !== user.id) {
+      console.error("[VERIFY-PAYMENT] User mismatch:", { sessionUserId: session.metadata?.user_id, userId: user.id });
       throw new Error("Unauthorized: Session does not belong to this user");
     }
 
-    // Check if payment already recorded
+    // Check if payment already recorded (idempotency)
     const { data: existingPayment } = await supabaseAdmin
       .from('payments')
       .select('id')
@@ -98,90 +100,164 @@ serve(async (req) => {
     }
 
     // Extract metadata
-    const { payment_type, property_id, lease_id } = session.metadata || {};
+    const { payment_type, property_id, lease_id, tenant_id } = session.metadata || {};
     const amountPaid = session.amount_total || 0;
+    const amountInDollars = amountPaid / 100;
 
-    // For application fees, we need to get tenant_id from tenants table or use user_id directly
-    // For rent/deposits, we get tenant info from the lease
-    let tenantId: string | null = null;
-    let finalPropertyId = property_id;
+    console.log("[VERIFY-PAYMENT] Payment details:", { payment_type, property_id, lease_id, tenant_id, amountInDollars });
 
-    if (payment_type === 'application_fee') {
-      // For application fees, check if user has a tenant record or create payment directly
-      const { data: tenantData } = await supabaseAdmin
-        .from('tenants')
-        .select('id')
-        .eq('user_id', user.id)
-        .limit(1)
-        .single();
+    // Resolve tenant_id and property_id based on payment type
+    let resolvedTenantId = tenant_id;
+    let resolvedPropertyId = property_id;
 
-      if (tenantData) {
-        tenantId = tenantData.id;
-      }
-    } else if (lease_id) {
-      // Get tenant and property info from lease
-      const { data: leaseData, error: leaseError } = await supabaseAdmin
+    // For balance payments, tenant_id should already be in metadata
+    // For rent/deposit payments, we may need to look up from lease
+    if (!resolvedTenantId && lease_id) {
+      console.log("[VERIFY-PAYMENT] Looking up tenant from lease:", lease_id);
+      const { data: leaseData } = await supabaseAdmin
         .from('leases')
         .select('tenant_id, property_id')
         .eq('id', lease_id)
         .single();
 
-      if (leaseError || !leaseData) {
-        throw new Error("Could not find lease information");
-      }
+      if (leaseData) {
+        // The lease.tenant_id is the user_id, so we need to get the tenant record
+        const { data: tenantRecord } = await supabaseAdmin
+          .from('tenants')
+          .select('id')
+          .eq('user_id', leaseData.tenant_id)
+          .eq('is_active', true)
+          .limit(1)
+          .single();
 
-      // Get tenant id from tenants table using the lease's tenant_id (which is user_id)
+        if (tenantRecord) {
+          resolvedTenantId = tenantRecord.id;
+        }
+        resolvedPropertyId = leaseData.property_id;
+        console.log("[VERIFY-PAYMENT] Resolved from lease:", { resolvedTenantId, resolvedPropertyId });
+      }
+    }
+
+    // For application fees, try to find tenant by user_id
+    if (!resolvedTenantId && payment_type === 'application_fee') {
       const { data: tenantRecord } = await supabaseAdmin
         .from('tenants')
-        .select('id')
-        .eq('user_id', leaseData.tenant_id)
+        .select('id, property_id')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
         .limit(1)
         .single();
 
-      tenantId = tenantRecord?.id || null;
-      finalPropertyId = leaseData.property_id;
+      if (tenantRecord) {
+        resolvedTenantId = tenantRecord.id;
+        if (!resolvedPropertyId) {
+          resolvedPropertyId = tenantRecord.property_id;
+        }
+      }
     }
 
-    // If we still don't have a tenant ID, we need to handle this case
-    // For now, we'll skip recording if no tenant record exists (application fee case)
-    if (!tenantId && payment_type !== 'application_fee') {
-      throw new Error("Could not determine tenant for payment record");
+    console.log("[VERIFY-PAYMENT] Final resolved IDs:", { resolvedTenantId, resolvedPropertyId });
+
+    // We need both tenant_id and property_id to record a payment
+    if (!resolvedTenantId || !resolvedPropertyId) {
+      console.log("[VERIFY-PAYMENT] Missing required IDs, payment cannot be recorded to database");
+      // For application fees without a tenant record, just return success without DB insert
+      if (payment_type === 'application_fee') {
+        return new Response(JSON.stringify({ 
+          success: true, 
+          payment_type,
+          amount: amountInDollars,
+          message: "Payment verified but not recorded (no tenant record)"
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+      throw new Error("Could not determine tenant or property for payment record");
     }
 
-    // Only record payment if we have tenant ID, otherwise just return success
-    let paymentRecord = null;
-    if (tenantId && finalPropertyId) {
-      const { data: newPayment, error: insertError } = await supabaseAdmin
-        .from('payments')
-        .insert({
-          tenant_id: tenantId,
-          property_id: finalPropertyId,
-          lease_id: lease_id || null,
-          amount: amountPaid / 100, // Convert from cents to dollars
-          payment_date: new Date().toISOString().split('T')[0],
-          payment_method: 'stripe',
-          status: 'completed',
-          stripe_session_id: session_id,
-          payment_type: payment_type,
-          notes: `${payment_type?.replace(/_/g, ' ')} via Stripe`,
-        })
-        .select()
+    // Insert payment record
+    const { data: newPayment, error: insertError } = await supabaseAdmin
+      .from('payments')
+      .insert({
+        tenant_id: resolvedTenantId,
+        property_id: resolvedPropertyId,
+        lease_id: lease_id || null,
+        amount: amountInDollars,
+        payment_date: new Date().toISOString().split('T')[0],
+        payment_method: 'stripe',
+        status: 'completed',
+        stripe_session_id: session_id,
+        payment_type: payment_type,
+        notes: `${payment_type?.replace(/_/g, ' ')} via Stripe`,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error("[VERIFY-PAYMENT] Insert error:", insertError);
+      throw new Error(`Failed to record payment: ${insertError.message}`);
+    }
+
+    console.log("[VERIFY-PAYMENT] Payment recorded:", newPayment.id);
+
+    // Update tenant balance for balance and rent payments
+    if (payment_type === 'balance' || payment_type === 'rent') {
+      console.log("[VERIFY-PAYMENT] Updating tenant balance for:", resolvedTenantId);
+
+      // Get current balance
+      const { data: tenantData, error: tenantFetchError } = await supabaseAdmin
+        .from('tenants')
+        .select('current_balance')
+        .eq('id', resolvedTenantId)
         .single();
 
-      if (insertError) {
-        console.error("[VERIFY-PAYMENT] Insert error:", insertError);
-        throw new Error(`Failed to record payment: ${insertError.message}`);
-      }
+      if (tenantFetchError) {
+        console.error("[VERIFY-PAYMENT] Failed to fetch tenant balance:", tenantFetchError);
+      } else {
+        const previousBalance = tenantData?.current_balance || 0;
+        const newBalance = previousBalance - amountInDollars;
 
-      paymentRecord = newPayment;
-      console.log("[VERIFY-PAYMENT] Payment recorded:", paymentRecord.id);
+        console.log("[VERIFY-PAYMENT] Balance update:", { previousBalance, amountInDollars, newBalance });
+
+        // Update tenant balance
+        const { error: updateError } = await supabaseAdmin
+          .from('tenants')
+          .update({ current_balance: newBalance })
+          .eq('id', resolvedTenantId);
+
+        if (updateError) {
+          console.error("[VERIFY-PAYMENT] Failed to update balance:", updateError);
+        } else {
+          console.log("[VERIFY-PAYMENT] Balance updated successfully");
+
+          // Insert balance adjustment record
+          const { error: adjustmentError } = await supabaseAdmin
+            .from('balance_adjustments')
+            .insert({
+              tenant_id: resolvedTenantId,
+              adjustment_type: 'payment',
+              amount: amountInDollars,
+              previous_balance: previousBalance,
+              new_balance: newBalance,
+              description: `Stripe ${payment_type} payment`,
+              created_by: user.id,
+            });
+
+          if (adjustmentError) {
+            console.error("[VERIFY-PAYMENT] Failed to insert balance adjustment:", adjustmentError);
+          } else {
+            console.log("[VERIFY-PAYMENT] Balance adjustment recorded");
+          }
+        }
+      }
     }
 
     return new Response(JSON.stringify({ 
       success: true, 
-      payment_id: paymentRecord?.id || null,
+      payment_id: newPayment.id,
       payment_type,
-      amount: amountPaid / 100,
+      amount: amountInDollars,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

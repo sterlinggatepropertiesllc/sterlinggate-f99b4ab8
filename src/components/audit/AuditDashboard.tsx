@@ -1,8 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useManagerProperties } from '@/hooks/useProperties';
 import { useTenants } from '@/hooks/useTenants';
 import { useAllPayments } from '@/hooks/usePayments';
+import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -28,6 +30,7 @@ type DatePreset = 'this_week' | 'this_month' | 'this_quarter' | 'this_year' | 'l
 
 export function AuditDashboard() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const { data: properties = [] } = useManagerProperties(user?.id);
   const { data: tenants = [] } = useTenants(user?.id);
   const { data: payments = [] } = useAllPayments();
@@ -40,6 +43,28 @@ export function AuditDashboard() {
   });
   const [selectedProperty, setSelectedProperty] = useState<string>('all');
   const [selectedTenant, setSelectedTenant] = useState<string>('all');
+
+  // Realtime subscription for payments (admin view)
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-payments-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'payments',
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['payments', 'all'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 
   // Update date range when preset changes
   const handlePresetChange = (preset: DatePreset) => {
@@ -112,11 +137,12 @@ export function AuditDashboard() {
           };
         }).filter(item => item.count > 0).sort((a, b) => b.amount - a.amount)
       : tenants.map(tenant => {
-          const tenantPayments = filteredPayments.filter(p => p.tenant_id === tenant.user_id);
+          // Compare payment.tenant_id to tenant.id (the tenant record ID)
+          const tenantPayments = filteredPayments.filter(p => p.tenant_id === tenant.id);
           const amount = tenantPayments.reduce((sum, p) => sum + Number(p.amount), 0);
           const property = properties.find(p => p.id === tenant.property_id);
           return {
-            id: tenant.user_id,
+            id: tenant.id,
             name: property ? `Tenant at ${property.address}` : 'Unknown Tenant',
             amount,
             count: tenantPayments.length,
