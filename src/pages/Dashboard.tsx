@@ -301,7 +301,7 @@ export default function Dashboard() {
     { id: 'leases', label: 'Leases', icon: FileText },
     { id: 'messages', label: 'Messages', icon: MessageSquare, badge: unreadCount },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { id: 'audit', label: 'Audit', icon: Receipt, badge: unreadPaymentCount },
+    { id: 'audit', label: 'Payments', icon: Receipt, badge: unreadPaymentCount },
   ];
 
   // Mark payment notifications as read when Audit tab is opened
