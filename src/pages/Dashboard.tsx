@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Navigate, Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,6 +12,7 @@ import { useLeases } from '@/hooks/useLeases';
 import { useUnreadCount } from '@/hooks/useMessages';
 import { usePropertyImages } from '@/hooks/usePropertyImages';
 import { useProfile } from '@/hooks/useProfiles';
+import { useUnreadPaymentNotifications } from '@/hooks/useUnreadPaymentNotifications';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -90,6 +91,7 @@ export default function Dashboard() {
   const { data: leases, isLoading: leasesLoading } = useLeases(user?.id, role);
   const { data: unreadCount } = useUnreadCount(user?.id);
   const { data: managerProfile } = useProfile(user?.id);
+  const { unreadPaymentCount, markAllPaymentNotificationsRead } = useUnreadPaymentNotifications();
 
   const createProperty = useCreateProperty();
   const updateProperty = useUpdateProperty();
@@ -299,8 +301,19 @@ export default function Dashboard() {
     { id: 'leases', label: 'Leases', icon: FileText },
     { id: 'messages', label: 'Messages', icon: MessageSquare, badge: unreadCount },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-    { id: 'audit', label: 'Audit', icon: Receipt },
+    { id: 'audit', label: 'Audit', icon: Receipt, badge: unreadPaymentCount },
   ];
+
+  // Mark payment notifications as read when Audit tab is opened
+  const handleMarkPaymentNotificationsRead = useCallback(() => {
+    if (activeTab === 'audit') {
+      markAllPaymentNotificationsRead();
+    }
+  }, [activeTab, markAllPaymentNotificationsRead]);
+
+  useEffect(() => {
+    handleMarkPaymentNotificationsRead();
+  }, [handleMarkPaymentNotificationsRead]);
 
   // Sidebar content component
   const SidebarContent = ({ onNavClick }: { onNavClick?: () => void }) => (
