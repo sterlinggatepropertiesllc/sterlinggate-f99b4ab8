@@ -91,6 +91,57 @@ export type Database = {
           },
         ]
       }
+      balance_adjustments: {
+        Row: {
+          adjustment_type: string
+          amount: number
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          new_balance: number
+          previous_balance: number
+          tenant_id: string
+        }
+        Insert: {
+          adjustment_type: string
+          amount: number
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          new_balance: number
+          previous_balance: number
+          tenant_id: string
+        }
+        Update: {
+          adjustment_type?: string
+          amount?: number
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          new_balance?: number
+          previous_balance?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "balance_adjustments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "balance_adjustments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           application_id: string | null
@@ -599,6 +650,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string | null
+          current_balance: number | null
           id: string
           is_active: boolean
           lease_end_date: string | null
@@ -613,6 +665,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by?: string | null
+          current_balance?: number | null
           id?: string
           is_active?: boolean
           lease_end_date?: string | null
@@ -627,6 +680,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string | null
+          current_balance?: number | null
           id?: string
           is_active?: boolean
           lease_end_date?: string | null

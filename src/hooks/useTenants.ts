@@ -16,6 +16,7 @@ export function useTenants(managerId: string | undefined) {
         .from('tenants')
         .select(`
           *,
+          current_balance,
           user:profiles!tenants_user_id_fkey (
             id,
             email,
