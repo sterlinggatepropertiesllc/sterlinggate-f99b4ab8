@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -80,6 +81,11 @@ export function CreateLeaseWizard({
     tenantEntityType: 'individual' as EntityType,
     tenantStateOfFormation: '',
     guarantorName: '',
+    // Landlord (manager) info - editable for legal documents
+    landlordLegalName: managerName || '',
+    landlordLegalEmail: managerEmail || '',
+    landlordEntityType: 'individual' as EntityType,
+    landlordStateOfFormation: '',
     propertyId: '',
     leaseType: 'gross' as LeaseType,
     startDate: '',
@@ -137,7 +143,11 @@ export function CreateLeaseWizard({
 
   const canProceed = () => {
     switch (currentStep) {
-      case 0: return !!formData.tenantId;
+      case 0: 
+        // Must have tenant selected AND valid names for both tenant and landlord
+        return !!formData.tenantId && 
+          !!formData.tenantName && formData.tenantName.trim().length >= 3 &&
+          !!formData.landlordLegalName && formData.landlordLegalName.trim().length >= 3;
       case 1: return !!formData.propertyId;
       case 2: return !!formData.leaseType;
       case 3: return formData.startDate && formData.endDate && formData.monthlyRent > 0;
@@ -146,6 +156,13 @@ export function CreateLeaseWizard({
       case 6: return true; // Confirm & send
       default: return false;
     }
+  };
+
+  // Helper to check if name looks like a placeholder
+  const isPlaceholderName = (name: string): boolean => {
+    const placeholders = ['admin', 'tenant', 'user', 'test', 'landlord', 'owner', 'manager'];
+    const lower = name.toLowerCase().trim();
+    return placeholders.includes(lower) || lower.length < 3;
   };
 
   // Generate lease terms object for preview
@@ -157,9 +174,9 @@ export function CreateLeaseWizard({
       propertyCity: selectedProperty.city,
       propertyState: selectedProperty.state,
       propertyZip: selectedProperty.zip_code,
-      landlordName: managerName,
-      landlordEmail: managerEmail,
-      landlordEntityType: 'individual',
+      landlordName: formData.landlordLegalName || managerName,
+      landlordEmail: formData.landlordLegalEmail || managerEmail,
+      landlordEntityType: formData.landlordEntityType,
       tenantName: formData.tenantName,
       tenantEmail: formData.tenantEmail,
       tenantEntityType: formData.tenantEntityType,
@@ -193,6 +210,20 @@ export function CreateLeaseWizard({
       return;
     }
 
+    // Validate names are not placeholders
+    const landlordName = formData.landlordLegalName || managerName;
+    const tenantName = formData.tenantName;
+
+    if (isPlaceholderName(landlordName)) {
+      toast.error('Please enter a valid legal name for the Landlord (not "admin", "owner", etc.)');
+      return;
+    }
+
+    if (isPlaceholderName(tenantName)) {
+      toast.error('Please enter a valid legal name for the Tenant (not "tenant", "user", etc.)');
+      return;
+    }
+
     setIsGeneratingLease(true);
     try {
       const leaseData = {
@@ -201,9 +232,10 @@ export function CreateLeaseWizard({
         propertyCity: selectedProperty.city,
         propertyState: selectedProperty.state,
         propertyZip: selectedProperty.zip_code,
-        landlordName: managerName,
-        landlordEmail: managerEmail,
-        landlordEntityType: 'individual' as EntityType,
+        landlordName: formData.landlordLegalName || managerName,
+        landlordEmail: formData.landlordLegalEmail || managerEmail,
+        landlordEntityType: formData.landlordEntityType,
+        landlordStateOfFormation: formData.landlordStateOfFormation || undefined,
         tenantName: formData.tenantName,
         tenantEmail: formData.tenantEmail,
         tenantEntityType: formData.tenantEntityType,
@@ -340,6 +372,10 @@ export function CreateLeaseWizard({
       tenantEntityType: 'individual',
       tenantStateOfFormation: '',
       guarantorName: '',
+      landlordLegalName: managerName || '',
+      landlordLegalEmail: managerEmail || '',
+      landlordEntityType: 'individual',
+      landlordStateOfFormation: '',
       propertyId: '',
       leaseType: 'gross',
       startDate: '',
@@ -414,9 +450,27 @@ export function CreateLeaseWizard({
               </div>
             )}
 
-            {/* Tenant Entity Type Section */}
+            {/* Tenant Legal Name & Entity Type Section */}
             {formData.tenantId && (
               <div className="space-y-4 p-4 border border-border rounded-lg bg-secondary/20">
+                <div className="space-y-2">
+                  <Label className="text-base font-medium">Tenant Legal Name for Lease <span className="text-destructive">*</span></Label>
+                  <Input
+                    value={formData.tenantName}
+                    onChange={(e) => updateFormData({ tenantName: e.target.value })}
+                    placeholder="Full legal name or business name"
+                    className={isPlaceholderName(formData.tenantName) ? 'border-destructive' : ''}
+                  />
+                  {isPlaceholderName(formData.tenantName) && (
+                    <p className="text-xs text-destructive">
+                      Please enter a valid legal name (not "tenant", "admin", etc.)
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    This name will appear on the legal lease document. Use the full legal name or registered business name.
+                  </p>
+                </div>
+
                 <Label className="text-base font-medium">Tenant Entity Type</Label>
                 <div className="grid grid-cols-3 gap-3">
                   {(['individual', 'llc', 'corporation'] as EntityType[]).map((type) => (
@@ -459,6 +513,66 @@ export function CreateLeaseWizard({
                       </p>
                     </div>
                   </>
+                )}
+
+                {/* Landlord Information Section */}
+                <Separator className="my-4" />
+                <Label className="text-base font-medium">Landlord Information for Lease</Label>
+                
+                <div className="space-y-2">
+                  <Label>Landlord Legal Name <span className="text-destructive">*</span></Label>
+                  <Input
+                    value={formData.landlordLegalName}
+                    onChange={(e) => updateFormData({ landlordLegalName: e.target.value })}
+                    placeholder="Full legal name or business name"
+                    className={isPlaceholderName(formData.landlordLegalName) ? 'border-destructive' : ''}
+                  />
+                  {isPlaceholderName(formData.landlordLegalName) && (
+                    <p className="text-xs text-destructive">
+                      Please enter a valid legal name (not "admin", "owner", etc.)
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Landlord Email</Label>
+                  <Input
+                    type="email"
+                    value={formData.landlordLegalEmail}
+                    onChange={(e) => updateFormData({ landlordLegalEmail: e.target.value })}
+                    placeholder="Legal contact email"
+                  />
+                </div>
+
+                <Label className="text-sm font-medium">Landlord Entity Type</Label>
+                <div className="grid grid-cols-3 gap-3">
+                  {(['individual', 'llc', 'corporation'] as EntityType[]).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => updateFormData({ landlordEntityType: type })}
+                      className={`p-3 rounded-lg border text-center transition-all ${
+                        formData.landlordEntityType === type
+                          ? 'border-primary bg-primary/10 ring-1 ring-primary'
+                          : 'border-border hover:border-primary/50 bg-background'
+                      }`}
+                    >
+                      <p className="font-medium text-foreground capitalize">
+                        {type === 'llc' ? 'LLC' : type === 'corporation' ? 'Corporation' : 'Individual'}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+
+                {formData.landlordEntityType !== 'individual' && (
+                  <div className="space-y-2">
+                    <Label>Landlord State of Formation</Label>
+                    <Input
+                      value={formData.landlordStateOfFormation}
+                      onChange={(e) => updateFormData({ landlordStateOfFormation: e.target.value })}
+                      placeholder="e.g., Delaware, California"
+                    />
+                  </div>
                 )}
               </div>
             )}
@@ -911,19 +1025,31 @@ export function CreateLeaseWizard({
       case 6: // Confirm & Send
         return (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-secondary/50 border border-border">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-lg bg-secondary/50 border border-border">
+              <div>
+                <p className="text-sm text-muted-foreground">Landlord</p>
+                <p className="font-medium">{formData.landlordLegalName}</p>
+                <p className="text-sm text-muted-foreground">{formData.landlordLegalEmail}</p>
+                <Badge variant="outline" className="mt-1 text-xs capitalize">
+                  {formData.landlordEntityType === 'llc' ? 'LLC' : formData.landlordEntityType}
+                </Badge>
+              </div>
               <div>
                 <p className="text-sm text-muted-foreground">Tenant</p>
                 <p className="font-medium">{formData.tenantName}</p>
                 <p className="text-sm text-muted-foreground">{formData.tenantEmail}</p>
+                <Badge variant="outline" className="mt-1 text-xs capitalize">
+                  {formData.tenantEntityType === 'llc' ? 'LLC' : formData.tenantEntityType}
+                </Badge>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Property</p>
-                <p className="font-medium">{selectedProperty?.address}</p>
-                <p className="text-sm text-muted-foreground">
-                  {selectedProperty?.city}, {selectedProperty?.state}
-                </p>
-              </div>
+            </div>
+
+            <div className="p-4 rounded-lg bg-secondary/50 border border-border">
+              <p className="text-sm text-muted-foreground">Property</p>
+              <p className="font-medium">{selectedProperty?.address}</p>
+              <p className="text-sm text-muted-foreground">
+                {selectedProperty?.city}, {selectedProperty?.state} {selectedProperty?.zip_code}
+              </p>
             </div>
 
             <div className="grid grid-cols-3 gap-4 p-4 rounded-lg bg-secondary/50 border border-border">
