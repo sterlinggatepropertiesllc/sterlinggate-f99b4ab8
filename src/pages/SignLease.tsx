@@ -282,7 +282,7 @@ export default function SignLease() {
               </CardHeader>
               
               <CardContent className="p-0">
-                <ScrollArea className="h-[500px]">
+                <ScrollArea className="h-[600px]">
                   <div className="p-6">
                     {lease.terms ? (
                       <div 
@@ -293,6 +293,67 @@ export default function SignLease() {
                       <div className="text-center py-12 text-muted-foreground">
                         <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
                         <p>Lease document content not available</p>
+                      </div>
+                    )}
+
+                    {/* Signatures Section in Preview */}
+                    {lease.signatures && lease.signatures.length > 0 && (
+                      <div className="mt-8 pt-8 border-t border-border">
+                        <h3 className="text-lg font-bold mb-6 text-center">SIGNATURES</h3>
+                        <div className="border-t-2 border-foreground/20 pt-4 mb-4" />
+                        
+                        <div className="grid md:grid-cols-2 gap-8">
+                          {/* Landlord Signature */}
+                          {lease.signatures
+                            .filter((sig: any) => sig.signer_id === lease.manager_id)
+                            .map((sig: any) => (
+                              <div key={sig.id} className="space-y-2">
+                                <p className="font-semibold text-sm text-muted-foreground">LANDLORD:</p>
+                                {sig.signature_data && (
+                                  <img 
+                                    src={sig.signature_data} 
+                                    alt="Landlord Signature" 
+                                    className="h-16 object-contain bg-white rounded border border-border p-1"
+                                  />
+                                )}
+                                <div className="border-b border-foreground/40 w-full" />
+                                <p className="font-medium">{managerProfile?.full_name || managerProfile?.email}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  Date: {format(new Date(sig.signed_at), 'MMMM d, yyyy')}
+                                </p>
+                              </div>
+                            ))}
+
+                          {/* Tenant Signature */}
+                          {lease.signatures
+                            .filter((sig: any) => sig.signer_id === lease.tenant_id)
+                            .map((sig: any) => (
+                              <div key={sig.id} className="space-y-2">
+                                <p className="font-semibold text-sm text-muted-foreground">TENANT:</p>
+                                {sig.signature_data && (
+                                  <img 
+                                    src={sig.signature_data} 
+                                    alt="Tenant Signature" 
+                                    className="h-16 object-contain bg-white rounded border border-border p-1"
+                                  />
+                                )}
+                                <div className="border-b border-foreground/40 w-full" />
+                                <p className="font-medium">{tenantProfile?.full_name || tenantProfile?.email}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  Date: {format(new Date(sig.signed_at), 'MMMM d, yyyy')}
+                                </p>
+                              </div>
+                            ))}
+                        </div>
+
+                        {/* Document Hash */}
+                        {lease.document_hash && (
+                          <div className="mt-8 pt-4 border-t border-border/50">
+                            <p className="text-xs text-muted-foreground text-center font-mono">
+                              Document Hash: {lease.document_hash}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
