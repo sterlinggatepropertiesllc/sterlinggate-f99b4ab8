@@ -5,12 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useUpdateTenant, useDeleteTenant, useRevokeTenantAccess } from '@/hooks/useTenants';
+import { useAuth } from '@/contexts/AuthContext';
+import { BalanceSection } from './BalanceSection';
 import { cn } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 import { Users, Mail, Phone, MapPin, DollarSign, CalendarIcon, FileText, Shield, Trash2, Save, X } from 'lucide-react';
@@ -28,6 +29,7 @@ interface TenantWithRelations {
   notes: string | null;
   is_active: boolean;
   manager_id: string | null;
+  current_balance: number | null;
   user: {
     id: string;
     email: string;
@@ -50,6 +52,7 @@ interface TenantDetailsDialogProps {
 }
 
 export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: TenantDetailsDialogProps) {
+  const { user } = useAuth();
   const [editedTenant, setEditedTenant] = useState<{
     property_id: string | null;
     rent_amount: number | null;
@@ -279,6 +282,20 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
             />
           </div>
         </div>
+
+        <Separator />
+
+        {/* Balance Section */}
+        {user && tenant.manager_id && (
+          <BalanceSection
+            tenantId={tenant.id}
+            currentBalance={tenant.current_balance || 0}
+            rentAmount={tenant.rent_amount}
+            leaseStartDate={tenant.lease_start_date}
+            managerId={user.id}
+            onBalanceUpdate={() => {}}
+          />
+        )}
 
         <Separator />
 
