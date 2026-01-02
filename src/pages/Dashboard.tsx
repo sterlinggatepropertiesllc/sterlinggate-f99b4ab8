@@ -12,6 +12,7 @@ import { useLeases } from '@/hooks/useLeases';
 import { useUnreadCount } from '@/hooks/useMessages';
 import { usePropertyImages } from '@/hooks/usePropertyImages';
 import { useProfile } from '@/hooks/useProfiles';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -20,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
@@ -56,7 +58,8 @@ import {
   Layers,
   Download,
   PenTool,
-  Shield
+  Shield,
+  Menu
 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
@@ -76,6 +79,9 @@ export default function Dashboard() {
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedLeaseForCert, setSelectedLeaseForCert] = useState<any>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const isMobile = useIsMobile();
 
   const queryClient = useQueryClient();
   const { data: properties, isLoading: propertiesLoading } = useManagerProperties(user?.id);
@@ -270,83 +276,115 @@ export default function Dashboard() {
     { id: 'audit', label: 'Audit', icon: Receipt },
   ];
 
+  // Sidebar content component
+  const SidebarContent = ({ onNavClick }: { onNavClick?: () => void }) => (
+    <>
+      <Link to="/" className="flex items-center mb-8 w-full">
+        <img src={logo} alt="Sterling Gate Properties" className="h-16 md:h-24 w-auto object-contain" />
+      </Link>
+      
+      <nav className="space-y-1 flex-1">
+        {navItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => {
+              setActiveTab(item.id as DashboardTab);
+              onNavClick?.();
+            }}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-smooth text-left min-h-[48px] active:bg-sidebar-accent/70 ${
+              activeTab === item.id
+                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+            }`}
+          >
+            <span className="flex items-center gap-3">
+              <item.icon className="h-5 w-5" />
+              {item.label}
+            </span>
+            {item.badge && item.badge > 0 && (
+              <Badge variant="secondary" className="bg-sidebar-primary text-sidebar-primary-foreground text-xs">
+                {item.badge}
+              </Badge>
+            )}
+          </button>
+        ))}
+      </nav>
+
+      <Separator className="my-4 bg-sidebar-border" />
+      
+      <Button 
+        variant="ghost" 
+        onClick={() => signOut()} 
+        className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 min-h-[48px]"
+      >
+        <LogOut className="mr-3 h-5 w-5" /> Sign Out
+      </Button>
+    </>
+  );
+
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-64 bg-sidebar min-h-screen p-2 flex flex-col">
-          <Link to="/" className="flex items-center mb-8 w-full">
-            <img src={logo} alt="Sterling Gate Properties" className="h-24 w-auto object-contain" />
-          </Link>
-          
-          <nav className="space-y-1 flex-1">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id as DashboardTab)}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-smooth text-left ${
-                  activeTab === item.id
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                    : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
-                }`}
-              >
-                <span className="flex items-center gap-3">
-                  <item.icon className="h-5 w-5" />
-                  {item.label}
-                </span>
-                {item.badge && item.badge > 0 && (
-                  <Badge variant="secondary" className="bg-sidebar-primary text-sidebar-primary-foreground text-xs">
-                    {item.badge}
-                  </Badge>
-                )}
-              </button>
-            ))}
-          </nav>
+      <div className="flex w-full">
+        {/* Mobile Sidebar Sheet */}
+        {isMobile && (
+          <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+            <SheetContent side="left" className="w-72 p-4 bg-sidebar flex flex-col">
+              <SidebarContent onNavClick={() => setIsMobileMenuOpen(false)} />
+            </SheetContent>
+          </Sheet>
+        )}
 
-          <Separator className="my-4 bg-sidebar-border" />
-          
-          <Button 
-            variant="ghost" 
-            onClick={() => signOut()} 
-            className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
-          >
-            <LogOut className="mr-3 h-5 w-5" /> Sign Out
-          </Button>
-        </aside>
+        {/* Desktop Sidebar */}
+        {!isMobile && (
+          <aside className="w-64 bg-sidebar min-h-screen p-2 flex flex-col flex-shrink-0">
+            <SidebarContent />
+          </aside>
+        )}
 
         {/* Main Content */}
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto min-w-0">
           {/* Top Header Bar */}
-          <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border/50 px-8 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-serif text-foreground">
+          <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 md:px-8 py-3 md:py-4">
+            <div className="flex items-center justify-between gap-3">
+              {/* Mobile hamburger */}
+              {isMobile && (
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => setIsMobileMenuOpen(true)}
+                  className="min-h-[44px] min-w-[44px]"
+                >
+                  <Menu className="h-5 w-5" />
+                </Button>
+              )}
+              <div className="flex-1 min-w-0">
+                <h2 className="text-base md:text-lg font-serif text-foreground truncate">
                   {navItems.find(item => item.id === activeTab)?.label || 'Dashboard'}
                 </h2>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 md:gap-2">
                 <NotificationBell />
                 <SettingsDialog />
               </div>
             </div>
           </div>
 
-          <div className="p-8">
+          <div className="p-4 md:p-8">
           {/* Overview Tab */}
           {activeTab === 'overview' && (
             <div className="animate-fade-in">
-              <div className="flex items-center justify-between mb-8">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8">
                 <div>
-                  <h1 className="text-3xl font-serif">Dashboard</h1>
-                  <p className="text-muted-foreground">Welcome back! Here's your property overview.</p>
+                  <h1 className="text-2xl md:text-3xl font-serif">Dashboard</h1>
+                  <p className="text-muted-foreground text-sm md:text-base">Welcome back! Here's your property overview.</p>
                 </div>
-                <Button onClick={() => setIsAddPropertyOpen(true)}>
+                <Button onClick={() => setIsAddPropertyOpen(true)} className="w-full sm:w-auto min-h-[44px]">
                   <Plus className="mr-2 h-4 w-4" /> Add Property
                 </Button>
               </div>
 
               {/* Stats Grid */}
-              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-6 md:mb-8">
                 <Card className="hover:shadow-card transition-smooth">
                   <CardContent className="pt-6">
                     <div className="flex items-center justify-between">

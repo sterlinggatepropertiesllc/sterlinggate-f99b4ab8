@@ -2,12 +2,13 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMessages, useConversation, useSendMessage, useMarkAsRead } from '@/hooks/useMessages';
 import { useMessageAttachments } from '@/hooks/useMessageAttachments';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Send, MessageSquare, User, Paperclip } from 'lucide-react';
+import { Send, MessageSquare, User, Paperclip, ArrowLeft } from 'lucide-react';
 import { MessageBubble } from './MessageBubble';
 import { AttachmentPreview } from './AttachmentPreview';
 
@@ -22,6 +23,7 @@ interface Conversation {
 
 export function MessagingCenter() {
   const { user } = useAuth();
+  const isMobile = useIsMobile();
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -148,6 +150,105 @@ export function MessagingCenter() {
 
   const selectedConv = conversations.find((c) => c.id === selectedConversation);
 
+  // Mobile: show conversation list OR message thread
+  if (isMobile) {
+    if (selectedConversation && selectedConv) {
+      return (
+        <div className="flex flex-col h-[calc(100vh-180px)] rounded-lg border border-border overflow-hidden bg-card">
+          {/* Header with back button */}
+          <div className="p-3 border-b border-border flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => setSelectedConversation(null)} className="min-h-[44px] min-w-[44px]">
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <Avatar className="h-10 w-10">
+              <AvatarFallback className="bg-primary/20 text-primary">
+                {selectedConv.name.charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-foreground truncate">{selectedConv.name}</p>
+              <p className="text-xs text-muted-foreground truncate">{selectedConv.email}</p>
+            </div>
+          </div>
+
+          <ScrollArea className="flex-1 p-3">
+            <div className="space-y-3">
+              {conversationMessages?.map((msg) => (
+                <MessageBubble
+                  key={msg.id}
+                  content={msg.content}
+                  timestamp={msg.created_at}
+                  isOwn={msg.sender_id === user?.id}
+                  attachmentUrl={msg.attachment_url}
+                  attachmentType={msg.attachment_type}
+                  attachmentName={msg.attachment_name}
+                />
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+          </ScrollArea>
+
+          <div className="p-3 border-t border-border space-y-2">
+            {selectedFile && (
+              <AttachmentPreview file={selectedFile} onRemove={() => setSelectedFile(null)} uploading={uploading} />
+            )}
+            <div className="flex gap-2">
+              <input ref={fileInputRef} type="file" accept={allowedTypes} onChange={handleFileSelect} className="hidden" />
+              <Button variant="outline" size="icon" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="flex-shrink-0 min-h-[44px] min-w-[44px]">
+                <Paperclip className="h-4 w-4" />
+              </Button>
+              <Input value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Type a message..." onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()} disabled={uploading} className="min-h-[44px]" />
+              <Button onClick={handleSendMessage} disabled={(!newMessage.trim() && !selectedFile) || uploading} className="min-h-[44px] min-w-[44px]">
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Conversation list
+    return (
+      <div className="flex flex-col h-[calc(100vh-180px)] rounded-lg border border-border overflow-hidden bg-card">
+        <div className="p-4 border-b border-border">
+          <h3 className="font-semibold text-foreground">Messages</h3>
+        </div>
+        <ScrollArea className="flex-1">
+          {conversations.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              <MessageSquare className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p>No conversations yet</p>
+            </div>
+          ) : (
+            conversations.map((conv) => (
+              <button
+                key={conv.id}
+                onClick={() => setSelectedConversation(conv.id)}
+                className="w-full p-4 text-left border-b border-border transition-colors hover:bg-secondary/50 min-h-[72px] active:bg-primary/10"
+              >
+                <div className="flex items-start gap-3">
+                  <Avatar className="h-10 w-10">
+                    <AvatarFallback className="bg-primary/20 text-primary">{conv.name.charAt(0).toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-foreground truncate">{conv.name}</p>
+                      {conv.unreadCount > 0 && (
+                        <span className="bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full">{conv.unreadCount}</span>
+                      )}
+                    </div>
+                    {conv.lastMessage && <p className="text-sm text-muted-foreground truncate">{conv.lastMessage}</p>}
+                  </div>
+                </div>
+              </button>
+            ))
+          )}
+        </ScrollArea>
+      </div>
+    );
+  }
+
+  // Desktop: side-by-side layout
   return (
     <div className="flex h-[600px] rounded-lg border border-border overflow-hidden bg-card">
       {/* Conversation List */}
@@ -167,31 +268,21 @@ export function MessagingCenter() {
                 key={conv.id}
                 onClick={() => setSelectedConversation(conv.id)}
                 className={`w-full p-4 text-left border-b border-border transition-colors ${
-                  selectedConversation === conv.id
-                    ? 'bg-primary/10'
-                    : 'hover:bg-secondary/50'
+                  selectedConversation === conv.id ? 'bg-primary/10' : 'hover:bg-secondary/50'
                 }`}
               >
                 <div className="flex items-start gap-3">
                   <Avatar className="h-10 w-10">
-                    <AvatarFallback className="bg-primary/20 text-primary">
-                      {conv.name.charAt(0).toUpperCase()}
-                    </AvatarFallback>
+                    <AvatarFallback className="bg-primary/20 text-primary">{conv.name.charAt(0).toUpperCase()}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <p className="font-medium text-foreground truncate">{conv.name}</p>
                       {conv.unreadCount > 0 && (
-                        <span className="bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full">
-                          {conv.unreadCount}
-                        </span>
+                        <span className="bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full">{conv.unreadCount}</span>
                       )}
                     </div>
-                    {conv.lastMessage && (
-                      <p className="text-sm text-muted-foreground truncate">
-                        {conv.lastMessage}
-                      </p>
-                    )}
+                    {conv.lastMessage && <p className="text-sm text-muted-foreground truncate">{conv.lastMessage}</p>}
                   </div>
                 </div>
               </button>
@@ -206,9 +297,7 @@ export function MessagingCenter() {
           <>
             <div className="p-4 border-b border-border flex items-center gap-3">
               <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-primary/20 text-primary">
-                  {selectedConv.name.charAt(0).toUpperCase()}
-                </AvatarFallback>
+                <AvatarFallback className="bg-primary/20 text-primary">{selectedConv.name.charAt(0).toUpperCase()}</AvatarFallback>
               </Avatar>
               <div>
                 <p className="font-medium text-foreground">{selectedConv.name}</p>
@@ -219,56 +308,21 @@ export function MessagingCenter() {
             <ScrollArea className="flex-1 p-4">
               <div className="space-y-3">
                 {conversationMessages?.map((msg) => (
-                  <MessageBubble
-                    key={msg.id}
-                    content={msg.content}
-                    timestamp={msg.created_at}
-                    isOwn={msg.sender_id === user?.id}
-                    attachmentUrl={msg.attachment_url}
-                    attachmentType={msg.attachment_type}
-                    attachmentName={msg.attachment_name}
-                  />
+                  <MessageBubble key={msg.id} content={msg.content} timestamp={msg.created_at} isOwn={msg.sender_id === user?.id} attachmentUrl={msg.attachment_url} attachmentType={msg.attachment_type} attachmentName={msg.attachment_name} />
                 ))}
                 <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
 
             <div className="p-4 border-t border-border space-y-3">
-              {selectedFile && (
-                <AttachmentPreview
-                  file={selectedFile}
-                  onRemove={() => setSelectedFile(null)}
-                  uploading={uploading}
-                />
-              )}
+              {selectedFile && <AttachmentPreview file={selectedFile} onRemove={() => setSelectedFile(null)} uploading={uploading} />}
               <div className="flex gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept={allowedTypes}
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="flex-shrink-0"
-                >
+                <input ref={fileInputRef} type="file" accept={allowedTypes} onChange={handleFileSelect} className="hidden" />
+                <Button variant="outline" size="icon" onClick={() => fileInputRef.current?.click()} disabled={uploading} className="flex-shrink-0">
                   <Paperclip className="h-4 w-4" />
                 </Button>
-                <Input
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Type a message..."
-                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-                  disabled={uploading}
-                />
-                <Button 
-                  onClick={handleSendMessage} 
-                  disabled={(!newMessage.trim() && !selectedFile) || uploading}
-                >
+                <Input value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Type a message..." onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()} disabled={uploading} />
+                <Button onClick={handleSendMessage} disabled={(!newMessage.trim() && !selectedFile) || uploading}>
                   <Send className="h-4 w-4" />
                 </Button>
               </div>

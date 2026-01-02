@@ -33,7 +33,7 @@ export function SettingsDialog() {
           <Settings className="h-5 w-5" />
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[550px] max-h-[85vh] overflow-hidden">
+      <DialogContent className="max-w-[95vw] sm:max-w-[550px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-serif text-xl">Settings</DialogTitle>
           <DialogDescription>

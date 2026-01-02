@@ -145,7 +145,7 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
 
         {/* Editable Fields */}
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Property Assignment */}
             <div className="col-span-2">
               <Label htmlFor="property" className="flex items-center gap-2">
