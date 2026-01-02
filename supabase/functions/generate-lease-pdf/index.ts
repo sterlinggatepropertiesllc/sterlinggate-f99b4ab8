@@ -220,14 +220,41 @@ serve(async (req) => {
       size: 18,
       font: timesBold,
     });
+    yPosition -= 10;
+
+    // Draw a decorative line under the header
+    page.drawLine({
+      start: { x: 50, y: yPosition },
+      end: { x: 562, y: yPosition },
+      thickness: 2,
+      color: rgb(0, 0, 0),
+    });
     yPosition -= 40;
 
-    // Draw each signature
+    // Draw each signature with proper layout
     if (lease.signatures && lease.signatures.length > 0) {
-      for (const sig of lease.signatures) {
-        const signerName = sig.signer_id === lease.tenant_id 
-          ? (lease.tenant?.full_name || lease.tenant?.email || 'Tenant')
-          : (lease.manager?.full_name || lease.manager?.email || 'Landlord');
+      // Separate landlord and tenant signatures
+      const landlordSig = lease.signatures.find((s: any) => s.signer_id === lease.manager_id);
+      const tenantSig = lease.signatures.find((s: any) => s.signer_id === lease.tenant_id);
+
+      // Helper function to draw a signature block
+      const drawSignatureBlock = async (
+        sig: any, 
+        role: string, 
+        name: string, 
+        xOffset: number
+      ) => {
+        let localY = yPosition;
+
+        // Role label
+        page.drawText(role.toUpperCase() + ':', {
+          x: xOffset,
+          y: localY,
+          size: 10,
+          font: timesBold,
+          color: rgb(0.3, 0.3, 0.3),
+        });
+        localY -= 20;
 
         // Draw signature image if it's base64
         if (sig.signature_data && sig.signature_data.startsWith('data:image')) {
@@ -236,63 +263,145 @@ serve(async (req) => {
             const signatureImageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
             const signatureImage = await pdfDoc.embedPng(signatureImageBytes);
             
-            const sigDims = signatureImage.scale(0.3);
+            // Scale to fit nicely
+            const maxWidth = 180;
+            const maxHeight = 60;
+            let sigWidth = signatureImage.width;
+            let sigHeight = signatureImage.height;
+            
+            if (sigWidth > maxWidth) {
+              const ratio = maxWidth / sigWidth;
+              sigWidth = maxWidth;
+              sigHeight = sigHeight * ratio;
+            }
+            if (sigHeight > maxHeight) {
+              const ratio = maxHeight / sigHeight;
+              sigHeight = maxHeight;
+              sigWidth = sigWidth * ratio;
+            }
+
             page.drawImage(signatureImage, {
-              x: 50,
-              y: yPosition - sigDims.height,
-              width: sigDims.width,
-              height: sigDims.height,
+              x: xOffset,
+              y: localY - sigHeight,
+              width: sigWidth,
+              height: sigHeight,
             });
-            yPosition -= sigDims.height + 10;
+            localY -= sigHeight + 5;
           } catch (e) {
             console.error('Failed to embed signature image:', e);
+            localY -= 30;
           }
+        } else {
+          localY -= 30;
         }
 
         // Signature line
         page.drawLine({
-          start: { x: 50, y: yPosition },
-          end: { x: 300, y: yPosition },
+          start: { x: xOffset, y: localY },
+          end: { x: xOffset + 200, y: localY },
           thickness: 1,
           color: rgb(0, 0, 0),
         });
-        yPosition -= 15;
+        localY -= 15;
 
-        page.drawText(signerName, {
-          x: 50,
-          y: yPosition,
+        // Signer name
+        page.drawText(name, {
+          x: xOffset,
+          y: localY,
           size: 11,
           font: timesBold,
         });
-        yPosition -= 15;
+        localY -= 18;
 
-        page.drawText(`Signed: ${new Date(sig.signed_at).toLocaleString()}`, {
-          x: 50,
-          y: yPosition,
-          size: 9,
-          font: helvetica,
-          color: rgb(0.3, 0.3, 0.3),
+        // Format date nicely
+        const signedDate = new Date(sig.signed_at);
+        const formattedDate = signedDate.toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
         });
-        yPosition -= 12;
+
+        page.drawText(`Date: ${formattedDate}`, {
+          x: xOffset,
+          y: localY,
+          size: 10,
+          font: timesRoman,
+        });
+        localY -= 14;
 
         page.drawText(`IP: ${sig.ip_address || 'Not recorded'}`, {
+          x: xOffset,
+          y: localY,
+          size: 8,
+          font: helvetica,
+          color: rgb(0.4, 0.4, 0.4),
+        });
+        localY -= 12;
+
+        page.drawText(`Signature Hash: ${sig.hash_id.substring(0, 24)}...`, {
+          x: xOffset,
+          y: localY,
+          size: 7,
+          font: helvetica,
+          color: rgb(0.5, 0.5, 0.5),
+        });
+
+        return localY;
+      };
+
+      // Draw landlord signature on the left
+      if (landlordSig) {
+        const landlordName = lease.manager?.full_name || lease.manager?.email || 'Landlord';
+        await drawSignatureBlock(landlordSig, 'Landlord', landlordName, 50);
+      }
+
+      // Draw tenant signature on the right
+      if (tenantSig) {
+        const tenantName = lease.tenant?.full_name || lease.tenant?.email || 'Tenant';
+        await drawSignatureBlock(tenantSig, 'Tenant', tenantName, 320);
+      }
+
+      // Move yPosition down after signatures
+      yPosition -= 180;
+
+      // Document verification section
+      yPosition -= 20;
+      page.drawLine({
+        start: { x: 50, y: yPosition },
+        end: { x: 562, y: yPosition },
+        thickness: 1,
+        color: rgb(0.7, 0.7, 0.7),
+      });
+      yPosition -= 25;
+
+      page.drawText('DOCUMENT VERIFICATION', {
+        x: 50,
+        y: yPosition,
+        size: 10,
+        font: timesBold,
+        color: rgb(0.3, 0.3, 0.3),
+      });
+      yPosition -= 18;
+
+      if (lease.document_hash) {
+        page.drawText(`Document Hash ID: ${lease.document_hash}`, {
           x: 50,
           y: yPosition,
           size: 9,
           font: helvetica,
-          color: rgb(0.3, 0.3, 0.3),
+          color: rgb(0.4, 0.4, 0.4),
         });
-        yPosition -= 12;
-
-        page.drawText(`Hash: ${sig.hash_id.substring(0, 32)}...`, {
-          x: 50,
-          y: yPosition,
-          size: 8,
-          font: helvetica,
-          color: rgb(0.3, 0.3, 0.3),
-        });
-        yPosition -= 40;
+        yPosition -= 14;
       }
+
+      page.drawText(`Generated: ${new Date().toLocaleString()}`, {
+        x: 50,
+        y: yPosition,
+        size: 8,
+        font: helvetica,
+        color: rgb(0.5, 0.5, 0.5),
+      });
+
     } else {
       page.drawText('No signatures recorded yet.', {
         x: 50,
