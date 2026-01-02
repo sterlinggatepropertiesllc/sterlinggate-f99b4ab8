@@ -8,10 +8,11 @@ const corsHeaders = {
 };
 
 interface CheckoutRequest {
-  payment_type: 'application_fee' | 'security_deposit' | 'rent';
+  payment_type: 'application_fee' | 'security_deposit' | 'rent' | 'balance';
   property_id?: string;
   lease_id?: string;
-  amount?: number; // In cents, for dynamic amounts (deposit/rent)
+  tenant_id?: string;
+  amount?: number; // In cents, for dynamic amounts (deposit/rent/balance)
 }
 
 serve(async (req) => {
@@ -66,6 +67,14 @@ serve(async (req) => {
       throw new Error("amount is required for deposit/rent payments");
     }
 
+    if (payment_type === 'balance' && !body.tenant_id) {
+      throw new Error("tenant_id is required for balance payments");
+    }
+
+    if (payment_type === 'balance' && !amount) {
+      throw new Error("amount is required for balance payments");
+    }
+
     // Fetch application fee from settings if needed
     let applicationFeeAmount = 5000; // Default $50 in cents
     if (payment_type === 'application_fee') {
@@ -114,6 +123,19 @@ serve(async (req) => {
         quantity: 1,
       }];
       paymentDescription = "Application Fee";
+    } else if (payment_type === 'balance') {
+      // Balance payment
+      lineItems = [{
+        price_data: {
+          currency: 'usd',
+          product_data: {
+            name: 'Balance Payment',
+          },
+          unit_amount: amount,
+        },
+        quantity: 1,
+      }];
+      paymentDescription = "Balance Payment";
     } else {
       // Dynamic amount for deposits and rent
       const productName = payment_type === 'security_deposit' ? 'Security Deposit' : 'Rent Payment';
@@ -138,6 +160,7 @@ serve(async (req) => {
 
     if (property_id) metadata.property_id = property_id;
     if (lease_id) metadata.lease_id = lease_id;
+    if (body.tenant_id) metadata.tenant_id = body.tenant_id;
 
     // Create checkout session
     const origin = req.headers.get("origin") || "http://localhost:5173";
