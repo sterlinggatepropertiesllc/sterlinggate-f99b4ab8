@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Navigate, Link } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMyApplications } from '@/hooks/useApplications';
 import { useLeases } from '@/hooks/useLeases';
@@ -69,6 +69,49 @@ export default function TenantPortal() {
 
   // Fetch tenant's payment history
   const { data: payments, isLoading: paymentsLoading } = usePayments(undefined, user?.id);
+
+  // Fetch tenant's actual balance from tenants table
+  const { data: tenantRecord, refetch: refetchTenant } = useQuery({
+    queryKey: ['tenant-balance', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data, error } = await supabase
+        .from('tenants')
+        .select('id, current_balance, rent_amount, lease_start_date')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .maybeSingle();
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  // Realtime subscription for tenant's balance
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel('tenant-balance-portal')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'tenants',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          refetchTenant();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, refetchTenant]);
 
   // Realtime subscription for tenant's leases
   useEffect(() => {
@@ -144,8 +187,9 @@ export default function TenantPortal() {
   const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
   const nextRentDueDate = nextMonth.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-  // Calculate current balance (pending payments + next rent if not paid this month)
-  const currentBalance = pendingPayments + (activeLeases.length > 0 ? nextRent : 0);
+  // Use actual balance from tenant record
+  const currentBalance = tenantRecord?.current_balance ?? 0;
+  const isOverdue = currentBalance > 0;
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -292,16 +336,26 @@ export default function TenantPortal() {
 
                 {/* Summary Cards */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-                  <Card className="p-4 md:p-5 hover:shadow-md transition-shadow">
+                  <Card className={`p-4 md:p-5 hover:shadow-md transition-shadow ${isOverdue ? 'border-destructive/50 bg-destructive/5' : ''}`}>
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
                         <p className="text-xs md:text-sm text-muted-foreground">Current Balance</p>
-                        <p className="text-xl md:text-2xl font-serif mt-1 truncate">
-                          ${currentBalance.toLocaleString()}
+                        <p className={`text-xl md:text-2xl font-serif mt-1 truncate ${isOverdue ? 'text-destructive' : ''}`}>
+                          ${Math.abs(currentBalance).toLocaleString()}
                         </p>
+                        {isOverdue && (
+                          <Badge variant="destructive" className="mt-1 text-xs">
+                            Amount Due
+                          </Badge>
+                        )}
+                        {currentBalance < 0 && (
+                          <Badge variant="secondary" className="mt-1 text-xs bg-primary/10 text-primary">
+                            Credit
+                          </Badge>
+                        )}
                       </div>
-                      <div className="w-10 h-10 md:w-11 md:h-11 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <DollarSign className="h-5 w-5 md:h-6 md:w-6 text-primary" />
+                      <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${isOverdue ? 'bg-destructive/10' : 'bg-primary/10'}`}>
+                        <DollarSign className={`h-5 w-5 md:h-6 md:w-6 ${isOverdue ? 'text-destructive' : 'text-primary'}`} />
                       </div>
                     </div>
                   </Card>
