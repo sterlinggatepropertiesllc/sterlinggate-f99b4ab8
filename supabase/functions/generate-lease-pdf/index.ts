@@ -447,7 +447,7 @@ serve(async (req) => {
       .update({ document_hash: documentHash })
       .eq('id', leaseId);
 
-    // STEP 4: If includeCertificate, append certificate as final page
+    // STEP 4: If includeCertificate, append certificate as final page; otherwise just add page numbers
     let finalPdfBytes: Uint8Array;
     
     if (includeCertificate && lease.signatures && lease.signatures.length > 0) {
@@ -461,9 +461,13 @@ serve(async (req) => {
         tenantSig,
         documentHash
       );
+      // Page numbers are added inside appendCertificatePage
       finalPdfBytes = await finalPdf.save();
     } else {
-      finalPdfBytes = mainPdfBytes;
+      // No certificate, just add page numbers to main PDF
+      const pdfWithNumbers = await PDFDocument.load(mainPdfBytes);
+      await addPageNumbers(pdfWithNumbers);
+      finalPdfBytes = await pdfWithNumbers.save();
     }
 
     console.log('PDF generated successfully for lease:', leaseId);
@@ -516,10 +520,11 @@ async function generateMainLeasePDF(
   };
 
   // ==========================================
-  // COVER / HEADER
+  // PAGE 1: COVER / SUMMARY PAGE (Non-Contractual)
   // ==========================================
   
-  ctx.page.drawText('COMMERCIAL LEASE AGREEMENT', {
+  // Title
+  ctx.page.drawText('COMMERCIAL GROSS LEASE AGREEMENT', {
     x: ctx.marginLeft,
     y: ctx.yPosition,
     size: 18,
@@ -527,6 +532,43 @@ async function generateMainLeasePDF(
     color: rgb(0, 0, 0),
   });
   ctx.yPosition -= 28;
+
+  // Subtitle
+  ctx.page.drawText('LEASE SUMMARY — FOR REFERENCE ONLY', {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
+    size: 10,
+    font: bold,
+    color: rgb(0.4, 0.4, 0.4),
+  });
+  ctx.yPosition -= 18;
+
+  // Non-contractual notice
+  ctx.page.drawRectangle({
+    x: ctx.marginLeft,
+    y: ctx.yPosition - 35,
+    width: ctx.pageWidth - ctx.marginLeft - ctx.marginRight,
+    height: 40,
+    color: rgb(0.97, 0.97, 0.97),
+    borderColor: rgb(0.8, 0.8, 0.8),
+    borderWidth: 0.5,
+  });
+
+  ctx.page.drawText('This cover page is a summary for convenience only and is not part of the legally binding agreement.', {
+    x: ctx.marginLeft + 10,
+    y: ctx.yPosition - 18,
+    size: 8,
+    font: italic,
+    color: rgb(0.4, 0.4, 0.4),
+  });
+  ctx.page.drawText('The binding terms begin on the following page under "Commercial Gross Lease Agreement."', {
+    x: ctx.marginLeft + 10,
+    y: ctx.yPosition - 30,
+    size: 8,
+    font: italic,
+    color: rgb(0.4, 0.4, 0.4),
+  });
+  ctx.yPosition -= 55;
 
   // Document ID
   ctx.page.drawText(`Document ID: ${lease.id}`, {
@@ -556,10 +598,7 @@ async function generateMainLeasePDF(
   });
   ctx.yPosition -= 25;
 
-  // ==========================================
-  // PARTIES SECTION
-  // ==========================================
-  
+  // SUMMARY SECTIONS
   ctx.page.drawText('PARTIES', {
     x: ctx.marginLeft,
     y: ctx.yPosition,
@@ -572,10 +611,6 @@ async function generateMainLeasePDF(
   drawWrappedText(ctx, `Tenant: ${tenantName}`, 11, regular);
   ctx.yPosition -= 15;
 
-  // ==========================================
-  // PREMISES SECTION
-  // ==========================================
-  
   ctx.page.drawText('PREMISES', {
     x: ctx.marginLeft,
     y: ctx.yPosition,
@@ -588,11 +623,7 @@ async function generateMainLeasePDF(
   drawWrappedText(ctx, address, 11, regular);
   ctx.yPosition -= 15;
 
-  // ==========================================
-  // TERM SECTION
-  // ==========================================
-  
-  ctx.page.drawText('TERM', {
+  ctx.page.drawText('LEASE TERM', {
     x: ctx.marginLeft,
     y: ctx.yPosition,
     size: 12,
@@ -604,11 +635,7 @@ async function generateMainLeasePDF(
   drawWrappedText(ctx, `End Date: ${formatDateShort(lease.end_date)}`, 11, regular);
   ctx.yPosition -= 15;
 
-  // ==========================================
-  // FINANCIAL TERMS SECTION
-  // ==========================================
-  
-  ctx.page.drawText('FINANCIAL TERMS', {
+  ctx.page.drawText('FINANCIAL SUMMARY', {
     x: ctx.marginLeft,
     y: ctx.yPosition,
     size: 12,
@@ -625,15 +652,79 @@ async function generateMainLeasePDF(
   if (lease.rent_due_day) {
     drawWrappedText(ctx, `Rent Due: Day ${lease.rent_due_day} of each month`, 11, regular);
   }
-  
-  ctx.yPosition -= 20;
+
+  ctx.yPosition -= 30;
+
+  // Execution status
+  ctx.page.drawText('EXECUTION STATUS', {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
+    size: 12,
+    font: bold,
+  });
+  ctx.yPosition -= 18;
+
+  if (landlordSig && tenantSig) {
+    drawWrappedText(ctx, 'Status: Fully Executed', 11, bold);
+    drawWrappedText(ctx, `Landlord signed: ${formatDateShort(landlordSig.signed_at)}`, 10, regular);
+    drawWrappedText(ctx, `Tenant signed: ${formatDateShort(tenantSig.signed_at)}`, 10, regular);
+  } else if (landlordSig || tenantSig) {
+    drawWrappedText(ctx, 'Status: Partially Executed — Awaiting Signature', 11, regular);
+  } else {
+    drawWrappedText(ctx, 'Status: Pending Signatures', 11, regular);
+  }
 
   // ==========================================
-  // LEASE TERMS AND CONDITIONS
+  // PAGE 2+: FORMAL AGREEMENT TEXT
   // ==========================================
   
+  createNewPage(ctx);
+
+  // Formal agreement header
+  ctx.page.drawText('COMMERCIAL GROSS LEASE AGREEMENT', {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
+    size: 16,
+    font: bold,
+    color: rgb(0, 0, 0),
+  });
+  ctx.yPosition -= 25;
+
+  ctx.page.drawLine({
+    start: { x: ctx.marginLeft, y: ctx.yPosition },
+    end: { x: ctx.pageWidth - ctx.marginRight, y: ctx.yPosition },
+    thickness: 1.5,
+    color: rgb(0, 0, 0),
+  });
+  ctx.yPosition -= 20;
+
+  // Preamble
+  ctx.page.drawText('This Commercial Gross Lease Agreement ("Agreement") is entered into as of the date of final', {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
+    size: 10,
+    font: regular,
+  });
+  ctx.yPosition -= 14;
+  ctx.page.drawText('execution by and between the following parties:', {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
+    size: 10,
+    font: regular,
+  });
+  ctx.yPosition -= 25;
+
+  // Parties in agreement
+  drawWrappedText(ctx, `LANDLORD: ${landlordName}`, 11, bold);
+  drawWrappedText(ctx, `TENANT: ${tenantName}`, 11, bold);
+  ctx.yPosition -= 15;
+
+  drawWrappedText(ctx, `PREMISES: ${address}`, 11, regular);
+  ctx.yPosition -= 20;
+
+  // Parse and render lease terms
   if (lease.terms) {
-    ctx.page.drawText('LEASE TERMS AND CONDITIONS', {
+    ctx.page.drawText('TERMS AND CONDITIONS', {
       x: ctx.marginLeft,
       y: ctx.yPosition,
       size: 12,
@@ -655,12 +746,12 @@ async function generateMainLeasePDF(
   }
 
   // ==========================================
-  // SIGNATURES PAGE
+  // EXECUTION PAGE: Traditional Signature Block
   // ==========================================
   
   createNewPage(ctx);
   
-  ctx.page.drawText('SIGNATURES', {
+  ctx.page.drawText('EXECUTION PAGE', {
     x: ctx.marginLeft,
     y: ctx.yPosition,
     size: 16,
@@ -674,45 +765,141 @@ async function generateMainLeasePDF(
     thickness: 2,
     color: rgb(0, 0, 0),
   });
-  ctx.yPosition -= 30;
+  ctx.yPosition -= 25;
 
-  ctx.page.drawText('By signing below, the parties agree to be bound by all terms and conditions set forth in this Lease Agreement.', {
+  ctx.page.drawText('IN WITNESS WHEREOF, the parties have executed this Commercial Gross Lease Agreement', {
     x: ctx.marginLeft,
     y: ctx.yPosition,
     size: 10,
-    font: italic,
-    color: rgb(0.3, 0.3, 0.3),
+    font: regular,
   });
-  ctx.yPosition -= 40;
+  ctx.yPosition -= 14;
+  ctx.page.drawText('as of the dates indicated below.', {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
+    size: 10,
+    font: regular,
+  });
+  ctx.yPosition -= 35;
+
+  // Traditional signature areas
+  ctx.page.drawText('LANDLORD SIGNATURE', {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
+    size: 11,
+    font: bold,
+    color: rgb(0.2, 0.2, 0.2),
+  });
+  
+  ctx.page.drawText('TENANT SIGNATURE', {
+    x: 320,
+    y: ctx.yPosition,
+    size: 11,
+    font: bold,
+    color: rgb(0.2, 0.2, 0.2),
+  });
+  ctx.yPosition -= 80;
+
+  // Signature lines
+  ctx.page.drawLine({
+    start: { x: ctx.marginLeft, y: ctx.yPosition },
+    end: { x: ctx.marginLeft + 200, y: ctx.yPosition },
+    thickness: 1,
+    color: rgb(0, 0, 0),
+  });
+  ctx.page.drawLine({
+    start: { x: 320, y: ctx.yPosition },
+    end: { x: 520, y: ctx.yPosition },
+    thickness: 1,
+    color: rgb(0, 0, 0),
+  });
+  ctx.yPosition -= 15;
+
+  ctx.page.drawText(landlordName, { x: ctx.marginLeft, y: ctx.yPosition, size: 10, font: bold });
+  ctx.page.drawText(tenantName, { x: 320, y: ctx.yPosition, size: 10, font: bold });
+  ctx.yPosition -= 14;
+
+  ctx.page.drawText('Date: _________________', { x: ctx.marginLeft, y: ctx.yPosition, size: 9, font: regular });
+  ctx.page.drawText('Date: _________________', { x: 320, y: ctx.yPosition, size: 9, font: regular });
+
+  // ==========================================
+  // ELECTRONIC SIGNATURE RECORD
+  // ==========================================
+  
+  ctx.yPosition -= 50;
+
+  ctx.page.drawRectangle({
+    x: ctx.marginLeft,
+    y: ctx.yPosition - 180,
+    width: ctx.pageWidth - ctx.marginLeft - ctx.marginRight,
+    height: 190,
+    color: rgb(0.98, 0.98, 0.98),
+    borderColor: rgb(0.7, 0.7, 0.7),
+    borderWidth: 1,
+  });
+
+  ctx.yPosition -= 15;
+
+  ctx.page.drawText('ELECTRONIC SIGNATURE RECORD', {
+    x: ctx.marginLeft + 10,
+    y: ctx.yPosition,
+    size: 11,
+    font: bold,
+    color: rgb(0, 0.2, 0.4),
+  });
+  ctx.yPosition -= 6;
+
+  ctx.page.drawLine({
+    start: { x: ctx.marginLeft + 10, y: ctx.yPosition },
+    end: { x: ctx.pageWidth - ctx.marginRight - 10, y: ctx.yPosition },
+    thickness: 0.5,
+    color: rgb(0.6, 0.6, 0.6),
+  });
+  ctx.yPosition -= 15;
+
+  ctx.page.drawText('This section documents the electronic signatures captured for this agreement.', {
+    x: ctx.marginLeft + 10,
+    y: ctx.yPosition,
+    size: 8,
+    font: italic,
+    color: rgb(0.4, 0.4, 0.4),
+  });
+  ctx.yPosition -= 20;
 
   if (lease.signatures && lease.signatures.length > 0) {
-    // Draw landlord signature
+    // Draw landlord electronic signature
     if (landlordSig) {
-      await drawSignatureBlock(ctx, landlordSig, 'LANDLORD', landlordName, ctx.marginLeft, pdfDoc);
+      await drawElectronicSignatureBlock(ctx, landlordSig, 'Landlord', landlordName, ctx.marginLeft + 10, pdfDoc);
     }
 
-    // Draw tenant signature (offset to the right)
+    // Draw tenant electronic signature
     if (tenantSig) {
-      await drawSignatureBlock(ctx, tenantSig, 'TENANT', tenantName, 320, pdfDoc);
+      await drawElectronicSignatureBlock(ctx, tenantSig, 'Tenant', tenantName, 315, pdfDoc);
     }
   } else {
-    ctx.page.drawText('This document has not yet been signed.', {
-      x: ctx.marginLeft,
+    ctx.page.drawText('No electronic signatures have been recorded for this document.', {
+      x: ctx.marginLeft + 10,
       y: ctx.yPosition,
-      size: 11,
+      size: 10,
       font: regular,
       color: rgb(0.5, 0.5, 0.5),
     });
   }
 
-  // ==========================================
-  // ADD PAGE NUMBERS TO ALL PAGES
-  // ==========================================
+  // Note: Page numbering is added in appendCertificatePage or addPageNumbers
+  // to ensure consistent total count across all pages
   
+  return pdfDoc;
+}
+
+// Add page numbers to all pages (called after all pages are finalized)
+async function addPageNumbers(pdfDoc: PDFDocument): Promise<void> {
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const pages = pdfDoc.getPages();
+  const pageCount = pages.length;
+  
   pages.forEach((p, idx) => {
-    p.drawText(`Page ${idx + 1} of ${pages.length}`, {
+    p.drawText(`Page ${idx + 1} of ${pageCount}`, {
       x: 276,
       y: 30,
       size: 9,
@@ -720,12 +907,10 @@ async function generateMainLeasePDF(
       color: rgb(0.5, 0.5, 0.5),
     });
   });
-
-  return pdfDoc;
 }
 
-// Draw a signature block
-async function drawSignatureBlock(
+// Draw an electronic signature block (compact version)
+async function drawElectronicSignatureBlock(
   ctx: PDFContext,
   sig: any,
   role: string,
@@ -736,14 +921,14 @@ async function drawSignatureBlock(
   let localY = ctx.yPosition;
 
   // Role label
-  ctx.page.drawText(role, {
+  ctx.page.drawText(role.toUpperCase(), {
     x: xOffset,
     y: localY,
-    size: 10,
+    size: 9,
     font: ctx.fonts.bold,
     color: rgb(0.2, 0.2, 0.2),
   });
-  localY -= 20;
+  localY -= 15;
 
   // Draw signature image
   if (sig.signature_data && sig.signature_data.startsWith('data:image')) {
@@ -752,8 +937,8 @@ async function drawSignatureBlock(
       const signatureImageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
       const signatureImage = await pdfDoc.embedPng(signatureImageBytes);
 
-      const maxWidth = 180;
-      const maxHeight = 60;
+      const maxWidth = 140;
+      const maxHeight = 45;
       let sigWidth = signatureImage.width;
       let sigHeight = signatureImage.height;
 
@@ -774,61 +959,53 @@ async function drawSignatureBlock(
         width: sigWidth,
         height: sigHeight,
       });
-      localY -= sigHeight + 5;
+      localY -= sigHeight + 3;
     } catch (e) {
       console.error('Failed to embed signature image:', e);
-      localY -= 30;
+      localY -= 25;
     }
   } else {
-    localY -= 30;
+    localY -= 25;
   }
-
-  // Signature line
-  ctx.page.drawLine({
-    start: { x: xOffset, y: localY },
-    end: { x: xOffset + 200, y: localY },
-    thickness: 1,
-    color: rgb(0, 0, 0),
-  });
-  localY -= 15;
 
   // Signer name
   ctx.page.drawText(name, {
     x: xOffset,
     y: localY,
-    size: 11,
+    size: 9,
     font: ctx.fonts.bold,
   });
-  localY -= 16;
+  localY -= 12;
 
   // Signed date
   ctx.page.drawText(`Signed: ${formatDateShort(sig.signed_at)}`, {
     x: xOffset,
     y: localY,
-    size: 9,
-    font: ctx.fonts.regular,
-  });
-  localY -= 13;
-
-  // IP Address
-  ctx.page.drawText(`IP Address: ${sig.ip_address || 'Not recorded'}`, {
-    x: xOffset,
-    y: localY,
     size: 8,
     font: ctx.fonts.regular,
-    color: rgb(0.4, 0.4, 0.4),
   });
-  localY -= 12;
+  localY -= 11;
 
-  // Signature Hash
-  ctx.page.drawText(`Signature Hash: ${sig.hash_id.substring(0, 24)}...`, {
+  // IP Address
+  ctx.page.drawText(`IP: ${sig.ip_address || 'Not recorded'}`, {
     x: xOffset,
     y: localY,
     size: 7,
+    font: ctx.fonts.regular,
+    color: rgb(0.4, 0.4, 0.4),
+  });
+  localY -= 10;
+
+  // Signature Hash
+  ctx.page.drawText(`Hash: ${sig.hash_id.substring(0, 20)}...`, {
+    x: xOffset,
+    y: localY,
+    size: 6,
     font: ctx.fonts.mono,
     color: rgb(0.5, 0.5, 0.5),
   });
 }
+
 
 // Append Certificate of Completion page
 async function appendCertificatePage(
@@ -908,7 +1085,7 @@ async function appendCertificatePage(
 
   const docInfo = [
     ['Document ID:', lease.id],
-    ['Document Type:', 'Commercial Lease Agreement'],
+    ['Document Type:', 'Commercial Gross Lease Agreement'],
     ['Property:', `${lease.properties?.address}, ${lease.properties?.city}, ${lease.properties?.state}`],
     ['Created:', formatDate(lease.created_at)],
     ['Completed:', formatDate(tenantSig?.signed_at || landlordSig?.signed_at || new Date().toISOString())],
