@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { PDFDocument, rgb, StandardFonts } from "https://esm.sh/pdf-lib@1.17.1";
+import { PDFDocument, rgb, StandardFonts, PDFFont, PDFPage } from "https://esm.sh/pdf-lib@1.17.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,6 +36,333 @@ function formatDateShort(dateString: string): string {
     day: 'numeric'
   });
 }
+
+// ==========================================
+// HTML to PDF Content Parser
+// ==========================================
+
+interface TextBlock {
+  type: 'heading1' | 'heading2' | 'heading3' | 'heading4' | 'paragraph' | 'text' | 'linebreak' | 'horizontalrule' | 'listitem';
+  content: string;
+  bold?: boolean;
+  italic?: boolean;
+}
+
+// Strip HTML tags and decode entities
+function decodeHTMLEntities(text: string): string {
+  return text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&ldquo;/g, '"')
+    .replace(/&rdquo;/g, '"')
+    .replace(/&lsquo;/g, "'")
+    .replace(/&rsquo;/g, "'")
+    .replace(/&mdash;/g, '—')
+    .replace(/&ndash;/g, '–')
+    .replace(/&hellip;/g, '...')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code)));
+}
+
+// Parse HTML content into structured text blocks
+function parseHTMLToBlocks(html: string): TextBlock[] {
+  const blocks: TextBlock[] = [];
+  
+  if (!html || typeof html !== 'string') {
+    return blocks;
+  }
+
+  // Remove script and style tags completely
+  let cleanedHtml = html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
+
+  // Process the HTML by splitting on major block elements
+  // First, normalize line breaks and whitespace
+  cleanedHtml = cleanedHtml
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+
+  // Split by block-level elements
+  const blockPattern = /<(h[1-6]|p|div|br\s*\/?|hr\s*\/?|li|ul|ol|article|section|header|footer|main|aside|blockquote)[^>]*>/gi;
+  
+  let lastIndex = 0;
+  let match;
+  const regex = new RegExp(blockPattern);
+  
+  // Simple state machine to parse HTML
+  let currentPos = 0;
+  const length = cleanedHtml.length;
+  
+  while (currentPos < length) {
+    // Find next tag
+    const tagStart = cleanedHtml.indexOf('<', currentPos);
+    
+    if (tagStart === -1) {
+      // No more tags, get remaining text
+      const remainingText = cleanedHtml.substring(currentPos).trim();
+      if (remainingText) {
+        const cleanText = stripAllTags(remainingText);
+        if (cleanText) {
+          blocks.push({ type: 'paragraph', content: cleanText });
+        }
+      }
+      break;
+    }
+    
+    // Get text before this tag
+    if (tagStart > currentPos) {
+      const textBefore = cleanedHtml.substring(currentPos, tagStart).trim();
+      if (textBefore && !textBefore.match(/^[\s\n]*$/)) {
+        const cleanText = stripAllTags(textBefore);
+        if (cleanText) {
+          blocks.push({ type: 'text', content: cleanText });
+        }
+      }
+    }
+    
+    // Find end of tag
+    const tagEnd = cleanedHtml.indexOf('>', tagStart);
+    if (tagEnd === -1) {
+      currentPos = tagStart + 1;
+      continue;
+    }
+    
+    const fullTag = cleanedHtml.substring(tagStart, tagEnd + 1);
+    const tagMatch = fullTag.match(/<\/?([a-zA-Z][a-zA-Z0-9]*)/);
+    
+    if (!tagMatch) {
+      currentPos = tagEnd + 1;
+      continue;
+    }
+    
+    const tagName = tagMatch[1].toLowerCase();
+    const isClosingTag = fullTag.startsWith('</');
+    const isSelfClosing = fullTag.endsWith('/>') || ['br', 'hr', 'img', 'input'].includes(tagName);
+    
+    // Handle self-closing and void elements
+    if (isSelfClosing || ['br', 'hr'].includes(tagName)) {
+      if (tagName === 'br') {
+        blocks.push({ type: 'linebreak', content: '' });
+      } else if (tagName === 'hr') {
+        blocks.push({ type: 'horizontalrule', content: '' });
+      }
+      currentPos = tagEnd + 1;
+      continue;
+    }
+    
+    // For opening tags of block elements, find the closing tag and extract content
+    if (!isClosingTag && ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'li', 'article', 'section', 'blockquote'].includes(tagName)) {
+      const closingTag = `</${tagName}>`;
+      let closingPos = cleanedHtml.toLowerCase().indexOf(closingTag, tagEnd + 1);
+      
+      if (closingPos === -1) {
+        // No closing tag found, try to find next opening tag of same type or end
+        closingPos = length;
+      }
+      
+      const innerContent = cleanedHtml.substring(tagEnd + 1, closingPos);
+      const cleanContent = stripAllTags(innerContent).trim();
+      
+      if (cleanContent) {
+        let blockType: TextBlock['type'] = 'paragraph';
+        
+        switch (tagName) {
+          case 'h1':
+            blockType = 'heading1';
+            break;
+          case 'h2':
+            blockType = 'heading2';
+            break;
+          case 'h3':
+            blockType = 'heading3';
+            break;
+          case 'h4':
+          case 'h5':
+          case 'h6':
+            blockType = 'heading4';
+            break;
+          case 'li':
+            blockType = 'listitem';
+            break;
+          default:
+            blockType = 'paragraph';
+        }
+        
+        blocks.push({ type: blockType, content: cleanContent });
+      }
+      
+      currentPos = closingPos + closingTag.length;
+      continue;
+    }
+    
+    currentPos = tagEnd + 1;
+  }
+  
+  return blocks;
+}
+
+// Strip all HTML tags from text
+function stripAllTags(html: string): string {
+  // Remove all HTML tags
+  let text = html.replace(/<[^>]*>/g, ' ');
+  // Decode HTML entities
+  text = decodeHTMLEntities(text);
+  // Normalize whitespace
+  text = text.replace(/\s+/g, ' ').trim();
+  return text;
+}
+
+// ==========================================
+// PDF Rendering Functions
+// ==========================================
+
+interface PDFContext {
+  pdfDoc: PDFDocument;
+  page: PDFPage;
+  yPosition: number;
+  fonts: {
+    regular: PDFFont;
+    bold: PDFFont;
+    italic: PDFFont;
+    mono: PDFFont;
+  };
+  pageWidth: number;
+  pageHeight: number;
+  marginLeft: number;
+  marginRight: number;
+  marginTop: number;
+  marginBottom: number;
+}
+
+function createNewPage(ctx: PDFContext): void {
+  ctx.page = ctx.pdfDoc.addPage([ctx.pageWidth, ctx.pageHeight]);
+  ctx.yPosition = ctx.pageHeight - ctx.marginTop;
+}
+
+function checkPageBreak(ctx: PDFContext, requiredSpace: number): void {
+  if (ctx.yPosition < ctx.marginBottom + requiredSpace) {
+    createNewPage(ctx);
+  }
+}
+
+// Word wrap and draw text
+function drawWrappedText(
+  ctx: PDFContext,
+  text: string,
+  fontSize: number,
+  font: PDFFont,
+  color = rgb(0, 0, 0),
+  indent = 0
+): void {
+  const maxWidth = ctx.pageWidth - ctx.marginLeft - ctx.marginRight - indent;
+  const words = text.split(' ');
+  let currentLine = '';
+  const lineHeight = fontSize * 1.4;
+  
+  for (const word of words) {
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    const textWidth = font.widthOfTextAtSize(testLine, fontSize);
+    
+    if (textWidth > maxWidth && currentLine) {
+      checkPageBreak(ctx, lineHeight);
+      ctx.page.drawText(currentLine, {
+        x: ctx.marginLeft + indent,
+        y: ctx.yPosition,
+        size: fontSize,
+        font: font,
+        color: color,
+      });
+      ctx.yPosition -= lineHeight;
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  
+  if (currentLine) {
+    checkPageBreak(ctx, lineHeight);
+    ctx.page.drawText(currentLine, {
+      x: ctx.marginLeft + indent,
+      y: ctx.yPosition,
+      size: fontSize,
+      font: font,
+      color: color,
+    });
+    ctx.yPosition -= lineHeight;
+  }
+}
+
+// Render text blocks to PDF
+function renderBlocksToPDF(ctx: PDFContext, blocks: TextBlock[]): void {
+  for (const block of blocks) {
+    switch (block.type) {
+      case 'heading1':
+        ctx.yPosition -= 8; // Extra space before heading
+        checkPageBreak(ctx, 30);
+        drawWrappedText(ctx, block.content.toUpperCase(), 14, ctx.fonts.bold);
+        ctx.yPosition -= 6; // Extra space after heading
+        break;
+        
+      case 'heading2':
+        ctx.yPosition -= 6;
+        checkPageBreak(ctx, 25);
+        drawWrappedText(ctx, block.content, 13, ctx.fonts.bold);
+        ctx.yPosition -= 4;
+        break;
+        
+      case 'heading3':
+        ctx.yPosition -= 4;
+        checkPageBreak(ctx, 22);
+        drawWrappedText(ctx, block.content, 12, ctx.fonts.bold);
+        ctx.yPosition -= 3;
+        break;
+        
+      case 'heading4':
+        ctx.yPosition -= 3;
+        checkPageBreak(ctx, 20);
+        drawWrappedText(ctx, block.content, 11, ctx.fonts.bold);
+        ctx.yPosition -= 2;
+        break;
+        
+      case 'paragraph':
+      case 'text':
+        checkPageBreak(ctx, 18);
+        drawWrappedText(ctx, block.content, 10, ctx.fonts.regular);
+        ctx.yPosition -= 6; // Paragraph spacing
+        break;
+        
+      case 'listitem':
+        checkPageBreak(ctx, 18);
+        drawWrappedText(ctx, `• ${block.content}`, 10, ctx.fonts.regular, rgb(0, 0, 0), 15);
+        ctx.yPosition -= 3;
+        break;
+        
+      case 'linebreak':
+        ctx.yPosition -= 8;
+        break;
+        
+      case 'horizontalrule':
+        ctx.yPosition -= 10;
+        checkPageBreak(ctx, 15);
+        ctx.page.drawLine({
+          start: { x: ctx.marginLeft, y: ctx.yPosition },
+          end: { x: ctx.pageWidth - ctx.marginRight, y: ctx.yPosition },
+          thickness: 0.5,
+          color: rgb(0.6, 0.6, 0.6),
+        });
+        ctx.yPosition -= 10;
+        break;
+    }
+  }
+}
+
+// ==========================================
+// Main PDF Generation
+// ==========================================
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -83,7 +410,7 @@ serve(async (req) => {
     const landlordSig = lease.signatures?.find((s: any) => s.signer_id === lease.manager_id);
     const tenantSig = lease.signatures?.find((s: any) => s.signer_id === lease.tenant_id);
 
-    // If only certificate is requested, generate certificate PDF
+    // If only certificate is requested
     if (certificateOnly) {
       const certPdf = await generateCertificatePDF(
         lease, 
@@ -91,7 +418,7 @@ serve(async (req) => {
         tenantName, 
         landlordSig, 
         tenantSig,
-        lease.document_hash // Use existing hash for standalone certificate
+        lease.document_hash || 'Hash not yet computed'
       );
       
       console.log('Certificate PDF generated for lease:', leaseId);
@@ -105,7 +432,7 @@ serve(async (req) => {
       });
     }
 
-    // STEP 1: Generate the main lease PDF (without certificate page)
+    // STEP 1: Generate the main lease PDF (without certificate)
     const mainLeasePdf = await generateMainLeasePDF(lease, landlordName, tenantName, landlordSig, tenantSig);
     
     // STEP 2: Compute SHA-256 hash from the actual PDF binary
@@ -124,7 +451,6 @@ serve(async (req) => {
     let finalPdfBytes: Uint8Array;
     
     if (includeCertificate && lease.signatures && lease.signatures.length > 0) {
-      // Reload the main PDF and add the certificate page with the final hash
       const finalPdf = await PDFDocument.load(mainPdfBytes);
       await appendCertificatePage(
         finalPdf,
@@ -168,361 +494,226 @@ async function generateMainLeasePDF(
   tenantSig: any
 ): Promise<PDFDocument> {
   const pdfDoc = await PDFDocument.create();
-  const timesRoman = await pdfDoc.embedFont(StandardFonts.TimesRoman);
-  const timesBold = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
-  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-  const addNewPage = () => {
-    const newPage = pdfDoc.addPage([612, 792]);
-    return { page: newPage, yPosition: 742 };
+  
+  // Embed fonts
+  const regular = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+  const bold = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
+  const italic = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
+  const mono = await pdfDoc.embedFont(StandardFonts.Courier);
+  
+  // Create PDF context
+  const ctx: PDFContext = {
+    pdfDoc,
+    page: pdfDoc.addPage([612, 792]), // Letter size
+    yPosition: 742,
+    fonts: { regular, bold, italic, mono },
+    pageWidth: 612,
+    pageHeight: 792,
+    marginLeft: 50,
+    marginRight: 50,
+    marginTop: 50,
+    marginBottom: 60,
   };
 
-  let pageData = addNewPage();
-  let page = pageData.page;
-  let yPosition = pageData.yPosition;
-
-  // Header
-  page.drawText('COMMERCIAL LEASE AGREEMENT', {
-    x: 50,
-    y: yPosition,
+  // ==========================================
+  // COVER / HEADER
+  // ==========================================
+  
+  ctx.page.drawText('COMMERCIAL LEASE AGREEMENT', {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
     size: 18,
-    font: timesBold,
+    font: bold,
     color: rgb(0, 0, 0),
   });
-  yPosition -= 30;
+  ctx.yPosition -= 28;
 
   // Document ID
-  page.drawText(`Document ID: ${lease.id}`, {
-    x: 50,
-    y: yPosition,
-    size: 10,
-    font: helvetica,
+  ctx.page.drawText(`Document ID: ${lease.id}`, {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
+    size: 9,
+    font: mono,
     color: rgb(0.4, 0.4, 0.4),
   });
-  yPosition -= 20;
+  ctx.yPosition -= 14;
 
-  page.drawText(`Created: ${formatDateShort(lease.created_at)}`, {
-    x: 50,
-    y: yPosition,
+  ctx.page.drawText(`Created: ${formatDateShort(lease.created_at)}`, {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
     size: 9,
-    font: helvetica,
+    font: regular,
     color: rgb(0.5, 0.5, 0.5),
   });
-  yPosition -= 30;
+  ctx.yPosition -= 25;
 
-  // Parties
-  page.drawText('PARTIES', {
-    x: 50,
-    y: yPosition,
-    size: 14,
-    font: timesBold,
+  // Divider line
+  ctx.page.drawLine({
+    start: { x: ctx.marginLeft, y: ctx.yPosition },
+    end: { x: ctx.pageWidth - ctx.marginRight, y: ctx.yPosition },
+    thickness: 1,
+    color: rgb(0, 0, 0),
   });
-  yPosition -= 20;
+  ctx.yPosition -= 25;
 
-  page.drawText(`Landlord: ${landlordName}`, {
-    x: 50,
-    y: yPosition,
-    size: 11,
-    font: timesRoman,
+  // ==========================================
+  // PARTIES SECTION
+  // ==========================================
+  
+  ctx.page.drawText('PARTIES', {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
+    size: 12,
+    font: bold,
   });
-  yPosition -= 15;
+  ctx.yPosition -= 18;
 
-  page.drawText(`Tenant: ${tenantName}`, {
-    x: 50,
-    y: yPosition,
-    size: 11,
-    font: timesRoman,
-  });
-  yPosition -= 30;
+  drawWrappedText(ctx, `Landlord: ${landlordName}`, 11, regular);
+  drawWrappedText(ctx, `Tenant: ${tenantName}`, 11, regular);
+  ctx.yPosition -= 15;
 
-  // Property
-  page.drawText('PREMISES', {
-    x: 50,
-    y: yPosition,
-    size: 14,
-    font: timesBold,
+  // ==========================================
+  // PREMISES SECTION
+  // ==========================================
+  
+  ctx.page.drawText('PREMISES', {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
+    size: 12,
+    font: bold,
   });
-  yPosition -= 20;
+  ctx.yPosition -= 18;
 
   const address = `${lease.properties?.address}, ${lease.properties?.city}, ${lease.properties?.state}`;
-  page.drawText(address, {
-    x: 50,
-    y: yPosition,
-    size: 11,
-    font: timesRoman,
-  });
-  yPosition -= 30;
+  drawWrappedText(ctx, address, 11, regular);
+  ctx.yPosition -= 15;
 
-  // Term
-  page.drawText('TERM', {
-    x: 50,
-    y: yPosition,
-    size: 14,
-    font: timesBold,
+  // ==========================================
+  // TERM SECTION
+  // ==========================================
+  
+  ctx.page.drawText('TERM', {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
+    size: 12,
+    font: bold,
   });
-  yPosition -= 20;
+  ctx.yPosition -= 18;
 
-  page.drawText(`Start Date: ${formatDateShort(lease.start_date)}`, {
-    x: 50,
-    y: yPosition,
-    size: 11,
-    font: timesRoman,
+  drawWrappedText(ctx, `Start Date: ${formatDateShort(lease.start_date)}`, 11, regular);
+  drawWrappedText(ctx, `End Date: ${formatDateShort(lease.end_date)}`, 11, regular);
+  ctx.yPosition -= 15;
+
+  // ==========================================
+  // FINANCIAL TERMS SECTION
+  // ==========================================
+  
+  ctx.page.drawText('FINANCIAL TERMS', {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
+    size: 12,
+    font: bold,
   });
-  yPosition -= 15;
+  ctx.yPosition -= 18;
 
-  page.drawText(`End Date: ${formatDateShort(lease.end_date)}`, {
-    x: 50,
-    y: yPosition,
-    size: 11,
-    font: timesRoman,
-  });
-  yPosition -= 30;
-
-  // Financial Terms
-  page.drawText('FINANCIAL TERMS', {
-    x: 50,
-    y: yPosition,
-    size: 14,
-    font: timesBold,
-  });
-  yPosition -= 20;
-
-  page.drawText(`Monthly Rent: $${Number(lease.monthly_rent).toLocaleString()}`, {
-    x: 50,
-    y: yPosition,
-    size: 11,
-    font: timesRoman,
-  });
-  yPosition -= 15;
-
+  drawWrappedText(ctx, `Monthly Rent: $${Number(lease.monthly_rent).toLocaleString()}`, 11, regular);
+  
   if (lease.security_deposit) {
-    page.drawText(`Security Deposit: $${Number(lease.security_deposit).toLocaleString()}`, {
-      x: 50,
-      y: yPosition,
-      size: 11,
-      font: timesRoman,
-    });
-    yPosition -= 15;
+    drawWrappedText(ctx, `Security Deposit: $${Number(lease.security_deposit).toLocaleString()}`, 11, regular);
   }
-  yPosition -= 20;
+  
+  if (lease.rent_due_day) {
+    drawWrappedText(ctx, `Rent Due: Day ${lease.rent_due_day} of each month`, 11, regular);
+  }
+  
+  ctx.yPosition -= 20;
 
-  // Full Lease Terms
+  // ==========================================
+  // LEASE TERMS AND CONDITIONS
+  // ==========================================
+  
   if (lease.terms) {
-    page.drawText('LEASE TERMS AND CONDITIONS', {
-      x: 50,
-      y: yPosition,
-      size: 14,
-      font: timesBold,
+    ctx.page.drawText('LEASE TERMS AND CONDITIONS', {
+      x: ctx.marginLeft,
+      y: ctx.yPosition,
+      size: 12,
+      font: bold,
     });
-    yPosition -= 25;
+    ctx.yPosition -= 8;
+    
+    ctx.page.drawLine({
+      start: { x: ctx.marginLeft, y: ctx.yPosition },
+      end: { x: ctx.pageWidth - ctx.marginRight, y: ctx.yPosition },
+      thickness: 0.5,
+      color: rgb(0.5, 0.5, 0.5),
+    });
+    ctx.yPosition -= 18;
 
-    const termsLines = lease.terms.split('\n');
-    const maxWidth = 512;
-
-    for (const line of termsLines) {
-      const trimmedLine = line.trim();
-      if (!trimmedLine) {
-        yPosition -= 10;
-        continue;
-      }
-
-      const isHeader = trimmedLine.startsWith('ARTICLE') ||
-        trimmedLine.startsWith('SECTION') ||
-        (trimmedLine === trimmedLine.toUpperCase() && trimmedLine.length < 60);
-      const font = isHeader ? timesBold : timesRoman;
-      const fontSize = isHeader ? 12 : 10;
-
-      const words = trimmedLine.split(' ');
-      let currentLine = '';
-
-      for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word;
-        const textWidth = font.widthOfTextAtSize(testLine, fontSize);
-
-        if (textWidth > maxWidth && currentLine) {
-          if (yPosition < 60) {
-            const newPageData = addNewPage();
-            page = newPageData.page;
-            yPosition = newPageData.yPosition;
-          }
-
-          page.drawText(currentLine, {
-            x: 50,
-            y: yPosition,
-            size: fontSize,
-            font: font,
-          });
-          yPosition -= fontSize + 4;
-          currentLine = word;
-        } else {
-          currentLine = testLine;
-        }
-      }
-
-      if (currentLine) {
-        if (yPosition < 60) {
-          const newPageData = addNewPage();
-          page = newPageData.page;
-          yPosition = newPageData.yPosition;
-        }
-
-        page.drawText(currentLine, {
-          x: 50,
-          y: yPosition,
-          size: fontSize,
-          font: font,
-        });
-        yPosition -= fontSize + (isHeader ? 8 : 4);
-      }
-    }
+    // Parse HTML content and render as clean PDF text
+    const blocks = parseHTMLToBlocks(lease.terms);
+    renderBlocksToPDF(ctx, blocks);
   }
-  yPosition -= 20;
 
-  // Signatures Page
-  const sigPageData = addNewPage();
-  page = sigPageData.page;
-  yPosition = sigPageData.yPosition;
-
-  page.drawText('SIGNATURES', {
-    x: 50,
-    y: yPosition,
-    size: 18,
-    font: timesBold,
+  // ==========================================
+  // SIGNATURES PAGE
+  // ==========================================
+  
+  createNewPage(ctx);
+  
+  ctx.page.drawText('SIGNATURES', {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
+    size: 16,
+    font: bold,
   });
-  yPosition -= 10;
+  ctx.yPosition -= 8;
 
-  page.drawLine({
-    start: { x: 50, y: yPosition },
-    end: { x: 562, y: yPosition },
+  ctx.page.drawLine({
+    start: { x: ctx.marginLeft, y: ctx.yPosition },
+    end: { x: ctx.pageWidth - ctx.marginRight, y: ctx.yPosition },
     thickness: 2,
     color: rgb(0, 0, 0),
   });
-  yPosition -= 40;
+  ctx.yPosition -= 30;
+
+  ctx.page.drawText('By signing below, the parties agree to be bound by all terms and conditions set forth in this Lease Agreement.', {
+    x: ctx.marginLeft,
+    y: ctx.yPosition,
+    size: 10,
+    font: italic,
+    color: rgb(0.3, 0.3, 0.3),
+  });
+  ctx.yPosition -= 40;
 
   if (lease.signatures && lease.signatures.length > 0) {
-    const drawSignatureBlock = async (
-      sig: any,
-      role: string,
-      name: string,
-      xOffset: number
-    ) => {
-      let localY = yPosition;
-
-      page.drawText(role.toUpperCase() + ':', {
-        x: xOffset,
-        y: localY,
-        size: 10,
-        font: timesBold,
-        color: rgb(0.3, 0.3, 0.3),
-      });
-      localY -= 20;
-
-      if (sig.signature_data && sig.signature_data.startsWith('data:image')) {
-        try {
-          const base64Data = sig.signature_data.split(',')[1];
-          const signatureImageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-          const signatureImage = await pdfDoc.embedPng(signatureImageBytes);
-
-          const maxWidth = 180;
-          const maxHeight = 60;
-          let sigWidth = signatureImage.width;
-          let sigHeight = signatureImage.height;
-
-          if (sigWidth > maxWidth) {
-            const ratio = maxWidth / sigWidth;
-            sigWidth = maxWidth;
-            sigHeight = sigHeight * ratio;
-          }
-          if (sigHeight > maxHeight) {
-            const ratio = maxHeight / sigHeight;
-            sigHeight = maxHeight;
-            sigWidth = sigWidth * ratio;
-          }
-
-          page.drawImage(signatureImage, {
-            x: xOffset,
-            y: localY - sigHeight,
-            width: sigWidth,
-            height: sigHeight,
-          });
-          localY -= sigHeight + 5;
-        } catch (e) {
-          console.error('Failed to embed signature image:', e);
-          localY -= 30;
-        }
-      } else {
-        localY -= 30;
-      }
-
-      page.drawLine({
-        start: { x: xOffset, y: localY },
-        end: { x: xOffset + 200, y: localY },
-        thickness: 1,
-        color: rgb(0, 0, 0),
-      });
-      localY -= 15;
-
-      page.drawText(name, {
-        x: xOffset,
-        y: localY,
-        size: 11,
-        font: timesBold,
-      });
-      localY -= 18;
-
-      page.drawText(`Date: ${formatDateShort(sig.signed_at)}`, {
-        x: xOffset,
-        y: localY,
-        size: 10,
-        font: timesRoman,
-      });
-      localY -= 14;
-
-      page.drawText(`IP: ${sig.ip_address || 'Not recorded'}`, {
-        x: xOffset,
-        y: localY,
-        size: 8,
-        font: helvetica,
-        color: rgb(0.4, 0.4, 0.4),
-      });
-      localY -= 12;
-
-      page.drawText(`Signature Hash: ${sig.hash_id.substring(0, 24)}...`, {
-        x: xOffset,
-        y: localY,
-        size: 7,
-        font: helvetica,
-        color: rgb(0.5, 0.5, 0.5),
-      });
-
-      return localY;
-    };
-
+    // Draw landlord signature
     if (landlordSig) {
-      await drawSignatureBlock(landlordSig, 'Landlord', landlordName, 50);
+      await drawSignatureBlock(ctx, landlordSig, 'LANDLORD', landlordName, ctx.marginLeft, pdfDoc);
     }
 
+    // Draw tenant signature (offset to the right)
     if (tenantSig) {
-      await drawSignatureBlock(tenantSig, 'Tenant', tenantName, 320);
+      await drawSignatureBlock(ctx, tenantSig, 'TENANT', tenantName, 320, pdfDoc);
     }
-
-    yPosition -= 180;
   } else {
-    page.drawText('No signatures recorded yet.', {
-      x: 50,
-      y: yPosition,
+    ctx.page.drawText('This document has not yet been signed.', {
+      x: ctx.marginLeft,
+      y: ctx.yPosition,
       size: 11,
-      font: timesRoman,
+      font: regular,
       color: rgb(0.5, 0.5, 0.5),
     });
   }
 
-  // Add page numbers
+  // ==========================================
+  // ADD PAGE NUMBERS TO ALL PAGES
+  // ==========================================
+  
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const pages = pdfDoc.getPages();
   pages.forEach((p, idx) => {
     p.drawText(`Page ${idx + 1} of ${pages.length}`, {
-      x: 306 - 30,
+      x: 276,
       y: 30,
       size: 9,
       font: helvetica,
@@ -533,7 +724,113 @@ async function generateMainLeasePDF(
   return pdfDoc;
 }
 
-// Append Certificate of Completion page to existing PDF
+// Draw a signature block
+async function drawSignatureBlock(
+  ctx: PDFContext,
+  sig: any,
+  role: string,
+  name: string,
+  xOffset: number,
+  pdfDoc: PDFDocument
+): Promise<void> {
+  let localY = ctx.yPosition;
+
+  // Role label
+  ctx.page.drawText(role, {
+    x: xOffset,
+    y: localY,
+    size: 10,
+    font: ctx.fonts.bold,
+    color: rgb(0.2, 0.2, 0.2),
+  });
+  localY -= 20;
+
+  // Draw signature image
+  if (sig.signature_data && sig.signature_data.startsWith('data:image')) {
+    try {
+      const base64Data = sig.signature_data.split(',')[1];
+      const signatureImageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+      const signatureImage = await pdfDoc.embedPng(signatureImageBytes);
+
+      const maxWidth = 180;
+      const maxHeight = 60;
+      let sigWidth = signatureImage.width;
+      let sigHeight = signatureImage.height;
+
+      if (sigWidth > maxWidth) {
+        const ratio = maxWidth / sigWidth;
+        sigWidth = maxWidth;
+        sigHeight = sigHeight * ratio;
+      }
+      if (sigHeight > maxHeight) {
+        const ratio = maxHeight / sigHeight;
+        sigHeight = maxHeight;
+        sigWidth = sigWidth * ratio;
+      }
+
+      ctx.page.drawImage(signatureImage, {
+        x: xOffset,
+        y: localY - sigHeight,
+        width: sigWidth,
+        height: sigHeight,
+      });
+      localY -= sigHeight + 5;
+    } catch (e) {
+      console.error('Failed to embed signature image:', e);
+      localY -= 30;
+    }
+  } else {
+    localY -= 30;
+  }
+
+  // Signature line
+  ctx.page.drawLine({
+    start: { x: xOffset, y: localY },
+    end: { x: xOffset + 200, y: localY },
+    thickness: 1,
+    color: rgb(0, 0, 0),
+  });
+  localY -= 15;
+
+  // Signer name
+  ctx.page.drawText(name, {
+    x: xOffset,
+    y: localY,
+    size: 11,
+    font: ctx.fonts.bold,
+  });
+  localY -= 16;
+
+  // Signed date
+  ctx.page.drawText(`Signed: ${formatDateShort(sig.signed_at)}`, {
+    x: xOffset,
+    y: localY,
+    size: 9,
+    font: ctx.fonts.regular,
+  });
+  localY -= 13;
+
+  // IP Address
+  ctx.page.drawText(`IP Address: ${sig.ip_address || 'Not recorded'}`, {
+    x: xOffset,
+    y: localY,
+    size: 8,
+    font: ctx.fonts.regular,
+    color: rgb(0.4, 0.4, 0.4),
+  });
+  localY -= 12;
+
+  // Signature Hash
+  ctx.page.drawText(`Signature Hash: ${sig.hash_id.substring(0, 24)}...`, {
+    x: xOffset,
+    y: localY,
+    size: 7,
+    font: ctx.fonts.mono,
+    color: rgb(0.5, 0.5, 0.5),
+  });
+}
+
+// Append Certificate of Completion page
 async function appendCertificatePage(
   pdfDoc: PDFDocument,
   lease: any,
@@ -546,188 +843,185 @@ async function appendCertificatePage(
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const timesRoman = await pdfDoc.embedFont(StandardFonts.TimesRoman);
-  const timesBold = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
+  const courier = await pdfDoc.embedFont(StandardFonts.Courier);
 
   const page = pdfDoc.addPage([612, 792]);
-  let y = 742;
+  let y = 740;
 
-  // Certificate Header with border
+  // Certificate border
   page.drawRectangle({
-    x: 40,
-    y: 680,
-    width: 532,
-    height: 80,
-    borderColor: rgb(0, 0.3, 0.6),
-    borderWidth: 3,
+    x: 35,
+    y: 35,
+    width: 542,
+    height: 722,
+    borderColor: rgb(0, 0.3, 0.5),
+    borderWidth: 2,
   });
 
+  // Inner decorative border
+  page.drawRectangle({
+    x: 42,
+    y: 42,
+    width: 528,
+    height: 708,
+    borderColor: rgb(0.7, 0.8, 0.9),
+    borderWidth: 1,
+  });
+
+  // Header
   page.drawText('CERTIFICATE OF COMPLETION', {
-    x: 140,
-    y: 730,
+    x: 130,
+    y: y,
     size: 22,
     font: helveticaBold,
-    color: rgb(0, 0.2, 0.5),
+    color: rgb(0, 0.2, 0.4),
   });
+  y -= 25;
 
-  page.drawText('Electronic Signature Verification', {
-    x: 200,
-    y: 700,
-    size: 12,
+  page.drawText('Electronic Signature Verification Record', {
+    x: 185,
+    y: y,
+    size: 11,
     font: helvetica,
-    color: rgb(0.3, 0.3, 0.3),
+    color: rgb(0.4, 0.4, 0.4),
   });
+  y -= 40;
 
-  y = 650;
+  // Divider
+  page.drawLine({
+    start: { x: 50, y: y },
+    end: { x: 562, y: y },
+    thickness: 1,
+    color: rgb(0, 0.3, 0.5),
+  });
+  y -= 30;
 
   // Document Information Section
   page.drawText('DOCUMENT INFORMATION', {
     x: 50,
     y: y,
-    size: 12,
+    size: 11,
     font: helveticaBold,
     color: rgb(0, 0, 0),
   });
-  y -= 5;
-
-  page.drawLine({
-    start: { x: 50, y: y },
-    end: { x: 562, y: y },
-    thickness: 1,
-    color: rgb(0.7, 0.7, 0.7),
-  });
   y -= 20;
 
-  page.drawText('Document ID:', { x: 50, y: y, size: 10, font: helveticaBold });
-  page.drawText(lease.id, { x: 150, y: y, size: 10, font: helvetica });
-  y -= 16;
+  const docInfo = [
+    ['Document ID:', lease.id],
+    ['Document Type:', 'Commercial Lease Agreement'],
+    ['Property:', `${lease.properties?.address}, ${lease.properties?.city}, ${lease.properties?.state}`],
+    ['Created:', formatDate(lease.created_at)],
+    ['Completed:', formatDate(tenantSig?.signed_at || landlordSig?.signed_at || new Date().toISOString())],
+  ];
 
-  page.drawText('Document Type:', { x: 50, y: y, size: 10, font: helveticaBold });
-  page.drawText('Commercial Lease Agreement', { x: 150, y: y, size: 10, font: helvetica });
-  y -= 16;
-
-  page.drawText('Property:', { x: 50, y: y, size: 10, font: helveticaBold });
-  const propertyAddr = `${lease.properties?.address}, ${lease.properties?.city}, ${lease.properties?.state}`;
-  page.drawText(propertyAddr, { x: 150, y: y, size: 10, font: helvetica });
-  y -= 16;
-
-  page.drawText('Created:', { x: 50, y: y, size: 10, font: helveticaBold });
-  page.drawText(formatDate(lease.created_at), { x: 150, y: y, size: 10, font: helvetica });
-  y -= 16;
-
-  page.drawText('Completed:', { x: 50, y: y, size: 10, font: helveticaBold });
-  const completedDate = tenantSig?.signed_at || landlordSig?.signed_at || new Date().toISOString();
-  page.drawText(formatDate(completedDate), { x: 150, y: y, size: 10, font: helvetica });
-  y -= 30;
+  for (const [label, value] of docInfo) {
+    page.drawText(label, { x: 55, y: y, size: 9, font: helveticaBold });
+    page.drawText(value, { x: 140, y: y, size: 9, font: helvetica });
+    y -= 14;
+  }
+  y -= 15;
 
   // SHA-256 Hash Section
   page.drawRectangle({
-    x: 45,
-    y: y - 45,
-    width: 522,
-    height: 55,
-    color: rgb(0.95, 0.95, 0.98),
-    borderColor: rgb(0.7, 0.7, 0.8),
+    x: 50,
+    y: y - 50,
+    width: 512,
+    height: 60,
+    color: rgb(0.95, 0.97, 0.99),
+    borderColor: rgb(0.8, 0.85, 0.9),
     borderWidth: 1,
   });
 
-  page.drawText('DOCUMENT SHA-256 HASH', {
-    x: 50,
-    y: y - 5,
-    size: 10,
+  page.drawText('DOCUMENT SHA-256 HASH (Computed from Final PDF Binary)', {
+    x: 55,
+    y: y - 8,
+    size: 9,
     font: helveticaBold,
-    color: rgb(0, 0.2, 0.5),
+    color: rgb(0, 0.2, 0.4),
   });
 
-  // Split hash into two lines for readability
+  // Split hash into lines for readability
   const hashLine1 = documentHash.substring(0, 32);
   const hashLine2 = documentHash.substring(32);
   
   page.drawText(hashLine1, {
-    x: 55,
-    y: y - 22,
+    x: 60,
+    y: y - 26,
     size: 9,
-    font: helvetica,
-    color: rgb(0.2, 0.2, 0.2),
+    font: courier,
+    color: rgb(0.1, 0.1, 0.1),
   });
   page.drawText(hashLine2, {
-    x: 55,
-    y: y - 34,
+    x: 60,
+    y: y - 40,
     size: 9,
-    font: helvetica,
-    color: rgb(0.2, 0.2, 0.2),
+    font: courier,
+    color: rgb(0.1, 0.1, 0.1),
   });
 
-  y -= 70;
+  y -= 75;
 
   // Signer Information Section
   page.drawText('SIGNER INFORMATION', {
     x: 50,
     y: y,
-    size: 12,
+    size: 11,
     font: helveticaBold,
     color: rgb(0, 0, 0),
   });
-  y -= 5;
+  y -= 25;
 
-  page.drawLine({
-    start: { x: 50, y: y },
-    end: { x: 562, y: y },
-    thickness: 1,
-    color: rgb(0.7, 0.7, 0.7),
-  });
-  y -= 20;
-
-  // Landlord Signer
+  // Landlord box
   page.drawRectangle({
-    x: 45,
-    y: y - 80,
-    width: 250,
-    height: 90,
-    borderColor: rgb(0.8, 0.8, 0.8),
+    x: 50,
+    y: y - 85,
+    width: 245,
+    height: 95,
+    borderColor: rgb(0.7, 0.7, 0.7),
     borderWidth: 1,
   });
 
-  page.drawText('LANDLORD', { x: 55, y: y - 5, size: 10, font: helveticaBold, color: rgb(0, 0.3, 0.6) });
-  page.drawText(`Name: ${landlordName}`, { x: 55, y: y - 22, size: 9, font: helvetica });
+  page.drawText('LANDLORD', { x: 60, y: y - 8, size: 10, font: helveticaBold, color: rgb(0, 0.3, 0.5) });
+  page.drawText(`Name: ${landlordName}`, { x: 60, y: y - 25, size: 9, font: helvetica });
   
   if (landlordSig) {
-    page.drawText(`Signed: ${formatDate(landlordSig.signed_at)}`, { x: 55, y: y - 36, size: 9, font: helvetica });
-    page.drawText(`IP Address: ${landlordSig.ip_address || 'Not recorded'}`, { x: 55, y: y - 50, size: 9, font: helvetica });
-    page.drawText(`Signature Hash:`, { x: 55, y: y - 64, size: 8, font: helvetica, color: rgb(0.4, 0.4, 0.4) });
-    page.drawText(`${landlordSig.hash_id.substring(0, 32)}...`, { x: 55, y: y - 76, size: 7, font: helvetica, color: rgb(0.5, 0.5, 0.5) });
+    page.drawText(`Signed: ${formatDate(landlordSig.signed_at)}`, { x: 60, y: y - 40, size: 8, font: helvetica });
+    page.drawText(`IP: ${landlordSig.ip_address || 'Not recorded'}`, { x: 60, y: y - 53, size: 8, font: helvetica });
+    page.drawText('Signature Hash:', { x: 60, y: y - 66, size: 7, font: helvetica, color: rgb(0.4, 0.4, 0.4) });
+    page.drawText(`${landlordSig.hash_id.substring(0, 28)}...`, { x: 60, y: y - 78, size: 6, font: courier, color: rgb(0.5, 0.5, 0.5) });
   } else {
-    page.drawText('Not yet signed', { x: 55, y: y - 36, size: 9, font: helvetica, color: rgb(0.6, 0.3, 0.3) });
+    page.drawText('Awaiting signature', { x: 60, y: y - 40, size: 9, font: helvetica, color: rgb(0.6, 0.3, 0.3) });
   }
 
-  // Tenant Signer
+  // Tenant box
   page.drawRectangle({
     x: 310,
-    y: y - 80,
-    width: 250,
-    height: 90,
-    borderColor: rgb(0.8, 0.8, 0.8),
+    y: y - 85,
+    width: 245,
+    height: 95,
+    borderColor: rgb(0.7, 0.7, 0.7),
     borderWidth: 1,
   });
 
-  page.drawText('TENANT', { x: 320, y: y - 5, size: 10, font: helveticaBold, color: rgb(0, 0.3, 0.6) });
-  page.drawText(`Name: ${tenantName}`, { x: 320, y: y - 22, size: 9, font: helvetica });
+  page.drawText('TENANT', { x: 320, y: y - 8, size: 10, font: helveticaBold, color: rgb(0, 0.3, 0.5) });
+  page.drawText(`Name: ${tenantName}`, { x: 320, y: y - 25, size: 9, font: helvetica });
   
   if (tenantSig) {
-    page.drawText(`Signed: ${formatDate(tenantSig.signed_at)}`, { x: 320, y: y - 36, size: 9, font: helvetica });
-    page.drawText(`IP Address: ${tenantSig.ip_address || 'Not recorded'}`, { x: 320, y: y - 50, size: 9, font: helvetica });
-    page.drawText(`Signature Hash:`, { x: 320, y: y - 64, size: 8, font: helvetica, color: rgb(0.4, 0.4, 0.4) });
-    page.drawText(`${tenantSig.hash_id.substring(0, 32)}...`, { x: 320, y: y - 76, size: 7, font: helvetica, color: rgb(0.5, 0.5, 0.5) });
+    page.drawText(`Signed: ${formatDate(tenantSig.signed_at)}`, { x: 320, y: y - 40, size: 8, font: helvetica });
+    page.drawText(`IP: ${tenantSig.ip_address || 'Not recorded'}`, { x: 320, y: y - 53, size: 8, font: helvetica });
+    page.drawText('Signature Hash:', { x: 320, y: y - 66, size: 7, font: helvetica, color: rgb(0.4, 0.4, 0.4) });
+    page.drawText(`${tenantSig.hash_id.substring(0, 28)}...`, { x: 320, y: y - 78, size: 6, font: courier, color: rgb(0.5, 0.5, 0.5) });
   } else {
-    page.drawText('Not yet signed', { x: 320, y: y - 36, size: 9, font: helvetica, color: rgb(0.6, 0.3, 0.3) });
+    page.drawText('Awaiting signature', { x: 320, y: y - 40, size: 9, font: helvetica, color: rgb(0.6, 0.3, 0.3) });
   }
 
   y -= 110;
 
-  // Binding Statement Section
+  // Certification Statement Section
   page.drawText('CERTIFICATION STATEMENT', {
     x: 50,
     y: y,
-    size: 12,
+    size: 11,
     font: helveticaBold,
     color: rgb(0, 0, 0),
   });
@@ -736,32 +1030,31 @@ async function appendCertificatePage(
   page.drawLine({
     start: { x: 50, y: y },
     end: { x: 562, y: y },
-    thickness: 1,
+    thickness: 0.5,
     color: rgb(0.7, 0.7, 0.7),
   });
-  y -= 20;
+  y -= 18;
 
-  const bindingStatement = [
-    "I hereby certify that this document has been electronically signed by all parties",
-    "indicated above. The SHA-256 cryptographic hash displayed on this certificate was",
-    "computed from the final, immutable PDF binary of the signed lease agreement.",
-    "",
-    "This hash serves as a unique digital fingerprint that can be used to verify the",
-    "authenticity and integrity of this document. Any modification to the document",
-    "content would result in a different hash value.",
-    "",
-    "The electronic signatures contained in this document are legally binding and",
-    "enforceable under applicable electronic signature laws, including the Electronic",
-    "Signatures in Global and National Commerce Act (E-SIGN) and the Uniform",
-    "Electronic Transactions Act (UETA).",
+  const statement = [
+    'I hereby certify that this document has been electronically signed by all parties indicated',
+    'above. The SHA-256 cryptographic hash displayed on this certificate was computed from the',
+    'final, immutable PDF binary of the signed lease agreement after all signatures were applied.',
+    '',
+    'This hash serves as a unique digital fingerprint that can be used to verify the authenticity',
+    'and integrity of this document. Any modification to the document content would result in a',
+    'completely different hash value, immediately revealing tampering.',
+    '',
+    'The electronic signatures contained in this document are legally binding and enforceable',
+    'under applicable electronic signature laws, including the Electronic Signatures in Global',
+    'and National Commerce Act (E-SIGN) and the Uniform Electronic Transactions Act (UETA).',
   ];
 
-  for (const line of bindingStatement) {
-    if (line === "") {
-      y -= 8;
+  for (const line of statement) {
+    if (line === '') {
+      y -= 6;
     } else {
       page.drawText(line, { x: 55, y: y, size: 9, font: timesRoman });
-      y -= 14;
+      y -= 12;
     }
   }
 
@@ -772,7 +1065,7 @@ async function appendCertificatePage(
     start: { x: 50, y: y },
     end: { x: 562, y: y },
     thickness: 1,
-    color: rgb(0.8, 0.8, 0.8),
+    color: rgb(0, 0.3, 0.5),
   });
   y -= 15;
 
@@ -782,24 +1075,23 @@ async function appendCertificatePage(
     y: y,
     size: 8,
     font: helvetica,
-    color: rgb(0.5, 0.5, 0.5),
+    color: rgb(0.4, 0.4, 0.4),
   });
 
-  page.drawText('This certificate is automatically generated and cannot be altered after creation.', {
+  page.drawText('This certificate is automatically generated and cryptographically bound to the final document.', {
     x: 50,
     y: y - 12,
     size: 7,
     font: helvetica,
-    color: rgb(0.6, 0.6, 0.6),
+    color: rgb(0.5, 0.5, 0.5),
   });
 
-  // Update page numbers for all pages including certificate
+  // Update page count for all pages
   const pages = pdfDoc.getPages();
   const pageCount = pages.length;
   pages.forEach((p, idx) => {
-    // Clear previous page number by drawing white rectangle (approximate)
     p.drawText(`Page ${idx + 1} of ${pageCount}`, {
-      x: 306 - 30,
+      x: 276,
       y: 30,
       size: 9,
       font: helvetica,
@@ -826,7 +1118,7 @@ async function generateCertificatePDF(
     tenantName,
     landlordSig,
     tenantSig,
-    documentHash || 'Not yet computed'
+    documentHash
   );
 
   return await pdfDoc.save();
