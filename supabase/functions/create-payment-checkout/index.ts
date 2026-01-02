@@ -112,6 +112,24 @@ serve(async (req) => {
 
       metadata.tenant_id = body.tenant_id!;
       resolvedPropertyId = tenantData.property_id;
+      
+      // Fallback: If tenant has no property_id, look up from user's active lease
+      if (!resolvedPropertyId) {
+        console.log("[CREATE-CHECKOUT] Tenant has no property_id, looking up from lease");
+        const { data: leaseData } = await supabaseAdmin
+          .from('leases')
+          .select('property_id')
+          .eq('tenant_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+          
+        if (leaseData?.property_id) {
+          resolvedPropertyId = leaseData.property_id;
+          console.log("[CREATE-CHECKOUT] Found property from lease:", resolvedPropertyId);
+        }
+      }
+      
       console.log("[CREATE-CHECKOUT] Balance payment validated for tenant:", body.tenant_id);
     }
 

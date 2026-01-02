@@ -143,6 +143,39 @@ serve(async (req) => {
       }
     }
 
+    // Fallback: If we still don't have property_id, try to get it from tenant's lease
+    if (!resolvedPropertyId && resolvedTenantId) {
+      console.log("[VERIFY-PAYMENT] Property ID missing, looking up from tenant's lease");
+      
+      // First try to get property_id directly from tenant record
+      const { data: tenantWithProperty } = await supabaseAdmin
+        .from('tenants')
+        .select('property_id')
+        .eq('id', resolvedTenantId)
+        .single();
+        
+      if (tenantWithProperty?.property_id) {
+        resolvedPropertyId = tenantWithProperty.property_id;
+        console.log("[VERIFY-PAYMENT] Found property from tenant record:", resolvedPropertyId);
+      }
+      
+      // If still no property, look for any active lease for this user
+      if (!resolvedPropertyId && userId) {
+        const { data: activeLeaseData } = await supabaseAdmin
+          .from('leases')
+          .select('property_id')
+          .eq('tenant_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+          
+        if (activeLeaseData?.property_id) {
+          resolvedPropertyId = activeLeaseData.property_id;
+          console.log("[VERIFY-PAYMENT] Found property from user's lease:", resolvedPropertyId);
+        }
+      }
+    }
+
     console.log("[VERIFY-PAYMENT] Final resolved IDs:", { resolvedTenantId, resolvedPropertyId });
 
     // We need both tenant_id and property_id to record a payment
