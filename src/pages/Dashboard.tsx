@@ -147,6 +147,31 @@ export default function Dashboard() {
     };
   }, [user?.id, queryClient]);
 
+  // Realtime subscription for leases
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel('leases-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'leases',
+          filter: `manager_id=eq.${user.id}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['leases'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, queryClient]);
+
   // Wait for both auth and role to be fully loaded before redirecting
   if (loading || (user && role === null)) {
     return (
@@ -284,7 +309,7 @@ export default function Dashboard() {
         <img src={logo} alt="Sterling Gate Properties" className="h-16 md:h-24 w-auto object-contain" />
       </Link>
       
-      <nav className="space-y-1 flex-1">
+      <nav className="space-y-1 flex-1 overflow-hidden">
         {navItems.map((item) => (
           <button
             key={item.id}
@@ -292,18 +317,18 @@ export default function Dashboard() {
               setActiveTab(item.id as DashboardTab);
               onNavClick?.();
             }}
-            className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-smooth text-left min-h-[48px] active:bg-sidebar-accent/70 ${
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-smooth text-left min-h-[48px] active:bg-sidebar-accent/70 overflow-hidden ${
               activeTab === item.id
                 ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                 : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
             }`}
           >
-            <span className="flex items-center gap-3">
-              <item.icon className="h-5 w-5" />
-              {item.label}
+            <span className="flex items-center gap-3 min-w-0 truncate">
+              <item.icon className="h-5 w-5 shrink-0" />
+              <span className="truncate">{item.label}</span>
             </span>
             {item.badge && item.badge > 0 && (
-              <Badge variant="secondary" className="bg-sidebar-primary text-sidebar-primary-foreground text-xs">
+              <Badge variant="secondary" className="bg-sidebar-primary text-sidebar-primary-foreground text-xs shrink-0 ml-2">
                 {item.badge}
               </Badge>
             )}
@@ -370,7 +395,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="p-4 md:p-8">
+          <div className="p-4 md:p-8 overflow-hidden">
           {/* Overview Tab */}
           {activeTab === 'overview' && (
             <div className="animate-fade-in">

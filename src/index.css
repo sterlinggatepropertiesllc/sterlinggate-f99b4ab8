@@ -123,10 +123,11 @@
 @layer base {
   * {
     @apply border-border;
+    min-width: 0;
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-foreground antialiased overflow-x-hidden;
     font-family: 'Inter', system-ui, sans-serif;
   }
 
@@ -135,6 +136,12 @@
     font-weight: 500;
     letter-spacing: -0.02em;
   }
+}
+
+/* Global overflow containment */
+.overflow-container {
+  overflow: hidden;
+  min-width: 0;
 }
 
 @layer components {

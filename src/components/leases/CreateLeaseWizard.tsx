@@ -1014,7 +1014,7 @@ export function CreateLeaseWizard({
                   </p>
                 </div>
                 <div 
-                  className="p-6 rounded-lg bg-background border border-border max-h-[400px] overflow-y-auto prose prose-sm dark:prose-invert"
+                  className="p-6 rounded-lg bg-white dark:bg-slate-50 text-slate-900 border border-border max-h-[400px] overflow-y-auto prose prose-sm prose-slate"
                   dangerouslySetInnerHTML={{ __html: generatedLeaseHTML }}
                 />
               </>
@@ -1143,6 +1143,7 @@ export function CreateLeaseWizard({
             variant="outline"
             onClick={() => setCurrentStep(prev => prev - 1)}
             disabled={currentStep === 0}
+            className="border-border bg-secondary/50 hover:bg-secondary text-foreground"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
