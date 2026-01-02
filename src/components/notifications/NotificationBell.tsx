@@ -43,13 +43,14 @@ export function NotificationBell() {
     >
       <Bell className="h-5 w-5" />
       {unreadCount > 0 && (
-        <span 
+        <span
           className={cn(
             'absolute top-0.5 right-0.5 min-w-[18px] h-[18px] rounded-full',
-            'bg-gradient-to-br from-amber-400 via-yellow-500 to-amber-600',
-            'text-amber-950 text-[10px] font-bold',
+            'bg-[var(--gradient-gold)] text-warning-foreground',
+            'text-[10px] font-bold',
             'flex items-center justify-center px-1',
-            'shadow-[0_0_8px_rgba(251,191,36,0.6)]',
+            'shadow-[0_0_10px_hsl(var(--warning)/0.55)]',
+            'ring-1 ring-[hsl(var(--warning)/0.35)]',
             hasNewNotification && 'animate-gold-pulse'
           )}
         >
