@@ -311,8 +311,9 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
             </div>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="outline" size="sm" className="text-warning border-warning hover:bg-warning/10">
-                  <Shield className="h-4 w-4 mr-2" /> Revoke Access
+                <Button variant="outline" size="sm" className="text-warning border-warning hover:bg-warning/10 whitespace-nowrap flex-shrink-0">
+                  <Shield className="h-4 w-4 mr-2 flex-shrink-0" /> 
+                  <span>Revoke Access</span>
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
