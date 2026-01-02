@@ -147,7 +147,8 @@ export default function Dashboard() {
     };
   }, [user?.id, queryClient]);
 
-  if (loading) {
+  // Wait for both auth and role to be fully loaded before redirecting
+  if (loading || (user && role === null)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-pulse text-muted-foreground">Loading...</div>
