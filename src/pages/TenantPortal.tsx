@@ -41,15 +41,19 @@ import {
   TrendingDown,
   Receipt,
   Menu,
-  User
+  User,
+  LayoutDashboard,
+  AlertCircle,
+  CalendarDays,
+  Bell
 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
-type PortalTab = 'applications' | 'leases' | 'payments' | 'documents' | 'messages';
+type PortalTab = 'dashboard' | 'applications' | 'leases' | 'payments' | 'documents' | 'messages';
 
 export default function TenantPortal() {
   const { user, role, loading, signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<PortalTab>('applications');
+  const [activeTab, setActiveTab] = useState<PortalTab>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const isMobile = useIsMobile();
@@ -130,7 +134,21 @@ export default function TenantPortal() {
   const totalPaid = payments?.filter(p => p.status === 'completed').reduce((sum, p) => sum + Number(p.amount), 0) || 0;
   const pendingPayments = payments?.filter(p => p.status === 'pending').reduce((sum, p) => sum + Number(p.amount), 0) || 0;
 
+  // Dashboard calculations
+  const pendingLeases = leases?.filter((l: any) => l.status === 'pending_tenant_signature') || [];
+  const activeLeases = leases?.filter((l: any) => l.status === 'completed') || [];
+  const nextRent = activeLeases.length > 0 ? Number(activeLeases[0].monthly_rent) : 0;
+  
+  // Calculate next rent due date (1st of next month)
+  const today = new Date();
+  const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+  const nextRentDueDate = nextMonth.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  // Calculate current balance (pending payments + next rent if not paid this month)
+  const currentBalance = pendingPayments + (activeLeases.length > 0 ? nextRent : 0);
+
   const navItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'applications', label: 'My Applications', icon: ClipboardList },
     { id: 'leases', label: 'My Leases', icon: FileText },
     { id: 'payments', label: 'Payments', icon: Wallet },
@@ -259,6 +277,211 @@ export default function TenantPortal() {
           </div>
 
           <div className="p-4 md:p-8 overflow-hidden">
+            {/* Dashboard Tab */}
+            {activeTab === 'dashboard' && (
+              <div className="animate-fade-in space-y-6">
+                {/* Welcome Header */}
+                <div className="mb-2">
+                  <h1 className="text-2xl md:text-3xl font-serif">
+                    Welcome back, {tenantProfile?.full_name?.split(' ')[0] || 'Tenant'}
+                  </h1>
+                  <p className="text-muted-foreground">
+                    {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                  </p>
+                </div>
+
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+                  <Card className="p-4 md:p-5 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs md:text-sm text-muted-foreground">Current Balance</p>
+                        <p className="text-xl md:text-2xl font-serif mt-1 truncate">
+                          ${currentBalance.toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="w-10 h-10 md:w-11 md:h-11 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <DollarSign className="h-5 w-5 md:h-6 md:w-6 text-primary" />
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-4 md:p-5 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs md:text-sm text-muted-foreground">Next Rent Due</p>
+                        <p className="text-xl md:text-2xl font-serif mt-1 truncate">
+                          ${nextRent.toLocaleString()}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{nextRentDueDate}</p>
+                      </div>
+                      <div className="w-10 h-10 md:w-11 md:h-11 bg-accent/50 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <CalendarDays className="h-5 w-5 md:h-6 md:w-6 text-foreground/70" />
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-4 md:p-5 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs md:text-sm text-muted-foreground">Pending Actions</p>
+                        <p className="text-xl md:text-2xl font-serif mt-1">
+                          {pendingLeases.length}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {pendingLeases.length === 1 ? 'lease to sign' : 'leases to sign'}
+                        </p>
+                      </div>
+                      <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                        pendingLeases.length > 0 ? 'bg-warning/10' : 'bg-success/10'
+                      }`}>
+                        {pendingLeases.length > 0 ? (
+                          <AlertCircle className="h-5 w-5 md:h-6 md:w-6 text-warning" />
+                        ) : (
+                          <CheckCircle2 className="h-5 w-5 md:h-6 md:w-6 text-success" />
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+
+                  <Card className="p-4 md:p-5 hover:shadow-md transition-shadow">
+                    <div className="flex items-start justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs md:text-sm text-muted-foreground">Messages</p>
+                        <p className="text-xl md:text-2xl font-serif mt-1">
+                          {unreadCount || 0}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">unread</p>
+                      </div>
+                      <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                        (unreadCount || 0) > 0 ? 'bg-primary/10' : 'bg-muted'
+                      }`}>
+                        <MessageSquare className={`h-5 w-5 md:h-6 md:w-6 ${
+                          (unreadCount || 0) > 0 ? 'text-primary' : 'text-muted-foreground'
+                        }`} />
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+
+                {/* Action Required Section */}
+                {pendingLeases.length > 0 && (
+                  <Card className="border-warning/30 bg-warning/5">
+                    <div className="p-4 md:p-5 border-b border-warning/20">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="h-5 w-5 text-warning" />
+                        <h3 className="font-serif text-lg">Action Required</h3>
+                      </div>
+                    </div>
+                    <div className="divide-y divide-warning/10">
+                      {pendingLeases.map((lease: any) => (
+                        <div key={lease.id} className="p-4 md:p-5 flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
+                            <div className="w-10 h-10 md:w-12 md:h-12 bg-warning/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                              <FileText className="h-5 w-5 md:h-6 md:w-6 text-warning" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-medium truncate">{lease.properties?.address || 'Property'}</p>
+                              <p className="text-sm text-muted-foreground">
+                                ${Number(lease.monthly_rent).toLocaleString()}/mo · Pending your signature
+                              </p>
+                            </div>
+                          </div>
+                          <Link to={`/sign-lease/${lease.id}`}>
+                            <Button size="sm" className="gap-1.5 whitespace-nowrap">
+                              Sign Now <ArrowRight className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+
+                {/* All Caught Up */}
+                {pendingLeases.length === 0 && (
+                  <Card className="border-success/30 bg-success/5 p-6 text-center">
+                    <CheckCircle2 className="h-10 w-10 text-success mx-auto mb-3" />
+                    <h3 className="font-serif text-lg mb-1">You're all caught up!</h3>
+                    <p className="text-muted-foreground text-sm">No pending actions at this time</p>
+                  </Card>
+                )}
+
+                {/* Upcoming Payment Preview */}
+                {activeLeases.length > 0 && (
+                  <Card>
+                    <div className="p-4 md:p-5 border-b border-border">
+                      <h3 className="font-serif text-lg">Upcoming Payment</h3>
+                    </div>
+                    <div className="p-4 md:p-5">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
+                          <div className="w-10 h-10 md:w-12 md:h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <CreditCard className="h-5 w-5 md:h-6 md:w-6 text-primary" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium truncate">{activeLeases[0].properties?.address || 'Property'}</p>
+                            <p className="text-sm text-muted-foreground">
+                              Due {nextRentDueDate}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-xl md:text-2xl font-serif">${nextRent.toLocaleString()}</p>
+                          <Button 
+                            size="sm" 
+                            className="mt-2"
+                            onClick={() => handlePayRent(activeLeases[0].id, nextRent)}
+                            disabled={isPaymentLoading}
+                          >
+                            {isPaymentLoading ? (
+                              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                            ) : null}
+                            Pay Now
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                )}
+
+                {/* Quick Links */}
+                <div>
+                  <h3 className="font-serif text-lg mb-3">Quick Links</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <button 
+                      onClick={() => setActiveTab('leases')}
+                      className="p-4 rounded-xl border border-border bg-card hover:bg-accent/50 transition-colors text-left group"
+                    >
+                      <FileText className="h-6 w-6 text-muted-foreground group-hover:text-foreground mb-2" />
+                      <p className="font-medium text-sm">View Leases</p>
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('payments')}
+                      className="p-4 rounded-xl border border-border bg-card hover:bg-accent/50 transition-colors text-left group"
+                    >
+                      <Receipt className="h-6 w-6 text-muted-foreground group-hover:text-foreground mb-2" />
+                      <p className="font-medium text-sm">Payment History</p>
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('documents')}
+                      className="p-4 rounded-xl border border-border bg-card hover:bg-accent/50 transition-colors text-left group"
+                    >
+                      <Folder className="h-6 w-6 text-muted-foreground group-hover:text-foreground mb-2" />
+                      <p className="font-medium text-sm">My Documents</p>
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('messages')}
+                      className="p-4 rounded-xl border border-border bg-card hover:bg-accent/50 transition-colors text-left group"
+                    >
+                      <MessageSquare className="h-6 w-6 text-muted-foreground group-hover:text-foreground mb-2" />
+                      <p className="font-medium text-sm">Send Message</p>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* My Applications Tab */}
             {activeTab === 'applications' && (
               <div className="animate-fade-in">
