@@ -48,7 +48,7 @@ export function BalanceSection({
   const overdueBalance = calculateOverdueBalance(currentBalance, rentAmount, leaseStartDate);
 
   const handleSubmit = async () => {
-    if (!amount || !description.trim()) return;
+    if (!amount) return;
 
     await createAdjustment.mutateAsync({
       tenant_id: tenantId,
@@ -146,7 +146,7 @@ export function BalanceSection({
           </div>
         </div>
         <div>
-          <Label htmlFor="adjustment-description" className="text-xs">Reason (required)</Label>
+          <Label htmlFor="adjustment-description" className="text-xs">Reason (optional)</Label>
           <Textarea
             id="adjustment-description"
             value={description}
@@ -157,7 +157,7 @@ export function BalanceSection({
         </div>
         <Button
           onClick={handleSubmit}
-          disabled={!amount || !description.trim() || createAdjustment.isPending}
+          disabled={!amount || createAdjustment.isPending}
           className="w-full"
           size="sm"
         >
