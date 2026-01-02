@@ -338,32 +338,33 @@ export default function TenantPortal() {
                 {/* Summary Cards */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                   <Card className={`p-4 md:p-5 hover:shadow-md transition-shadow ${isOverdue ? 'border-destructive/50 bg-destructive/5' : ''}`}>
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-start justify-between mb-auto">
                       <div className="min-w-0 flex-1">
                         <p className="text-xs md:text-sm text-muted-foreground">Current Balance</p>
                         <p className={`text-xl md:text-2xl font-serif mt-1 truncate ${isOverdue ? 'text-destructive' : ''}`}>
                           ${Math.abs(currentBalance).toLocaleString()}
                         </p>
-                        {isOverdue && (
-                          <Badge variant="destructive" className="mt-1 text-xs">
-                            Amount Due
-                          </Badge>
-                        )}
                         {currentBalance < 0 && (
                           <Badge variant="secondary" className="mt-1 text-xs bg-primary/10 text-primary">
                             Credit
                           </Badge>
+                        )}
+                        {currentBalance > 0 && !isOverdue && (
+                          <p className="text-xs text-muted-foreground mt-1">Due this cycle</p>
+                        )}
+                        {isOverdue && (
+                          <p className="text-xs text-destructive mt-1">Overdue</p>
                         )}
                       </div>
                       <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${isOverdue ? 'bg-destructive/10' : 'bg-primary/10'}`}>
                         <DollarSign className={`h-5 w-5 md:h-6 md:w-6 ${isOverdue ? 'text-destructive' : 'text-primary'}`} />
                       </div>
                     </div>
-                    {isOverdue && tenantRecord?.id && (
+                    {currentBalance > 0 && tenantRecord?.id && (
                       <Button
-                        variant="destructive"
+                        variant={isOverdue ? "destructive" : "default"}
                         size="sm"
-                        className="w-full mt-3"
+                        className="w-full mt-3 card-action-btn"
                         onClick={async () => {
                           setIsPayingBalance(true);
                           try {
@@ -376,13 +377,13 @@ export default function TenantPortal() {
                       >
                         {isPayingBalance ? (
                           <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            <Loader2 className="h-4 w-4 animate-spin" />
                             Processing...
                           </>
                         ) : (
                           <>
-                            <CreditCard className="h-4 w-4 mr-2" />
-                            Pay Overdue Balance
+                            {isOverdue ? 'Pay Overdue Balance' : 'Pay Balance'}
+                            <ArrowRight className="h-4 w-4" />
                           </>
                         )}
                       </Button>

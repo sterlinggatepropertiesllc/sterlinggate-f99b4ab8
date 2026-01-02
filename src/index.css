@@ -458,3 +458,28 @@
 .mobile-scroll-x::-webkit-scrollbar {
   display: none;
 }
+
+/* ============================================
+   CARD ACTION BUTTON DESIGN RULES
+   ============================================
+   
+   Guidelines for action buttons inside cards:
+   1. Use ONE button per card for primary action
+   2. Avoid redundant badges + buttons (pick one)
+   3. Use icon on ONE side only (prefer trailing arrow for CTAs)
+   4. Full width buttons for consistent alignment
+   5. Use margin-top for spacing from card content
+   
+   Example usage:
+   <Button className="w-full mt-3 card-action-btn">
+     Action Text <ArrowRight className="h-4 w-4" />
+   </Button>
+   ============================================ */
+
+.card-action-btn {
+  @apply justify-between font-medium;
+}
+
+.card-action-btn svg {
+  @apply flex-shrink-0;
+}
