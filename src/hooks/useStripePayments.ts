@@ -25,8 +25,15 @@ export function useStripeCheckout() {
       if (error) throw error;
 
       if (data?.url) {
-        // Redirect in same tab to preserve session
-        window.location.href = data.url;
+        // Check if we're in an iframe (Lovable preview) - Stripe doesn't work in iframes
+        const isInIframe = window.self !== window.top;
+        if (isInIframe) {
+          // Open in new tab when in iframe
+          window.open(data.url, '_blank');
+        } else {
+          // Redirect in same tab when in standalone browser
+          window.location.href = data.url;
+        }
         return { success: true, url: data.url };
       } else {
         throw new Error('No checkout URL received');
