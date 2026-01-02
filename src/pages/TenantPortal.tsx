@@ -64,8 +64,9 @@ export default function TenantPortal() {
   const { data: unreadCount } = useUnreadCount(user?.id);
   const { data: tenantProfile } = useProfile(user?.id);
 
-  const { paySecurityDeposit, payRent, isLoading: isPaymentLoading } = useStripeCheckout();
+  const { paySecurityDeposit, payRent, payBalance, isLoading: isPaymentLoading } = useStripeCheckout();
   const [pendingPayment, setPendingPayment] = useState<{ type: string; id: string; amount?: number } | null>(null);
+  const [isPayingBalance, setIsPayingBalance] = useState(false);
 
   // Fetch tenant's payment history
   const { data: payments, isLoading: paymentsLoading } = usePayments(undefined, user?.id);
@@ -358,6 +359,34 @@ export default function TenantPortal() {
                         <DollarSign className={`h-5 w-5 md:h-6 md:w-6 ${isOverdue ? 'text-destructive' : 'text-primary'}`} />
                       </div>
                     </div>
+                    {isOverdue && tenantRecord?.id && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="w-full mt-3"
+                        onClick={async () => {
+                          setIsPayingBalance(true);
+                          try {
+                            await payBalance(tenantRecord.id, currentBalance);
+                          } finally {
+                            setIsPayingBalance(false);
+                          }
+                        }}
+                        disabled={isPayingBalance}
+                      >
+                        {isPayingBalance ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Processing...
+                          </>
+                        ) : (
+                          <>
+                            <CreditCard className="h-4 w-4 mr-2" />
+                            Pay Overdue Balance
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </Card>
 
                   <Card className="p-4 md:p-5 hover:shadow-md transition-shadow">

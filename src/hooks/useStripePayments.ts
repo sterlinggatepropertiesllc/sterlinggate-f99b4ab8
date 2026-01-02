@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
-type PaymentType = 'application_fee' | 'security_deposit' | 'rent';
+type PaymentType = 'application_fee' | 'security_deposit' | 'rent' | 'balance';
 
 interface CreateCheckoutOptions {
   payment_type: PaymentType;
   property_id?: string;
   lease_id?: string;
+  tenant_id?: string;
   amount?: number; // In cents
 }
 
@@ -62,11 +63,20 @@ export function useStripeCheckout() {
     });
   };
 
+  const payBalance = async (tenantId: string, amountInDollars: number) => {
+    return createCheckout({
+      payment_type: 'balance',
+      tenant_id: tenantId,
+      amount: Math.round(amountInDollars * 100), // Convert to cents
+    });
+  };
+
   return {
     isLoading,
     createCheckout,
     payApplicationFee,
     paySecurityDeposit,
     payRent,
+    payBalance,
   };
 }
