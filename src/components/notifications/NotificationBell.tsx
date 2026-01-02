@@ -35,26 +35,33 @@ export function NotificationBell() {
     <Button
       variant="ghost"
       size="icon"
-      className={cn(
-        'relative h-10 w-10 rounded-lg transition-all duration-200',
-        'hover:bg-primary/10 hover:text-primary',
-        hasNewNotification && 'animate-gold-glow'
-      )}
+      className="relative h-10 w-10 rounded-lg transition-all duration-200 hover:bg-primary/10 hover:text-primary overflow-visible"
     >
-      <Bell className="h-5 w-5" />
+      {/* Halo pulse layer - only when new notification arrives */}
+      {hasNewNotification && (
+        <span 
+          className="absolute inset-0 rounded-lg bg-warning/20 animate-notification-halo pointer-events-none"
+          aria-hidden="true"
+        />
+      )}
+      
+      {/* Bell icon */}
+      <Bell className="h-5 w-5 relative z-10" />
+      
+      {/* Unread indicator dot - only when unreadCount > 0 */}
       {unreadCount > 0 && (
         <span
           className={cn(
-            'absolute top-0.5 right-0.5 min-w-[18px] h-[18px] rounded-full',
-            'bg-[var(--gradient-gold)] text-warning-foreground',
-            'text-[10px] font-bold',
-            'flex items-center justify-center px-1',
-            'shadow-[0_0_10px_hsl(var(--warning)/0.55)]',
-            'ring-1 ring-[hsl(var(--warning)/0.35)]',
-            hasNewNotification && 'animate-gold-pulse'
+            'absolute top-1.5 right-1.5 z-20',
+            'flex items-center justify-center',
+            'rounded-full bg-warning border-2 border-background',
+            'shadow-sm',
+            unreadCount < 10 
+              ? 'h-2.5 w-2.5' 
+              : 'h-4 min-w-4 px-1 text-[9px] font-bold text-warning-foreground'
           )}
         >
-          {unreadCount > 99 ? '99+' : unreadCount}
+          {unreadCount >= 10 && (unreadCount > 99 ? '99+' : unreadCount)}
         </span>
       )}
     </Button>
