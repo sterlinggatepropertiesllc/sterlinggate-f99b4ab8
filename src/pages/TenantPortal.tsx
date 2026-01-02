@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Navigate, Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMyApplications } from '@/hooks/useApplications';
 import { useLeases } from '@/hooks/useLeases';
@@ -7,6 +8,7 @@ import { useUnreadCount } from '@/hooks/useMessages';
 import { useStripeCheckout } from '@/hooks/useStripePayments';
 import { usePayments } from '@/hooks/usePayments';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -49,6 +51,7 @@ export default function TenantPortal() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
 
   const { data: myApplications, isLoading: applicationsLoading } = useMyApplications(user?.id);
   const { data: leases, isLoading: leasesLoading } = useLeases(user?.id, role);
@@ -59,6 +62,31 @@ export default function TenantPortal() {
 
   // Fetch tenant's payment history
   const { data: payments, isLoading: paymentsLoading } = usePayments(undefined, user?.id);
+
+  // Realtime subscription for tenant's leases
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel('tenant-leases-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'leases',
+          filter: `tenant_id=eq.${user.id}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['leases'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, queryClient]);
 
   // Wait for both auth and role to be fully loaded before redirecting
   if (loading || (user && role === null)) {

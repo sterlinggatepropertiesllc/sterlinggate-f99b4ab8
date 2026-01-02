@@ -8,8 +8,8 @@ interface Signature {
   signer_id: string;
   signed_at: string;
   hash_id: string;
-  ip_address: string | null;
-  signature_type: string;
+  ip_address?: string | null;
+  signature_type?: string;
 }
 
 interface AuditCertificateProps {
@@ -103,7 +103,7 @@ export function AuditCertificate({
                           {signerNames[sig.signer_id] || 'Unknown Signer'}
                         </p>
                         <Badge variant="secondary" className="text-xs">
-                          {sig.signature_type === 'draw' ? 'Drawn' : 'Typed'} Signature
+                          {sig.signature_type === 'draw' ? 'Drawn' : sig.signature_type === 'type' ? 'Typed' : 'Electronic'} Signature
                         </Badge>
                       </div>
                     </div>
