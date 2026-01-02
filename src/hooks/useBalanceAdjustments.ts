@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -24,6 +25,33 @@ interface CreateAdjustmentInput {
 }
 
 export function useBalanceAdjustments(tenantId: string | undefined) {
+  const queryClient = useQueryClient();
+
+  // Set up realtime subscription for balance adjustments
+  useEffect(() => {
+    if (!tenantId) return;
+
+    const channel = supabase
+      .channel(`balance-adjustments-${tenantId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'balance_adjustments',
+          filter: `tenant_id=eq.${tenantId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['balance-adjustments', tenantId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [tenantId, queryClient]);
+
   return useQuery({
     queryKey: ['balance-adjustments', tenantId],
     queryFn: async () => {
@@ -41,6 +69,33 @@ export function useBalanceAdjustments(tenantId: string | undefined) {
     },
     enabled: !!tenantId,
   });
+}
+
+// Hook for realtime tenant balance updates
+export function useRealtimeTenantBalance(tenantId: string | undefined, onUpdate: () => void) {
+  useEffect(() => {
+    if (!tenantId) return;
+
+    const channel = supabase
+      .channel(`tenant-balance-${tenantId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'tenants',
+          filter: `id=eq.${tenantId}`,
+        },
+        () => {
+          onUpdate();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [tenantId, onUpdate]);
 }
 
 export function useCreateBalanceAdjustment() {
