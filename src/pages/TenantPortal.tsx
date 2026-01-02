@@ -6,6 +6,7 @@ import { useMyApplications } from '@/hooks/useApplications';
 import { useLeases } from '@/hooks/useLeases';
 import { useUnreadCount } from '@/hooks/useMessages';
 import { useStripeCheckout } from '@/hooks/useStripePayments';
+import { useProfile } from '@/hooks/useProfiles';
 import { usePayments } from '@/hooks/usePayments';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
@@ -39,7 +40,8 @@ import {
   TrendingUp,
   TrendingDown,
   Receipt,
-  Menu
+  Menu,
+  User
 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
@@ -56,6 +58,7 @@ export default function TenantPortal() {
   const { data: myApplications, isLoading: applicationsLoading } = useMyApplications(user?.id);
   const { data: leases, isLoading: leasesLoading } = useLeases(user?.id, role);
   const { data: unreadCount } = useUnreadCount(user?.id);
+  const { data: tenantProfile } = useProfile(user?.id);
 
   const { paySecurityDeposit, payRent, isLoading: isPaymentLoading } = useStripeCheckout();
   const [pendingPayment, setPendingPayment] = useState<{ type: string; id: string; amount?: number } | null>(null);
@@ -138,9 +141,31 @@ export default function TenantPortal() {
   // Sidebar content component
   const SidebarContent = ({ onNavClick }: { onNavClick?: () => void }) => (
     <>
-      <Link to="/" className="flex items-center mb-8 w-full">
+      <Link to="/" className="flex items-center mb-4 w-full">
         <img src={logo} alt="Sterling Gate Properties" className="h-16 md:h-24 w-auto object-contain" />
       </Link>
+
+      {/* Tenant Portal Label + Profile */}
+      <div className="mb-6 px-2">
+        <Badge variant="secondary" className="mb-3 bg-primary/10 text-primary border-primary/20">
+          Tenant Portal
+        </Badge>
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-sidebar-accent/30">
+          <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+            <User className="h-5 w-5 text-primary" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-medium text-sidebar-foreground truncate text-sm">
+              {tenantProfile?.full_name || 'Tenant'}
+            </p>
+            <p className="text-xs text-sidebar-foreground/60 truncate">
+              {tenantProfile?.email || user?.email}
+            </p>
+          </div>
+        </div>
+      </div>
+      
+      <Separator className="mb-4 bg-sidebar-border" />
       
       <nav className="space-y-1 flex-1 overflow-hidden">
         {navItems.map((item) => (
