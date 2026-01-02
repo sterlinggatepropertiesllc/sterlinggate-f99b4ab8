@@ -382,7 +382,7 @@ export default function TenantPortal() {
                           </>
                         ) : (
                           <>
-                            {isOverdue ? 'Pay Overdue Balance' : 'Pay Balance'}
+                            Pay Balance
                             <ArrowRight className="h-4 w-4" />
                           </>
                         )}
