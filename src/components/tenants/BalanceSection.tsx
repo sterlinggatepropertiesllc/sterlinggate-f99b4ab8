@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -6,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { useBalanceAdjustments, useCreateBalanceAdjustment, calculateOverdueBalance } from '@/hooks/useBalanceAdjustments';
+import { useBalanceAdjustments, useCreateBalanceAdjustment, calculateOverdueBalance, useRealtimeTenantBalance } from '@/hooks/useBalanceAdjustments';
 import { format, parseISO } from 'date-fns';
 import { DollarSign, ChevronDown, ChevronUp, Clock, AlertTriangle, Plus, Minus } from 'lucide-react';
 
@@ -37,6 +38,7 @@ export function BalanceSection({
   managerId,
   onBalanceUpdate,
 }: BalanceSectionProps) {
+  const queryClient = useQueryClient();
   const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>('charge');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -44,6 +46,14 @@ export function BalanceSection({
 
   const { data: adjustments, isLoading: adjustmentsLoading } = useBalanceAdjustments(tenantId);
   const createAdjustment = useCreateBalanceAdjustment();
+
+  // Subscribe to realtime tenant balance updates
+  const handleRealtimeUpdate = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['tenants'] });
+    onBalanceUpdate();
+  }, [queryClient, onBalanceUpdate]);
+
+  useRealtimeTenantBalance(tenantId, handleRealtimeUpdate);
 
   const overdueBalance = calculateOverdueBalance(currentBalance, rentAmount, leaseStartDate);
 
