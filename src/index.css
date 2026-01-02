@@ -389,6 +389,38 @@
   animation: notification-pulse 1.5s ease-in-out infinite;
 }
 
+/* Premium Gold Notification Animations */
+@keyframes gold-pulse {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(251, 191, 36, 0.6),
+                0 0 8px rgba(251, 191, 36, 0.4);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 8px rgba(251, 191, 36, 0.8),
+                0 0 16px rgba(251, 191, 36, 0.5),
+                0 0 24px rgba(251, 191, 36, 0.3);
+    transform: scale(1.1);
+  }
+}
+
+.animate-gold-pulse {
+  animation: gold-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes gold-glow {
+  0%, 100% {
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  50% {
+    filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.5));
+  }
+}
+
+.animate-gold-glow {
+  animation: gold-glow 2s ease-in-out infinite;
+}
+
 @keyframes ken-burns {
   0% {
     transform: scale(1);
