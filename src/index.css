@@ -460,6 +460,32 @@
 }
 
 /* ============================================
+   GLOBAL OVERFLOW PREVENTION RULES
+   ============================================
+   Prevents text and elements from breaking containers
+   ============================================ */
+
+/* Buttons: prevent text overflow, ensure they stay in bounds */
+button,
+.btn,
+[class*="Button"] {
+  @apply max-w-full;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Cards: ensure content stays contained */
+[class*="Card"],
+.card {
+  @apply overflow-hidden;
+}
+
+/* General text truncation helper */
+.text-truncate {
+  @apply truncate;
+}
+
+/* ============================================
    CARD ACTION BUTTON DESIGN RULES
    ============================================
    
@@ -477,9 +503,9 @@
    ============================================ */
 
 .card-action-btn {
-  @apply justify-between font-medium;
+  @apply justify-center font-medium whitespace-nowrap;
 }
 
 .card-action-btn svg {
-  @apply flex-shrink-0;
+  @apply flex-shrink-0 ml-2;
 }
