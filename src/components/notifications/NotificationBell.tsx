@@ -38,17 +38,19 @@ export function NotificationBell() {
       className={cn(
         'relative h-10 w-10 rounded-lg transition-all duration-200',
         'hover:bg-primary/10 hover:text-primary',
-        hasNewNotification && 'animate-notification-pulse'
+        hasNewNotification && 'animate-gold-glow'
       )}
     >
       <Bell className="h-5 w-5" />
       {unreadCount > 0 && (
         <span 
           className={cn(
-            'absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full',
-            'bg-destructive text-destructive-foreground text-[10px] font-semibold',
+            'absolute top-0.5 right-0.5 min-w-[18px] h-[18px] rounded-full',
+            'bg-gradient-to-br from-amber-400 via-yellow-500 to-amber-600',
+            'text-amber-950 text-[10px] font-bold',
             'flex items-center justify-center px-1',
-            hasNewNotification && 'animate-bounce-subtle'
+            'shadow-[0_0_8px_rgba(251,191,36,0.6)]',
+            hasNewNotification && 'animate-gold-pulse'
           )}
         >
           {unreadCount > 99 ? '99+' : unreadCount}
