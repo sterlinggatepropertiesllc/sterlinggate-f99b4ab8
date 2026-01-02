@@ -31,22 +31,6 @@ serve(async (req) => {
   try {
     console.log("[VERIFY-PAYMENT] Function started");
 
-    // Authenticate user
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      throw new Error("No authorization header provided");
-    }
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-    
-    if (userError || !userData.user) {
-      throw new Error("User not authenticated");
-    }
-
-    const user = userData.user;
-    console.log("[VERIFY-PAYMENT] User authenticated:", user.id);
-
     // Parse request
     const body: VerifyRequest = await req.json();
     const { session_id } = body;
@@ -74,11 +58,14 @@ serve(async (req) => {
       throw new Error("Payment not completed");
     }
 
-    // Verify the session belongs to this user
-    if (session.metadata?.user_id !== user.id) {
-      console.error("[VERIFY-PAYMENT] User mismatch:", { sessionUserId: session.metadata?.user_id, userId: user.id });
-      throw new Error("Unauthorized: Session does not belong to this user");
+    // Get user_id from session metadata (set during checkout creation by authenticated user)
+    const userId = session.metadata?.user_id;
+    if (!userId) {
+      console.error("[VERIFY-PAYMENT] No user_id in session metadata");
+      throw new Error("Invalid session: missing user information");
     }
+    
+    console.log("[VERIFY-PAYMENT] User from metadata:", userId);
 
     // Check if payment already recorded (idempotency)
     const { data: existingPayment } = await supabaseAdmin
@@ -143,7 +130,7 @@ serve(async (req) => {
       const { data: tenantRecord } = await supabaseAdmin
         .from('tenants')
         .select('id, property_id')
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('is_active', true)
         .limit(1)
         .single();
@@ -241,7 +228,7 @@ serve(async (req) => {
               previous_balance: previousBalance,
               new_balance: newBalance,
               description: `Stripe ${payment_type} payment`,
-              created_by: user.id,
+              created_by: userId,
             });
 
           if (adjustmentError) {

@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Loader2, AlertCircle, Home, FileText, ClipboardList } from 'lucide-react';
+import { CheckCircle2, Loader2, AlertCircle, Home, RefreshCw } from 'lucide-react';
 
 export default function PaymentSuccess() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const sessionId = searchParams.get('session_id');
   const paymentType = searchParams.get('type');
   
@@ -14,6 +15,7 @@ export default function PaymentSuccess() {
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paymentDetails, setPaymentDetails] = useState<{ amount: number } | null>(null);
+  const [countdown, setCountdown] = useState(5);
 
   useEffect(() => {
     const verifyPayment = async () => {
@@ -24,9 +26,13 @@ export default function PaymentSuccess() {
       }
 
       try {
+        console.log('[PaymentSuccess] Calling verify-payment with session:', sessionId);
+        
         const { data, error } = await supabase.functions.invoke('verify-payment', {
           body: { session_id: sessionId },
         });
+
+        console.log('[PaymentSuccess] Response:', { data, error });
 
         if (error) throw error;
 
@@ -34,10 +40,10 @@ export default function PaymentSuccess() {
           setVerified(true);
           setPaymentDetails({ amount: data.amount });
         } else {
-          throw new Error('Payment verification failed');
+          throw new Error(data.error || 'Payment verification failed');
         }
       } catch (err) {
-        console.error('Verification error:', err);
+        console.error('[PaymentSuccess] Verification error:', err);
         setError(err instanceof Error ? err.message : 'Failed to verify payment');
       } finally {
         setVerifying(false);
@@ -47,6 +53,24 @@ export default function PaymentSuccess() {
     verifyPayment();
   }, [sessionId]);
 
+  // Auto-redirect countdown after successful verification
+  useEffect(() => {
+    if (!verified) return;
+
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          navigate('/tenant');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [verified, navigate]);
+
   const getPaymentTitle = () => {
     switch (paymentType) {
       case 'application_fee':
@@ -55,6 +79,8 @@ export default function PaymentSuccess() {
         return 'Security Deposit Paid';
       case 'rent':
         return 'Rent Payment Complete';
+      case 'balance':
+        return 'Balance Payment Complete';
       default:
         return 'Payment Successful';
     }
@@ -68,24 +94,18 @@ export default function PaymentSuccess() {
         return 'Your security deposit has been received. You can now proceed with signing your lease.';
       case 'rent':
         return 'Your rent payment has been processed successfully.';
+      case 'balance':
+        return 'Your balance payment has been processed and your account has been updated.';
       default:
         return 'Your payment has been processed successfully.';
     }
   };
 
-  const getNextAction = () => {
-    switch (paymentType) {
-      case 'application_fee':
-        return { label: 'View Applications', href: '/tenant', icon: ClipboardList };
-      case 'security_deposit':
-      case 'rent':
-        return { label: 'View Leases', href: '/tenant', icon: FileText };
-      default:
-        return { label: 'Go to Portal', href: '/tenant', icon: Home };
-    }
+  const handleRetry = () => {
+    setVerifying(true);
+    setError(null);
+    window.location.reload();
   };
-
-  const nextAction = getNextAction();
 
   if (verifying) {
     return (
@@ -112,11 +132,12 @@ export default function PaymentSuccess() {
             <h2 className="text-xl font-serif mb-2">Verification Issue</h2>
             <p className="text-muted-foreground mb-6">{error}</p>
             <div className="flex gap-3 justify-center">
-              <Link to="/tenant">
-                <Button variant="outline">
-                  <Home className="h-4 w-4 mr-2" /> Go to Portal
-                </Button>
-              </Link>
+              <Button variant="outline" onClick={handleRetry}>
+                <RefreshCw className="h-4 w-4 mr-2" /> Retry
+              </Button>
+              <Button onClick={() => navigate('/tenant')}>
+                <Home className="h-4 w-4 mr-2" /> Go to Portal
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -145,13 +166,15 @@ export default function PaymentSuccess() {
             </div>
           )}
 
-          <div className="flex gap-3 justify-center pt-4">
-            <Link to={nextAction.href}>
-              <Button size="lg">
-                <nextAction.icon className="h-4 w-4 mr-2" />
-                {nextAction.label}
-              </Button>
-            </Link>
+          <div className="text-sm text-muted-foreground">
+            Redirecting to your portal in {countdown} seconds...
+          </div>
+
+          <div className="flex gap-3 justify-center pt-2">
+            <Button size="lg" onClick={() => navigate('/tenant')}>
+              <Home className="h-4 w-4 mr-2" />
+              Go to Portal Now
+            </Button>
           </div>
         </CardContent>
       </Card>
