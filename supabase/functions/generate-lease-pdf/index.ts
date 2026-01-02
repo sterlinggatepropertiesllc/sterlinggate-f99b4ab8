@@ -78,10 +78,17 @@ serve(async (req) => {
     const timesBold = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
     const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
+    // Helper function to add a new page
+    const addNewPage = () => {
+      const newPage = pdfDoc.addPage([612, 792]);
+      return { page: newPage, yPosition: 742 }; // Start at top with margin
+    };
+
     // First page - Lease content
-    let page = pdfDoc.addPage([612, 792]); // Letter size
+    let pageData = addNewPage();
+    let page = pageData.page;
     const { width, height } = page.getSize();
-    let yPosition = height - 50;
+    let yPosition = pageData.yPosition;
 
     // Header
     page.drawText('COMMERCIAL LEASE AGREEMENT', {
@@ -208,11 +215,89 @@ serve(async (req) => {
       });
       yPosition -= 15;
     }
-    yPosition -= 30;
+    yPosition -= 20;
 
-    // Signatures page
-    page = pdfDoc.addPage([612, 792]);
-    yPosition = height - 50;
+    // Full Lease Terms Content
+    if (lease.terms) {
+      page.drawText('LEASE TERMS AND CONDITIONS', {
+        x: 50,
+        y: yPosition,
+        size: 14,
+        font: timesBold,
+      });
+      yPosition -= 25;
+
+      // Parse and render the full terms
+      const termsLines = lease.terms.split('\n');
+      const maxWidth = 512; // 612 - 50 left margin - 50 right margin
+      
+      for (const line of termsLines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine) {
+          yPosition -= 10; // Empty line spacing
+          continue;
+        }
+
+        // Determine font based on content
+        const isHeader = trimmedLine.startsWith('ARTICLE') || 
+                        trimmedLine.startsWith('SECTION') ||
+                        trimmedLine === trimmedLine.toUpperCase() && trimmedLine.length < 60;
+        const font = isHeader ? timesBold : timesRoman;
+        const fontSize = isHeader ? 12 : 10;
+
+        // Word wrap text
+        const words = trimmedLine.split(' ');
+        let currentLine = '';
+        
+        for (const word of words) {
+          const testLine = currentLine ? `${currentLine} ${word}` : word;
+          const textWidth = font.widthOfTextAtSize(testLine, fontSize);
+          
+          if (textWidth > maxWidth && currentLine) {
+            // Check if we need a new page
+            if (yPosition < 60) {
+              const newPageData = addNewPage();
+              page = newPageData.page;
+              yPosition = newPageData.yPosition;
+            }
+
+            page.drawText(currentLine, {
+              x: 50,
+              y: yPosition,
+              size: fontSize,
+              font: font,
+            });
+            yPosition -= fontSize + 4;
+            currentLine = word;
+          } else {
+            currentLine = testLine;
+          }
+        }
+
+        // Draw remaining text
+        if (currentLine) {
+          if (yPosition < 60) {
+            const newPageData = addNewPage();
+            page = newPageData.page;
+            yPosition = newPageData.yPosition;
+          }
+
+          page.drawText(currentLine, {
+            x: 50,
+            y: yPosition,
+            size: fontSize,
+            font: font,
+          });
+          yPosition -= fontSize + (isHeader ? 8 : 4);
+        }
+      }
+    }
+    yPosition -= 20;
+
+    // Signatures page - new page for signatures
+    const sigPageData = addNewPage();
+    page = sigPageData.page;
+    yPosition = sigPageData.yPosition;
 
     page.drawText('SIGNATURES', {
       x: 50,
