@@ -22,7 +22,7 @@ export function SignatureCanvas({
     if (!canvas) return null;
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      ctx.strokeStyle = 'hsl(220, 10%, 95%)';
+      ctx.strokeStyle = '#000000';
       ctx.lineWidth = 2;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
