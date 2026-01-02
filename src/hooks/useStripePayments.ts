@@ -25,8 +25,8 @@ export function useStripeCheckout() {
       if (error) throw error;
 
       if (data?.url) {
-        // Open checkout in new tab
-        window.open(data.url, '_blank');
+        // Redirect in same tab to preserve session
+        window.location.href = data.url;
         return { success: true, url: data.url };
       } else {
         throw new Error('No checkout URL received');
