@@ -414,3 +414,40 @@
 ::selection {
   @apply bg-primary/20 text-foreground;
 }
+
+/* Touch-friendly utility classes */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Active states for touch feedback */
+@media (hover: none) {
+  .active\:scale-95:active {
+    transform: scale(0.95);
+  }
+  
+  .active\:bg-muted:active {
+    background-color: hsl(var(--muted));
+  }
+}
+
+/* Safe area padding for notched devices */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Mobile scrollable containers */
+.mobile-scroll-x {
+  @apply overflow-x-auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.mobile-scroll-x::-webkit-scrollbar {
+  display: none;
+}

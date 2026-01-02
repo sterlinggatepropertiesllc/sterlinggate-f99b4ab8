@@ -6,10 +6,12 @@ import { useLeases } from '@/hooks/useLeases';
 import { useUnreadCount } from '@/hooks/useMessages';
 import { useStripeCheckout } from '@/hooks/useStripePayments';
 import { usePayments } from '@/hooks/usePayments';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { toast } from 'sonner';
 import { TenantMessagingCenter } from '@/components/messages/TenantMessagingCenter';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
@@ -34,7 +36,8 @@ import {
   Wallet,
   TrendingUp,
   TrendingDown,
-  Receipt
+  Receipt,
+  Menu
 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
@@ -43,6 +46,9 @@ type PortalTab = 'applications' | 'leases' | 'payments' | 'documents' | 'message
 export default function TenantPortal() {
   const { user, role, loading, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<PortalTab>('applications');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const isMobile = useIsMobile();
 
   const { data: myApplications, isLoading: applicationsLoading } = useMyApplications(user?.id);
   const { data: leases, isLoading: leasesLoading } = useLeases(user?.id, role);
@@ -100,73 +106,105 @@ export default function TenantPortal() {
     { id: 'messages', label: 'Messages', icon: MessageSquare, badge: unreadCount },
   ];
 
+  // Sidebar content component
+  const SidebarContent = ({ onNavClick }: { onNavClick?: () => void }) => (
+    <>
+      <Link to="/" className="flex items-center mb-8 w-full">
+        <img src={logo} alt="Sterling Gate Properties" className="h-16 md:h-24 w-auto object-contain" />
+      </Link>
+      
+      <nav className="space-y-1 flex-1">
+        {navItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => {
+              setActiveTab(item.id as PortalTab);
+              onNavClick?.();
+            }}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-smooth text-left min-h-[48px] active:bg-sidebar-accent/70 ${
+              activeTab === item.id
+                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+            }`}
+          >
+            <span className="flex items-center gap-3">
+              <item.icon className="h-5 w-5" />
+              {item.label}
+            </span>
+            {item.badge && item.badge > 0 && (
+              <Badge variant="secondary" className="bg-sidebar-primary text-sidebar-primary-foreground text-xs">
+                {item.badge}
+              </Badge>
+            )}
+          </button>
+        ))}
+      </nav>
+
+      <Separator className="my-4 bg-sidebar-border" />
+      
+      <Link to="/" className="block mb-2">
+        <Button variant="ghost" className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 min-h-[48px]">
+          <Home className="mr-3 h-5 w-5" /> Back to Home
+        </Button>
+      </Link>
+      
+      <Button 
+        variant="ghost" 
+        onClick={() => signOut()} 
+        className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 min-h-[48px]"
+      >
+        <LogOut className="mr-3 h-5 w-5" /> Sign Out
+      </Button>
+    </>
+  );
+
   return (
     <div className="min-h-screen bg-background">
-      <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-64 bg-sidebar min-h-screen p-2 flex flex-col">
-          <Link to="/" className="flex items-center mb-8 w-full">
-            <img src={logo} alt="Sterling Gate Properties" className="h-24 w-auto object-contain" />
-          </Link>
-          
-          <nav className="space-y-1 flex-1">
-            {navItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id as PortalTab)}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-smooth text-left ${
-                  activeTab === item.id
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                    : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
-                }`}
-              >
-                <span className="flex items-center gap-3">
-                  <item.icon className="h-5 w-5" />
-                  {item.label}
-                </span>
-                {item.badge && item.badge > 0 && (
-                  <Badge variant="secondary" className="bg-sidebar-primary text-sidebar-primary-foreground text-xs">
-                    {item.badge}
-                  </Badge>
-                )}
-              </button>
-            ))}
-          </nav>
+      <div className="flex w-full">
+        {/* Mobile Sidebar Sheet */}
+        {isMobile && (
+          <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+            <SheetContent side="left" className="w-72 p-4 bg-sidebar flex flex-col">
+              <SidebarContent onNavClick={() => setIsMobileMenuOpen(false)} />
+            </SheetContent>
+          </Sheet>
+        )}
 
-          <Separator className="my-4 bg-sidebar-border" />
-          
-          <Link to="/" className="block mb-2">
-            <Button variant="ghost" className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50">
-              <Home className="mr-3 h-5 w-5" /> Back to Home
-            </Button>
-          </Link>
-          
-          <Button 
-            variant="ghost" 
-            onClick={() => signOut()} 
-            className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
-          >
-            <LogOut className="mr-3 h-5 w-5" /> Sign Out
-          </Button>
-        </aside>
+        {/* Desktop Sidebar */}
+        {!isMobile && (
+          <aside className="w-64 bg-sidebar min-h-screen p-2 flex flex-col flex-shrink-0">
+            <SidebarContent />
+          </aside>
+        )}
 
         {/* Main Content */}
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto min-w-0">
           {/* Top Header Bar */}
-          <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border/50 px-8 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-serif text-foreground">
+          <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 md:px-8 py-3 md:py-4">
+            <div className="flex items-center justify-between gap-3">
+              {/* Mobile hamburger */}
+              {isMobile && (
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => setIsMobileMenuOpen(true)}
+                  className="min-h-[44px] min-w-[44px]"
+                >
+                  <Menu className="h-5 w-5" />
+                </Button>
+              )}
+              <div className="flex-1 min-w-0">
+                <h2 className="text-base md:text-lg font-serif text-foreground truncate">
                   {navItems.find(item => item.id === activeTab)?.label || 'Portal'}
                 </h2>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 md:gap-2">
                 <NotificationBell />
               </div>
             </div>
           </div>
 
-          <div className="p-8">
+          <div className="p-4 md:p-8">
             {/* My Applications Tab */}
             {activeTab === 'applications' && (
               <div className="animate-fade-in">
