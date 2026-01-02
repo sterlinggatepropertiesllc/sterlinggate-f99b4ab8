@@ -68,9 +68,6 @@ export default function TenantPortal() {
   const [pendingPayment, setPendingPayment] = useState<{ type: string; id: string; amount?: number } | null>(null);
   const [isPayingBalance, setIsPayingBalance] = useState(false);
 
-  // Fetch tenant's payment history
-  const { data: payments, isLoading: paymentsLoading } = usePayments(undefined, user?.id);
-
   // Fetch tenant's actual balance from tenants table
   const { data: tenantRecord, refetch: refetchTenant } = useQuery({
     queryKey: ['tenant-balance', user?.id],
@@ -88,6 +85,9 @@ export default function TenantPortal() {
     },
     enabled: !!user?.id,
   });
+
+  // Fetch tenant's payment history using tenant record ID (not user ID)
+  const { data: payments, isLoading: paymentsLoading } = usePayments(undefined, tenantRecord?.id);
 
   // Realtime subscription for tenant's balance
   useEffect(() => {
@@ -138,6 +138,32 @@ export default function TenantPortal() {
       supabase.removeChannel(channel);
     };
   }, [user?.id, queryClient]);
+
+  // Realtime subscription for tenant's payments
+  useEffect(() => {
+    if (!tenantRecord?.id) return;
+
+    const channel = supabase
+      .channel('tenant-payments-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'payments',
+          filter: `tenant_id=eq.${tenantRecord.id}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['payments'] });
+          refetchTenant(); // Also refresh balance
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [tenantRecord?.id, queryClient, refetchTenant]);
 
   // Wait for both auth and role to be fully loaded before redirecting
   if (loading || (user && role === null)) {

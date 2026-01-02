@@ -26,6 +26,12 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_ANON_KEY") ?? ""
   );
 
+  const supabaseAdmin = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    { auth: { persistSession: false } }
+  );
+
   try {
     console.log("[CREATE-CHECKOUT] Function started");
 
@@ -39,16 +45,17 @@ serve(async (req) => {
     const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
     
     if (userError || !userData.user?.email) {
+      console.error("[CREATE-CHECKOUT] Auth error:", userError);
       throw new Error("User not authenticated or email not available");
     }
 
     const user = userData.user;
-    console.log("[CREATE-CHECKOUT] User authenticated:", user.email);
+    console.log("[CREATE-CHECKOUT] User authenticated:", user.email, user.id);
 
     // Parse request body
     const body: CheckoutRequest = await req.json();
     const { payment_type, property_id, lease_id, amount } = body;
-    console.log("[CREATE-CHECKOUT] Request:", { payment_type, property_id, lease_id, amount });
+    console.log("[CREATE-CHECKOUT] Request:", { payment_type, property_id, lease_id, tenant_id: body.tenant_id, amount });
 
     if (!payment_type) {
       throw new Error("payment_type is required");
@@ -73,6 +80,83 @@ serve(async (req) => {
 
     if (payment_type === 'balance' && !amount) {
       throw new Error("amount is required for balance payments");
+    }
+
+    // Build metadata with proper ownership validation
+    const metadata: Record<string, string> = {
+      payment_type,
+      user_id: user.id,
+    };
+
+    let resolvedPropertyId = property_id;
+
+    // Validate ownership and get property_id based on payment type
+    if (payment_type === 'balance') {
+      // For balance payments, verify tenant record belongs to user
+      const { data: tenantData, error: tenantError } = await supabaseAdmin
+        .from('tenants')
+        .select('id, user_id, property_id')
+        .eq('id', body.tenant_id)
+        .eq('is_active', true)
+        .single();
+
+      if (tenantError || !tenantData) {
+        console.error("[CREATE-CHECKOUT] Tenant lookup error:", tenantError);
+        throw new Error("Tenant record not found");
+      }
+
+      if (tenantData.user_id !== user.id) {
+        console.error("[CREATE-CHECKOUT] Ownership mismatch:", { tenantUserId: tenantData.user_id, userId: user.id });
+        throw new Error("Unauthorized: You can only pay your own balance");
+      }
+
+      metadata.tenant_id = body.tenant_id!;
+      resolvedPropertyId = tenantData.property_id;
+      console.log("[CREATE-CHECKOUT] Balance payment validated for tenant:", body.tenant_id);
+    }
+
+    if (payment_type === 'rent' || payment_type === 'security_deposit') {
+      // For lease-based payments, verify lease belongs to user
+      const { data: leaseData, error: leaseError } = await supabaseAdmin
+        .from('leases')
+        .select('id, tenant_id, property_id')
+        .eq('id', lease_id)
+        .single();
+
+      if (leaseError || !leaseData) {
+        console.error("[CREATE-CHECKOUT] Lease lookup error:", leaseError);
+        throw new Error("Lease not found");
+      }
+
+      if (leaseData.tenant_id !== user.id) {
+        console.error("[CREATE-CHECKOUT] Lease ownership mismatch:", { leaseTenantId: leaseData.tenant_id, userId: user.id });
+        throw new Error("Unauthorized: You can only pay for your own lease");
+      }
+
+      metadata.lease_id = lease_id!;
+      resolvedPropertyId = leaseData.property_id;
+
+      // Also get tenant record ID for proper payment recording
+      const { data: tenantRecord } = await supabaseAdmin
+        .from('tenants')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .limit(1)
+        .single();
+
+      if (tenantRecord) {
+        metadata.tenant_id = tenantRecord.id;
+      }
+
+      console.log("[CREATE-CHECKOUT] Lease payment validated for lease:", lease_id);
+    }
+
+    // Always include property_id in metadata
+    if (resolvedPropertyId) {
+      metadata.property_id = resolvedPropertyId;
+    } else if (property_id) {
+      metadata.property_id = property_id;
     }
 
     // Fetch application fee from settings if needed
@@ -111,7 +195,6 @@ serve(async (req) => {
     let paymentDescription: string;
 
     if (payment_type === 'application_fee') {
-      // Use dynamic price_data for application fee from settings
       lineItems = [{
         price_data: {
           currency: 'usd',
@@ -124,7 +207,6 @@ serve(async (req) => {
       }];
       paymentDescription = "Application Fee";
     } else if (payment_type === 'balance') {
-      // Balance payment
       lineItems = [{
         price_data: {
           currency: 'usd',
@@ -137,7 +219,6 @@ serve(async (req) => {
       }];
       paymentDescription = "Balance Payment";
     } else {
-      // Dynamic amount for deposits and rent
       const productName = payment_type === 'security_deposit' ? 'Security Deposit' : 'Rent Payment';
       lineItems = [{
         price_data: {
@@ -152,15 +233,7 @@ serve(async (req) => {
       paymentDescription = productName;
     }
 
-    // Build metadata for tracking
-    const metadata: Record<string, string> = {
-      payment_type,
-      user_id: user.id,
-    };
-
-    if (property_id) metadata.property_id = property_id;
-    if (lease_id) metadata.lease_id = lease_id;
-    if (body.tenant_id) metadata.tenant_id = body.tenant_id;
+    console.log("[CREATE-CHECKOUT] Creating session with metadata:", metadata);
 
     // Create checkout session
     const origin = req.headers.get("origin") || "http://localhost:5173";
