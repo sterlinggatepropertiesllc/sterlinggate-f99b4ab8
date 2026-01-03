@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,8 @@ import { BalanceSection } from './BalanceSection';
 import { cn } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 import { Users, Mail, Phone, MapPin, DollarSign, CalendarIcon, FileText, Shield, Trash2, Save, X } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useQueryClient } from '@tanstack/react-query';
 import type { Database } from '@/integrations/supabase/types';
 
 type Property = Database['public']['Tables']['properties']['Row'];
@@ -53,6 +55,8 @@ interface TenantDetailsDialogProps {
 
 export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: TenantDetailsDialogProps) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [currentBalance, setCurrentBalance] = useState(tenant?.current_balance || 0);
   const [editedTenant, setEditedTenant] = useState<{
     property_id: string | null;
     rent_amount: number | null;
@@ -70,6 +74,31 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
   const updateTenant = useUpdateTenant();
   const deleteTenant = useDeleteTenant();
   const revokeAccess = useRevokeTenantAccess();
+
+  // Sync balance when tenant changes
+  useEffect(() => {
+    if (tenant) {
+      setCurrentBalance(tenant.current_balance || 0);
+    }
+  }, [tenant?.id, tenant?.current_balance]);
+
+  // Handle balance update - refetch from DB and update local state
+  const handleBalanceUpdate = async () => {
+    if (!tenant) return;
+    
+    const { data } = await supabase
+      .from('tenants')
+      .select('current_balance')
+      .eq('id', tenant.id)
+      .maybeSingle();
+    
+    if (data) {
+      setCurrentBalance(data.current_balance || 0);
+    }
+    
+    // Invalidate tenants query for parent refresh
+    queryClient.invalidateQueries({ queryKey: ['tenants'] });
+  };
 
   // Reset form when tenant changes
   const handleOpenChange = (isOpen: boolean) => {
@@ -289,11 +318,11 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
         {user && tenant.manager_id && (
           <BalanceSection
             tenantId={tenant.id}
-            currentBalance={tenant.current_balance || 0}
+            currentBalance={currentBalance}
             rentAmount={tenant.rent_amount}
             leaseStartDate={tenant.lease_start_date}
             managerId={user.id}
-            onBalanceUpdate={() => {}}
+            onBalanceUpdate={handleBalanceUpdate}
           />
         )}
 
