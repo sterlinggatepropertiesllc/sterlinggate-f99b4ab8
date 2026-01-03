@@ -11,21 +11,29 @@ interface DiscordSettingsProps {
   saving: boolean;
   onUpdate: (updates: Partial<NotificationSettings>) => void;
   onTestWebhook: () => void;
+  onTestType: (type: string) => Promise<void>;
 }
 
 const notificationTypes = [
-  { key: 'notify_application_received', label: 'New applications', description: 'When someone applies for a property' },
-  { key: 'notify_application_approved', label: 'Application approved', description: 'When your application is approved' },
-  { key: 'notify_application_rejected', label: 'Application declined', description: 'When your application is declined' },
-  { key: 'notify_rent_received', label: 'Rent received', description: 'When a rent payment is received' },
-  { key: 'notify_maintenance_request', label: 'Maintenance requests', description: 'When a maintenance request is submitted' },
-  { key: 'notify_lease_signed', label: 'Lease signed', description: 'When a lease is signed' },
-  { key: 'notify_message_received', label: 'New messages', description: 'When you receive a new message' },
+  { key: 'notify_application_received', type: 'application_received', label: 'New applications', description: 'When someone applies for a property' },
+  { key: 'notify_application_approved', type: 'application_approved', label: 'Application approved', description: 'When your application is approved' },
+  { key: 'notify_application_rejected', type: 'application_rejected', label: 'Application declined', description: 'When your application is declined' },
+  { key: 'notify_rent_received', type: 'rent_received', label: 'Rent received', description: 'When a rent payment is received' },
+  { key: 'notify_maintenance_request', type: 'maintenance_request', label: 'Maintenance requests', description: 'When a maintenance request is submitted' },
+  { key: 'notify_lease_signed', type: 'lease_signed', label: 'Lease signed', description: 'When a lease is signed' },
+  { key: 'notify_message_received', type: 'message_received', label: 'New messages', description: 'When you receive a new message' },
 ] as const;
 
-export function DiscordSettings({ settings, saving, onUpdate, onTestWebhook }: DiscordSettingsProps) {
+export function DiscordSettings({ settings, saving, onUpdate, onTestWebhook, onTestType }: DiscordSettingsProps) {
   const [webhookUrl, setWebhookUrl] = useState(settings.discord_webhook_url || '');
   const [isTesting, setIsTesting] = useState(false);
+  const [testingType, setTestingType] = useState<string | null>(null);
+
+  const handleTestType = async (type: string) => {
+    setTestingType(type);
+    await onTestType(type);
+    setTestingType(null);
+  };
 
   const handleWebhookSave = () => {
     onUpdate({ discord_webhook_url: webhookUrl || null });
@@ -112,20 +120,35 @@ export function DiscordSettings({ settings, saving, onUpdate, onTestWebhook }: D
               Choose which notifications to send to Discord
             </p>
             <div className="space-y-2">
-              {notificationTypes.map((type) => (
+            {notificationTypes.map((notifType) => (
                 <div
-                  key={type.key}
+                  key={notifType.key}
                   className="flex items-center justify-between p-3 rounded-lg border border-border/50 hover:bg-muted/20 transition-colors"
                 >
-                  <div className="space-y-0.5">
-                    <p className="text-sm font-medium">{type.label}</p>
-                    <p className="text-xs text-muted-foreground">{type.description}</p>
+                  <div className="space-y-0.5 flex-1 min-w-0">
+                    <p className="text-sm font-medium">{notifType.label}</p>
+                    <p className="text-xs text-muted-foreground">{notifType.description}</p>
                   </div>
-                  <Switch
-                    checked={settings[type.key]}
-                    onCheckedChange={(checked) => onUpdate({ [type.key]: checked })}
-                    disabled={saving}
-                  />
+                  <div className="flex items-center gap-2 ml-3">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleTestType(notifType.type)}
+                      disabled={testingType !== null || !settings.discord_webhook_url}
+                      className="h-7 px-2 text-xs"
+                    >
+                      {testingType === notifType.type ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        'Test'
+                      )}
+                    </Button>
+                    <Switch
+                      checked={settings[notifType.key]}
+                      onCheckedChange={(checked) => onUpdate({ [notifType.key]: checked })}
+                      disabled={saving}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
