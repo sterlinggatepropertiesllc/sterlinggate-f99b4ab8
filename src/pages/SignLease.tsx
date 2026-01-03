@@ -119,10 +119,15 @@ export default function SignLease() {
       }
 
       // Update lease status FIRST (this is what RLS checks for tenant updates)
-      await updateLease.mutateAsync({
+      const updateResult = await updateLease.mutateAsync({
         id: lease.id,
         status: newStatus,
       });
+
+      // Verify the update actually worked (RLS might silently reject)
+      if (!updateResult || updateResult.status !== newStatus) {
+        throw new Error('Lease status update failed. Please refresh and try again.');
+      }
 
       // Create signature AFTER lease update succeeds
       await createSignature.mutateAsync({
