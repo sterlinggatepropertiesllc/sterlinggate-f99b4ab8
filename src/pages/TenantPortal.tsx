@@ -703,11 +703,22 @@ export default function TenantPortal() {
                                 {app.rejection_reason}
                               </p>
                             )}
-                            {app.status === 'approved' && (
-                              <Button className="mt-4" size="sm">
-                                View Lease <ArrowRight className="ml-2 h-4 w-4" />
-                              </Button>
-                            )}
+                              {app.status === 'approved' && (
+                                <div className="mt-4">
+                                  {leases?.some(lease => 
+                                    lease.property_id === app.property_id && 
+                                    lease.tenant_id === user?.id
+                                  ) ? (
+                                    <Button size="sm" onClick={() => setActiveTab('leases')}>
+                                      View Lease <ArrowRight className="ml-2 h-4 w-4" />
+                                    </Button>
+                                  ) : (
+                                    <p className="text-sm text-muted-foreground">
+                                      Awaiting lease preparation
+                                    </p>
+                                  )}
+                                </div>
+                              )}
                           </div>
                         </div>
                       </Card>
