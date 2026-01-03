@@ -11,6 +11,7 @@ interface NotificationCenterProps {
   onMarkAsRead: (id: string) => void;
   onMarkAllAsRead: () => void;
   onClearAll: () => void;
+  onNavigate?: (notification: Notification) => void;
   isMobile?: boolean;
 }
 
@@ -21,6 +22,7 @@ export function NotificationCenter({
   onMarkAsRead,
   onMarkAllAsRead,
   onClearAll,
+  onNavigate,
   isMobile
 }: NotificationCenterProps) {
   const hasUnread = notifications.some(n => !n.is_read);
@@ -85,6 +87,7 @@ export function NotificationCenter({
                 notification={notification}
                 onDismiss={onDismiss}
                 onMarkAsRead={onMarkAsRead}
+                onNavigate={onNavigate}
                 isMobile={isMobile}
               />
             </div>

@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { X, FileText, DollarSign, Wrench, FileSignature, MessageSquare, CheckCircle, XCircle } from 'lucide-react';
+import { X, FileText, DollarSign, Wrench, FileSignature, MessageSquare, CheckCircle, XCircle, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Notification, NotificationType } from '@/hooks/useNotifications';
 import { formatDistanceToNow } from 'date-fns';
@@ -8,6 +8,7 @@ interface NotificationItemProps {
   notification: Notification;
   onDismiss: (id: string) => void;
   onMarkAsRead: (id: string) => void;
+  onNavigate?: (notification: Notification) => void;
   isMobile?: boolean;
 }
 
@@ -21,7 +22,7 @@ const typeConfig: Record<NotificationType, { icon: React.ElementType; color: str
   message_received: { icon: MessageSquare, color: 'text-accent-foreground', bg: 'bg-accent/10' },
 };
 
-export function NotificationItem({ notification, onDismiss, onMarkAsRead, isMobile }: NotificationItemProps) {
+export function NotificationItem({ notification, onDismiss, onMarkAsRead, onNavigate, isMobile }: NotificationItemProps) {
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchDelta, setTouchDelta] = useState(0);
   const [isDismissing, setIsDismissing] = useState(false);
@@ -62,6 +63,8 @@ export function NotificationItem({ notification, onDismiss, onMarkAsRead, isMobi
     if (!notification.is_read) {
       onMarkAsRead(notification.id);
     }
+    // Navigate to the relevant section
+    onNavigate?.(notification);
   };
 
   return (
@@ -132,10 +135,13 @@ export function NotificationItem({ notification, onDismiss, onMarkAsRead, isMobi
           </p>
         </div>
 
-        {/* Unread indicator */}
-        {!notification.is_read && (
-          <div className="w-2 h-2 rounded-full bg-primary shrink-0 mt-2" />
-        )}
+        {/* Navigation indicator + Unread indicator */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {!notification.is_read && (
+            <div className="w-2 h-2 rounded-full bg-primary" />
+          )}
+          <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+        </div>
       </div>
     </div>
   );
