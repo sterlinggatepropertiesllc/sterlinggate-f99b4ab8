@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useEmbeddedPayment } from '@/hooks/useEmbeddedPayment';
 import { StripeProvider } from './StripeProvider';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { 
   Loader2, 
@@ -67,8 +68,10 @@ function PaymentForm({
       });
 
       if (error) {
+        console.error('[PaymentForm] confirmPayment error:', error);
         toast.error(error.message || 'Payment failed');
       } else if (paymentIntent?.status === 'succeeded') {
+        console.log('[PaymentForm] Payment succeeded, verifying...');
         // Verify and record the payment
         const result = await verifyPayment(paymentIntent.id);
         
@@ -82,10 +85,12 @@ function PaymentForm({
             onClose();
           }, 2000);
         } else {
+          console.error('[PaymentForm] Verification failed:', result);
           toast.error('Payment processed but verification failed. Please contact support.');
         }
       }
     } catch (err) {
+      console.error('[PaymentForm] Unexpected error:', err);
       toast.error('An unexpected error occurred');
     } finally {
       setIsProcessing(false);
@@ -171,6 +176,47 @@ export function PaymentDialog({
   const [customAmount, setCustomAmount] = useState('');
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
+  
+  // Stripe publishable key state
+  const [publishableKey, setPublishableKey] = useState<string | null>(null);
+  const [keyLoading, setKeyLoading] = useState(false);
+  const [keyError, setKeyError] = useState<string | null>(null);
+
+  // Fetch publishable key when clientSecret is available
+  useEffect(() => {
+    if (!clientSecret || publishableKey) return;
+
+    const fetchPublishableKey = async () => {
+      setKeyLoading(true);
+      setKeyError(null);
+      
+      try {
+        console.log('[PaymentDialog] Fetching publishable key...');
+        const { data, error } = await supabase.functions.invoke('get-stripe-publishable-key');
+        
+        if (error) {
+          console.error('[PaymentDialog] Error fetching key:', error);
+          throw new Error(error.message || 'Failed to fetch payment configuration');
+        }
+        
+        if (!data?.publishableKey) {
+          throw new Error('Payment system not configured');
+        }
+        
+        console.log('[PaymentDialog] Publishable key fetched successfully');
+        setPublishableKey(data.publishableKey);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to initialize payments';
+        console.error('[PaymentDialog] Key fetch error:', message);
+        setKeyError(message);
+        toast.error(message);
+      } finally {
+        setKeyLoading(false);
+      }
+    };
+
+    fetchPublishableKey();
+  }, [clientSecret, publishableKey]);
 
   // Reset state when dialog opens/closes
   useEffect(() => {
@@ -178,6 +224,8 @@ export function PaymentDialog({
       setClientSecret(null);
       setSelectedAmount(null);
       setCustomAmount('');
+      setPublishableKey(null);
+      setKeyError(null);
     }
   }, [open]);
 
@@ -190,6 +238,7 @@ export function PaymentDialog({
     const amountInCents = Math.round(amountInDollars * 100);
     setSelectedAmount(amountInCents);
 
+    console.log('[PaymentDialog] Creating payment intent for amount:', amountInCents);
     const result = await createPaymentIntent({
       payment_type: 'balance',
       tenant_id: tenantId,
@@ -197,7 +246,10 @@ export function PaymentDialog({
     });
 
     if (result) {
+      console.log('[PaymentDialog] Payment intent created successfully');
       setClientSecret(result.clientSecret);
+    } else {
+      console.error('[PaymentDialog] Failed to create payment intent');
     }
   };
 
@@ -213,6 +265,76 @@ export function PaymentDialog({
   const handleBack = () => {
     setClientSecret(null);
     setSelectedAmount(null);
+    setPublishableKey(null);
+    setKeyError(null);
+  };
+
+  // Render payment form content
+  const renderPaymentForm = () => {
+    // Show key loading state
+    if (keyLoading) {
+      return (
+        <div className="py-8 text-center space-y-4">
+          <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+          <div>
+            <h3 className="text-lg font-medium mb-1">Initializing payments...</h3>
+            <p className="text-sm text-muted-foreground">
+              Please wait while we set up the secure payment form
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // Show key error state
+    if (keyError) {
+      return (
+        <div className="py-8 text-center space-y-4">
+          <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto">
+            <AlertCircle className="h-8 w-8 text-destructive" />
+          </div>
+          <div>
+            <h3 className="text-lg font-medium mb-1">Payment Setup Error</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              {keyError}
+            </p>
+            <Button variant="outline" onClick={handleBack}>
+              Go Back
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
+    // Wait for publishable key
+    if (!publishableKey) {
+      return (
+        <div className="py-8 text-center space-y-4">
+          <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+          <div>
+            <h3 className="text-lg font-medium mb-1">Loading payment form...</h3>
+            <p className="text-sm text-muted-foreground">
+              Please wait while we initialize the secure payment form
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // Render Stripe form
+    return (
+      <StripeProvider clientSecret={clientSecret!} publishableKey={publishableKey}>
+        <PaymentForm
+          amount={selectedAmount || 0}
+          onSuccess={onSuccess}
+          onClose={onClose}
+        />
+      </StripeProvider>
+    );
   };
 
   return (
@@ -333,13 +455,7 @@ export function PaymentDialog({
               ← Change amount
             </Button>
             
-            <StripeProvider clientSecret={clientSecret}>
-              <PaymentForm
-                amount={selectedAmount || 0}
-                onSuccess={onSuccess}
-                onClose={onClose}
-              />
-            </StripeProvider>
+            {renderPaymentForm()}
           </div>
         )}
       </DialogContent>

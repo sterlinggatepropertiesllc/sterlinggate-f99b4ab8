@@ -1,15 +1,24 @@
 import { Elements } from '@stripe/react-stripe-js';
-import { loadStripe, Appearance } from '@stripe/stripe-js';
-import { ReactNode } from 'react';
-
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '');
+import { loadStripe, Stripe, Appearance } from '@stripe/stripe-js';
+import { ReactNode, useMemo } from 'react';
 
 interface StripeProviderProps {
   children: ReactNode;
   clientSecret: string;
+  publishableKey: string;
 }
 
-export function StripeProvider({ children, clientSecret }: StripeProviderProps) {
+export function StripeProvider({ children, clientSecret, publishableKey }: StripeProviderProps) {
+  // Memoize the Stripe promise to prevent re-creating on every render
+  const stripePromise = useMemo(() => {
+    if (!publishableKey) {
+      console.error('[StripeProvider] No publishable key provided');
+      return null;
+    }
+    console.log('[StripeProvider] Initializing Stripe with key');
+    return loadStripe(publishableKey);
+  }, [publishableKey]);
+
   const appearance: Appearance = {
     theme: 'stripe',
     variables: {
@@ -42,6 +51,10 @@ export function StripeProvider({ children, clientSecret }: StripeProviderProps) 
     clientSecret,
     appearance,
   };
+
+  if (!stripePromise) {
+    return null;
+  }
 
   return (
     <Elements stripe={stripePromise} options={options}>
