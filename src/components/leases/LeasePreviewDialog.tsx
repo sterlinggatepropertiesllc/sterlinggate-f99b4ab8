@@ -1,8 +1,11 @@
+import { useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Printer, X, FileText, CalendarIcon } from 'lucide-react';
+import { Printer, X, FileText, CalendarIcon, Pencil, Eye, Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface LeasePreviewDialogProps {
   open: boolean;
@@ -12,6 +15,8 @@ interface LeasePreviewDialogProps {
   leaseType?: string;
   startDate?: string;
   endDate?: string;
+  editable?: boolean;
+  onSave?: (html: string) => void;
 }
 
 export function LeasePreviewDialog({
@@ -22,7 +27,54 @@ export function LeasePreviewDialog({
   leaseType,
   startDate,
   endDate,
+  editable = false,
+  onSave,
 }: LeasePreviewDialogProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [currentHTML, setCurrentHTML] = useState(leaseHTML);
+
+  // Sync currentHTML when leaseHTML prop changes
+  useEffect(() => {
+    setCurrentHTML(leaseHTML);
+  }, [leaseHTML]);
+
+  // Reset editing state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setIsEditing(false);
+    }
+  }, [open]);
+
+  const saveEdits = () => {
+    if (editorRef.current) {
+      const newHTML = editorRef.current.innerHTML;
+      setCurrentHTML(newHTML);
+      onSave?.(newHTML);
+      toast.success('Changes saved');
+    }
+    setIsEditing(false);
+  };
+
+  const toggleEditMode = () => {
+    if (isEditing) {
+      saveEdits();
+    } else {
+      setIsEditing(true);
+    }
+  };
+
+  const handleClose = () => {
+    if (isEditing && editorRef.current) {
+      // Save any pending changes before closing
+      const newHTML = editorRef.current.innerHTML;
+      setCurrentHTML(newHTML);
+      onSave?.(newHTML);
+    }
+    setIsEditing(false);
+    onOpenChange(false);
+  };
+
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
     if (printWindow) {
@@ -91,7 +143,7 @@ export function LeasePreviewDialog({
             </style>
           </head>
           <body>
-            ${leaseHTML}
+              ${currentHTML}
           </body>
         </html>
       `);
@@ -104,13 +156,15 @@ export function LeasePreviewDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-4xl h-[95vh] flex flex-col overflow-hidden">
         <DialogHeader className="flex flex-row items-center justify-between border-b border-border pb-4">
           <div className="flex items-center gap-3">
             <FileText className="h-6 w-6 text-primary" />
             <div>
-              <DialogTitle className="text-xl font-serif">Lease Agreement Preview</DialogTitle>
+              <DialogTitle className="text-xl font-serif">
+                {isEditing ? 'Edit Lease Agreement' : 'Lease Agreement Preview'}
+              </DialogTitle>
               {propertyAddress && (
                 <p className="text-sm text-muted-foreground mt-1">{propertyAddress}</p>
               )}
@@ -127,31 +181,68 @@ export function LeasePreviewDialog({
           </div>
         </DialogHeader>
 
+        {editable && isEditing && (
+          <div className="px-4 py-2 bg-primary/10 border-b border-primary/20 flex items-center gap-2">
+            <Pencil className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium text-primary">
+              Editing mode — Click in the document to make changes
+            </span>
+          </div>
+        )}
+
         <ScrollArea className="flex-1 min-h-0">
           {/* Paper-styled container */}
           <div className="p-4">
             <div 
-              className="bg-white shadow-lg rounded border border-slate-200 p-8 md:p-12 mx-auto max-w-[8.5in] prose prose-sm prose-slate max-w-none"
+              ref={editorRef}
+              contentEditable={isEditing}
+              suppressContentEditableWarning
+              className={cn(
+                "bg-white shadow-lg rounded border p-8 md:p-12 mx-auto max-w-[8.5in] prose prose-sm prose-slate",
+                isEditing 
+                  ? "border-primary/50 ring-2 ring-primary/20 focus:outline-none cursor-text" 
+                  : "border-slate-200"
+              )}
               style={{
                 fontFamily: "'Times New Roman', Times, serif",
                 lineHeight: 1.6,
                 color: '#1a1a1a',
               }}
-            >
-              <div dangerouslySetInnerHTML={{ __html: leaseHTML }} />
-            </div>
+              dangerouslySetInnerHTML={{ __html: currentHTML }}
+            />
           </div>
         </ScrollArea>
 
         <div className="flex justify-between items-center pt-4 border-t border-border">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={handleClose}>
             <X className="h-4 w-4 mr-2" />
             Close
           </Button>
-          <Button onClick={handlePrint} className="gap-2">
-            <Printer className="h-4 w-4" />
-            Print / Save as PDF
-          </Button>
+          <div className="flex items-center gap-2">
+            {editable && (
+              <Button
+                variant={isEditing ? "default" : "outline"}
+                onClick={toggleEditMode}
+                className="gap-2"
+              >
+                {isEditing ? (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Done Editing
+                  </>
+                ) : (
+                  <>
+                    <Pencil className="h-4 w-4" />
+                    Edit Document
+                  </>
+                )}
+              </Button>
+            )}
+            <Button onClick={handlePrint} className="gap-2">
+              <Printer className="h-4 w-4" />
+              Print / Save as PDF
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

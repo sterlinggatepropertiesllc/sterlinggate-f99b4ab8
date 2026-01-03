@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,7 +35,8 @@ import {
   Eye,
   Sparkles,
   Loader2,
-  Maximize2
+  Maximize2,
+  Pencil
 } from 'lucide-react';
 
 interface ValidationIssue {
@@ -121,6 +122,8 @@ export function CreateLeaseWizard({
   const [isGeneratingLease, setIsGeneratingLease] = useState(false);
   const [validationIssues, setValidationIssues] = useState<ValidationIssue[]>([]);
   const [fullscreenPreviewOpen, setFullscreenPreviewOpen] = useState(false);
+  const [isEditingLease, setIsEditingLease] = useState(false);
+  const leaseEditorRef = useRef<HTMLDivElement>(null);
 
   const { data: tenants, isLoading: tenantsLoading } = useTenantProfiles();
   const createLease = useCreateLease();
@@ -164,8 +167,40 @@ export function CreateLeaseWizard({
       setGeneratedLeaseHTML('');
       setValidationIssues([]);
       setFullscreenPreviewOpen(false);
+      setIsEditingLease(false);
     }
   }, [open, managerName, managerEmail]);
+
+  // Save edited content when switching from edit mode
+  const saveEditedContent = () => {
+    if (leaseEditorRef.current && isEditingLease) {
+      const newHTML = leaseEditorRef.current.innerHTML;
+      setGeneratedLeaseHTML(newHTML);
+    }
+  };
+
+  const toggleEditMode = () => {
+    if (isEditingLease) {
+      // Switching from edit to preview - save content
+      saveEditedContent();
+      toast.success('Changes saved');
+    }
+    setIsEditingLease(!isEditingLease);
+  };
+
+  // Handle saving when fullscreen dialog opens (to save any pending edits)
+  const handleFullscreenOpen = () => {
+    if (isEditingLease) {
+      saveEditedContent();
+      setIsEditingLease(false);
+    }
+    setFullscreenPreviewOpen(true);
+  };
+
+  // Handle content update from fullscreen editor
+  const handleFullscreenSave = (html: string) => {
+    setGeneratedLeaseHTML(html);
+  };
 
   const selectedProperty = properties.find(p => p.id === formData.propertyId);
 
@@ -1095,14 +1130,33 @@ export function CreateLeaseWizard({
               </div>
               <div className="flex items-center gap-2">
                 {generatedLeaseHTML && isValidLeaseHTML(generatedLeaseHTML) && (
-                  <Button
-                    variant="outline"
-                    onClick={() => setFullscreenPreviewOpen(true)}
-                    className="gap-2"
-                  >
-                    <Maximize2 className="h-4 w-4" />
-                    Fullscreen
-                  </Button>
+                  <>
+                    <Button
+                      variant={isEditingLease ? "default" : "outline"}
+                      onClick={toggleEditMode}
+                      className="gap-2"
+                    >
+                      {isEditingLease ? (
+                        <>
+                          <Eye className="h-4 w-4" />
+                          Preview Mode
+                        </>
+                      ) : (
+                        <>
+                          <Pencil className="h-4 w-4" />
+                          Edit Document
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleFullscreenOpen}
+                      className="gap-2"
+                    >
+                      <Maximize2 className="h-4 w-4" />
+                      Fullscreen
+                    </Button>
+                  </>
                 )}
                 <Button
                   onClick={generateLeaseWithAI}
@@ -1139,17 +1193,36 @@ export function CreateLeaseWizard({
 
             {generatedLeaseHTML && isValidLeaseHTML(generatedLeaseHTML) && (
               <>
-                <div className="p-4 rounded-lg bg-success/10 border border-success/20 flex items-center justify-between">
-                  <p className="text-sm font-medium text-success">
-                    Lease document generated. Review below before sending to the tenant.
-                  </p>
-                </div>
-                <div className="relative">
-                  <div className="absolute top-2 right-2 text-xs text-muted-foreground bg-white/80 px-2 py-1 rounded">
-                    Preview — Click "Fullscreen" for full view
+                {isEditingLease ? (
+                  <div className="p-3 rounded-lg bg-primary/10 border border-primary/20 flex items-center gap-2">
+                    <Pencil className="h-4 w-4 text-primary" />
+                    <p className="text-sm font-medium text-primary">
+                      Editing mode — Click directly in the document to make changes. Click "Preview Mode" when done.
+                    </p>
                   </div>
+                ) : (
+                  <div className="p-4 rounded-lg bg-success/10 border border-success/20 flex items-center justify-between">
+                    <p className="text-sm font-medium text-success">
+                      Lease document generated. Review below or click "Edit Document" to make changes.
+                    </p>
+                  </div>
+                )}
+                <div className="relative">
+                  {!isEditingLease && (
+                    <div className="absolute top-2 right-2 text-xs text-muted-foreground bg-white/80 px-2 py-1 rounded z-10">
+                      Preview — Click "Fullscreen" for full view
+                    </div>
+                  )}
                   <div 
-                    className="p-6 rounded-lg bg-white dark:bg-slate-50 text-slate-900 border border-border max-h-[400px] overflow-y-auto prose prose-sm prose-slate max-w-none"
+                    ref={leaseEditorRef}
+                    contentEditable={isEditingLease}
+                    suppressContentEditableWarning
+                    className={cn(
+                      "p-6 rounded-lg bg-white dark:bg-slate-50 text-slate-900 border max-h-[400px] overflow-y-auto prose prose-sm prose-slate max-w-none",
+                      isEditingLease 
+                        ? "border-primary/50 ring-2 ring-primary/20 focus:outline-none cursor-text" 
+                        : "border-border"
+                    )}
                     dangerouslySetInnerHTML={{ __html: generatedLeaseHTML }}
                   />
                 </div>
@@ -1165,6 +1238,8 @@ export function CreateLeaseWizard({
               leaseType={LEASE_TYPE_LABELS[formData.leaseType]}
               startDate={formData.startDate}
               endDate={formData.endDate}
+              editable
+              onSave={handleFullscreenSave}
             />
           </div>
         );
