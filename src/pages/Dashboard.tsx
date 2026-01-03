@@ -8,7 +8,18 @@ import { useTenants, useAddTenant, useUpdateTenant, useDeleteTenant, useRevokeTe
 import { AddTenantDialog } from '@/components/tenants/AddTenantDialog';
 import { TenantDetailsDialog } from '@/components/tenants/TenantDetailsDialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useLeases } from '@/hooks/useLeases';
+import { useLeases, useDeleteLease } from '@/hooks/useLeases';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { useUnreadCount } from '@/hooks/useMessages';
 import { usePropertyImages } from '@/hooks/usePropertyImages';
 import { useProfile } from '@/hooks/useProfiles';
@@ -97,6 +108,7 @@ export default function Dashboard() {
   const updateProperty = useUpdateProperty();
   const deleteProperty = useDeleteProperty();
   const updateApplication = useUpdateApplication();
+  const deleteLease = useDeleteLease();
   const { uploadImages, uploading, maxImages } = usePropertyImages();
 
   // Realtime subscription for properties
@@ -901,6 +913,42 @@ export default function Dashboard() {
                                   </Button>
                                 </>
                               )}
+
+                              {/* Delete Lease Button with Confirmation */}
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete Lease</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Are you sure you want to delete the lease for{' '}
+                                      <strong>{lease.properties?.address}</strong>?
+                                      <br /><br />
+                                      This action cannot be undone. The lease will also be removed from 
+                                      the tenant's portal. Any associated signatures and documents will 
+                                      be permanently deleted.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => deleteLease.mutate(lease.id)}
+                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    >
+                                      Delete Lease
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
                             </div>
                           </div>
                         </Card>
