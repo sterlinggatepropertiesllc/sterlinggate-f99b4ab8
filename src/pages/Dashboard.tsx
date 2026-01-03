@@ -209,6 +209,29 @@ export default function Dashboard() {
     };
   }, [user?.id, queryClient]);
 
+  // Realtime subscription for applications
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel('applications-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'applications',
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['applications'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, queryClient]);
   // Wait for both auth and role to be fully loaded before redirecting
   if (loading || (user && role === null)) {
     return (
