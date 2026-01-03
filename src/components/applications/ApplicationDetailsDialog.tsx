@@ -99,9 +99,9 @@ export function ApplicationDetailsDialog({
   };
 
   const documents = [
-    { label: "Driver's License (Front)", url: personalInfo.driversLicenseFront },
-    { label: "Driver's License (Back)", url: personalInfo.driversLicenseBack },
-    { label: 'Social Security Card', url: personalInfo.ssnCard },
+    { label: "Driver's License (Front)", url: personalInfo.drivers_license_front_url },
+    { label: "Driver's License (Back)", url: personalInfo.drivers_license_back_url },
+    { label: 'Social Security Card', url: personalInfo.ssn_card_url },
   ];
 
   const handleReject = () => {
@@ -147,13 +147,13 @@ export function ApplicationDetailsDialog({
             <div className="grid grid-cols-2 gap-4 bg-muted/30 rounded-lg p-4">
               <div>
                 <p className="text-xs text-muted-foreground">Full Name</p>
-                <p className="font-medium">{personalInfo.fullName || 'N/A'}</p>
+                <p className="font-medium">{application.profiles?.full_name || 'N/A'}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Phone</p>
                 <p className="font-medium flex items-center gap-1">
                   <Phone className="h-3 w-3" />
-                  {personalInfo.phone || 'N/A'}
+                  {application.profiles?.phone || 'N/A'}
                 </p>
               </div>
               <div>
@@ -168,7 +168,7 @@ export function ApplicationDetailsDialog({
                 <p className="font-medium">
                   {personalInfo.address ? (
                     <>
-                      {personalInfo.address}, {personalInfo.city}, {personalInfo.state} {personalInfo.zipCode}
+                      {personalInfo.address}, {personalInfo.city}, {personalInfo.state} {personalInfo.zip_code}
                     </>
                   ) : (
                     'N/A'
@@ -190,48 +190,48 @@ export function ApplicationDetailsDialog({
               <div>
                 <p className="text-xs text-muted-foreground">Monthly Income</p>
                 <p className="font-medium text-lg text-success">
-                  {employmentInfo.monthlyIncome
-                    ? formatCurrency(employmentInfo.monthlyIncome)
+                  {employmentInfo.monthly_income
+                    ? formatCurrency(employmentInfo.monthly_income)
                     : 'N/A'}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Cash on Hand</p>
                 <p className="font-medium text-lg">
-                  {employmentInfo.cashOnHand
-                    ? formatCurrency(employmentInfo.cashOnHand)
+                  {employmentInfo.cash_on_hand
+                    ? formatCurrency(employmentInfo.cash_on_hand)
                     : 'N/A'}
                 </p>
               </div>
-              {employmentInfo.employerName && (
+              {employmentInfo.employer_name && (
                 <>
                   <div className="col-span-2">
                     <p className="text-xs text-muted-foreground">Employer</p>
                     <p className="font-medium flex items-center gap-2">
                       <Briefcase className="h-4 w-4 text-muted-foreground" />
-                      {employmentInfo.employerName}
-                      {employmentInfo.jobTitle && (
+                      {employmentInfo.employer_name}
+                      {employmentInfo.job_title && (
                         <span className="text-muted-foreground">
-                          ({employmentInfo.jobTitle})
+                          ({employmentInfo.job_title})
                         </span>
                       )}
                     </p>
                   </div>
-                  {employmentInfo.employerAddress && (
+                  {employmentInfo.employer_address && (
                     <div className="col-span-2">
                       <p className="text-xs text-muted-foreground">Employer Address</p>
                       <p className="font-medium flex items-center gap-2">
                         <Building2 className="h-4 w-4 text-muted-foreground" />
-                        {employmentInfo.employerAddress}
+                        {employmentInfo.employer_address}
                       </p>
                     </div>
                   )}
-                  {employmentInfo.employerPhone && (
+                  {employmentInfo.employer_phone && (
                     <div>
                       <p className="text-xs text-muted-foreground">Employer Phone</p>
                       <p className="font-medium flex items-center gap-2">
                         <Phone className="h-4 w-4 text-muted-foreground" />
-                        {employmentInfo.employerPhone}
+                        {employmentInfo.employer_phone}
                       </p>
                     </div>
                   )}
