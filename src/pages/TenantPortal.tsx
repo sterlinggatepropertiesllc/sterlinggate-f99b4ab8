@@ -10,6 +10,7 @@ import { useProfile } from '@/hooks/useProfiles';
 import { usePayments } from '@/hooks/usePayments';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
+import { PaymentDialog } from '@/components/payments/PaymentDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -76,6 +77,7 @@ export default function TenantPortal() {
   const { paySecurityDeposit, payRent, payBalance, isLoading: isPaymentLoading } = useStripeCheckout();
   const [pendingPayment, setPendingPayment] = useState<{ type: string; id: string; amount?: number } | null>(null);
   const [isPayingBalance, setIsPayingBalance] = useState(false);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
 
   // Fetch tenant's actual balance from tenants table
   const { data: tenantRecord, refetch: refetchTenant } = useQuery({
@@ -440,27 +442,10 @@ export default function TenantPortal() {
                         variant={isOverdue ? "destructive" : "default"}
                         size="sm"
                         className="w-full mt-3 card-action-btn"
-                        onClick={async () => {
-                          setIsPayingBalance(true);
-                          try {
-                            await payBalance(tenantRecord.id, currentBalance);
-                          } finally {
-                            setIsPayingBalance(false);
-                          }
-                        }}
-                        disabled={isPayingBalance}
+                        onClick={() => setShowPaymentDialog(true)}
                       >
-                        {isPayingBalance ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Processing...
-                          </>
-                        ) : (
-                          <>
-                            Pay Balance
-                            <ArrowRight className="h-4 w-4" />
-                          </>
-                        )}
+                        Make Payment
+                        <ArrowRight className="h-4 w-4" />
                       </Button>
                     )}
                   </Card>
@@ -1039,6 +1024,20 @@ export default function TenantPortal() {
           </div>
         </main>
       </div>
+
+      {/* Payment Dialog */}
+      {tenantRecord?.id && (
+        <PaymentDialog
+          open={showPaymentDialog}
+          onClose={() => setShowPaymentDialog(false)}
+          tenantId={tenantRecord.id}
+          currentBalance={currentBalance}
+          rentAmount={tenantRecord.rent_amount ?? undefined}
+          onSuccess={() => {
+            refetchTenant();
+          }}
+        />
+      )}
     </div>
   );
 }
