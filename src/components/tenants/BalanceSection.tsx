@@ -7,9 +7,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { useBalanceAdjustments, useCreateBalanceAdjustment, calculateOverdueBalance, useRealtimeTenantBalance } from '@/hooks/useBalanceAdjustments';
+import { useBalanceAdjustments, useApplyBalanceAdjustment, calculateOverdueBalance, useRealtimeTenantBalance } from '@/hooks/useBalanceAdjustments';
 import { format, parseISO } from 'date-fns';
 import { DollarSign, ChevronDown, ChevronUp, Clock, AlertTriangle, Plus, Minus } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface BalanceSectionProps {
   tenantId: string;
@@ -17,7 +18,7 @@ interface BalanceSectionProps {
   rentAmount: number | null;
   leaseStartDate: string | null;
   managerId: string;
-  onBalanceUpdate: () => void;
+  onBalanceUpdate: (newBalance: number) => void;
 }
 
 type AdjustmentType = 'credit' | 'charge' | 'late_fee' | 'payment' | 'correction';
@@ -45,34 +46,50 @@ export function BalanceSection({
   const [showHistory, setShowHistory] = useState(false);
 
   const { data: adjustments, isLoading: adjustmentsLoading } = useBalanceAdjustments(tenantId);
-  const createAdjustment = useCreateBalanceAdjustment();
+  const applyAdjustment = useApplyBalanceAdjustment();
 
   // Subscribe to realtime tenant balance updates
   const handleRealtimeUpdate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['tenants'] });
-    onBalanceUpdate();
-  }, [queryClient, onBalanceUpdate]);
+  }, [queryClient]);
 
   useRealtimeTenantBalance(tenantId, handleRealtimeUpdate);
 
   const overdueBalance = calculateOverdueBalance(currentBalance, rentAmount, leaseStartDate);
 
   const handleSubmit = async () => {
-    if (!amount) return;
+    const parsedAmount = parseFloat(amount);
+    
+    // Client-side validation
+    if (!amount || isNaN(parsedAmount)) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+    
+    if (adjustmentType !== 'correction' && parsedAmount <= 0) {
+      toast.error('Amount must be greater than zero');
+      return;
+    }
 
-    await createAdjustment.mutateAsync({
-      tenant_id: tenantId,
-      amount: parseFloat(amount),
-      adjustment_type: adjustmentType,
-      description: description.trim(),
-      current_balance: currentBalance,
-      created_by: managerId,
-    });
+    try {
+      const result = await applyAdjustment.mutateAsync({
+        tenant_id: tenantId,
+        amount: parsedAmount,
+        adjustment_type: adjustmentType,
+        description: description.trim() || undefined,
+        created_by: managerId,
+      });
 
-    // Reset form
-    setAmount('');
-    setDescription('');
-    onBalanceUpdate();
+      // Update parent immediately with new balance from RPC
+      onBalanceUpdate(result.new_balance);
+      
+      // Reset form
+      setAmount('');
+      setDescription('');
+    } catch (error) {
+      // Error is already handled by the mutation's onError
+      console.error('Balance adjustment failed:', error);
+    }
   };
 
   const formatCurrency = (value: number) => {
@@ -167,11 +184,11 @@ export function BalanceSection({
         </div>
         <Button
           onClick={handleSubmit}
-          disabled={!amount || createAdjustment.isPending}
+          disabled={!amount || applyAdjustment.isPending}
           className="w-full"
           size="sm"
         >
-          {createAdjustment.isPending ? 'Applying...' : 'Apply Adjustment'}
+          {applyAdjustment.isPending ? 'Applying...' : 'Apply Adjustment'}
         </Button>
       </div>
 

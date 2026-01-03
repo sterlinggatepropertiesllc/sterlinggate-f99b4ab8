@@ -82,20 +82,9 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
     }
   }, [tenant?.id, tenant?.current_balance]);
 
-  // Handle balance update - refetch from DB and update local state
-  const handleBalanceUpdate = async () => {
-    if (!tenant) return;
-    
-    const { data } = await supabase
-      .from('tenants')
-      .select('current_balance')
-      .eq('id', tenant.id)
-      .maybeSingle();
-    
-    if (data) {
-      setCurrentBalance(data.current_balance || 0);
-    }
-    
+  // Handle balance update - update local state immediately with new balance from RPC
+  const handleBalanceUpdate = (newBalance: number) => {
+    setCurrentBalance(newBalance);
     // Invalidate tenants query for parent refresh
     queryClient.invalidateQueries({ queryKey: ['tenants'] });
   };
