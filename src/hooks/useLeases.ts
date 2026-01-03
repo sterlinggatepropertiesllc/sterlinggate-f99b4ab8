@@ -176,3 +176,46 @@ export function useUpdateLease() {
     },
   });
 }
+
+export function useDeleteLease() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (leaseId: string) => {
+      // 1. Delete related signatures
+      const { error: sigError } = await supabase
+        .from('signatures')
+        .delete()
+        .eq('lease_id', leaseId);
+      if (sigError) throw sigError;
+
+      // 2. Delete related documents
+      const { error: docError } = await supabase
+        .from('documents')
+        .delete()
+        .eq('lease_id', leaseId);
+      if (docError) throw docError;
+
+      // 3. Set lease_id to NULL for payments (preserve financial records)
+      const { error: payError } = await supabase
+        .from('payments')
+        .update({ lease_id: null })
+        .eq('lease_id', leaseId);
+      if (payError) throw payError;
+
+      // 4. Delete the lease
+      const { error } = await supabase
+        .from('leases')
+        .delete()
+        .eq('id', leaseId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leases'] });
+      toast.success('Lease deleted successfully');
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete lease: ${error.message}`);
+    },
+  });
+}
