@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useManagerProperties, useCreateProperty, useUpdateProperty, useDeleteProperty } from '@/hooks/useProperties';
 import { useApplications, useUpdateApplication } from '@/hooks/useApplications';
+import { ApplicationDetailsDialog } from '@/components/applications/ApplicationDetailsDialog';
 import { useTenants, useAddTenant, useUpdateTenant, useDeleteTenant, useRevokeTenantAccess } from '@/hooks/useTenants';
 import { AddTenantDialog } from '@/components/tenants/AddTenantDialog';
 import { TenantDetailsDialog } from '@/components/tenants/TenantDetailsDialog';
@@ -94,6 +95,8 @@ export default function Dashboard() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedLeaseForCert, setSelectedLeaseForCert] = useState<any>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [selectedApplication, setSelectedApplication] = useState<any>(null);
+  const [isApplicationDetailsOpen, setIsApplicationDetailsOpen] = useState(false);
 
   const isMobile = useIsMobile();
 
@@ -673,7 +676,14 @@ export default function Dashboard() {
               ) : applications && applications.length > 0 ? (
                 <div className="space-y-4">
                   {applications.map((app: any) => (
-                    <Card key={app.id} className="p-6">
+                    <Card 
+                      key={app.id} 
+                      className="p-6 cursor-pointer hover:border-primary/50 transition-colors"
+                      onClick={() => {
+                        setSelectedApplication(app);
+                        setIsApplicationDetailsOpen(true);
+                      }}
+                    >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
@@ -706,7 +716,7 @@ export default function Dashboard() {
                           )}
                         </div>
                         {app.status === 'pending' && (
-                          <div className="flex gap-2">
+                          <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                             <Button 
                               size="sm" 
                               variant="outline"
@@ -1185,6 +1195,15 @@ export default function Dashboard() {
         open={isTenantDetailsOpen}
         onOpenChange={setIsTenantDetailsOpen}
         properties={properties || []}
+      />
+
+      {/* Application Details Dialog */}
+      <ApplicationDetailsDialog
+        application={selectedApplication}
+        open={isApplicationDetailsOpen}
+        onOpenChange={setIsApplicationDetailsOpen}
+        onApprove={handleApproveApplication}
+        onReject={handleRejectApplication}
       />
     </div>
   );
