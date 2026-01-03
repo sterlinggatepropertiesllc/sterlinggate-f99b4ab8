@@ -106,6 +106,23 @@ function PaymentForm({
     );
   }
 
+  // Show loading state while Stripe is initializing
+  if (!stripe || !elements) {
+    return (
+      <div className="py-8 text-center space-y-4">
+        <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+        <div>
+          <h3 className="text-lg font-medium mb-1">Loading payment form...</h3>
+          <p className="text-sm text-muted-foreground">
+            Please wait while we initialize the secure payment form
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="p-4 bg-muted/50 rounded-lg">
@@ -124,7 +141,7 @@ function PaymentForm({
         type="submit"
         className="w-full"
         size="lg"
-        disabled={!stripe || isProcessing || isVerifying}
+        disabled={isProcessing || isVerifying}
       >
         {isProcessing || isVerifying ? (
           <>
