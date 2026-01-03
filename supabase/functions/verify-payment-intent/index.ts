@@ -80,6 +80,101 @@ serve(async (req) => {
       });
     }
 
+    // Handle application fee payments differently - no tenant/balance updates needed
+    if (payment_type === 'application_fee') {
+      console.log("[VERIFY-PAYMENT-INTENT] Processing application fee payment");
+
+      if (!property_id) {
+        throw new Error("Missing property_id for application fee payment");
+      }
+
+      // For application fees, we don't have a tenant_id in the traditional sense
+      // We need to find or create a payment record without the tenant relationship
+      // Since application fees are paid before becoming a tenant
+      
+      // Try to find a pending application for this user and property
+      const { data: application, error: appError } = await supabaseAdmin
+        .from('applications')
+        .select('id')
+        .eq('applicant_id', user_id)
+        .eq('property_id', property_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (appError) {
+        console.warn("[VERIFY-PAYMENT-INTENT] Could not find application:", appError);
+      } else {
+        console.log("[VERIFY-PAYMENT-INTENT] Found application:", application.id);
+      }
+
+      // For application fees, we can record the payment without tenant_id
+      // by using a special approach - insert directly with property_id and use user_id temporarily
+      // We'll need to insert the payment record differently for application fees
+      
+      // Check if there's a tenant record for this user (they might be an existing tenant applying for a new property)
+      const { data: existingTenant } = await supabaseAdmin
+        .from('tenants')
+        .select('id')
+        .eq('user_id', user_id)
+        .eq('is_active', true)
+        .limit(1)
+        .single();
+
+      // If no existing tenant, we record application fee as a payment note but can't insert into payments table
+      // which requires tenant_id. Instead, we return success and the application is already saved.
+      if (!existingTenant) {
+        console.log("[VERIFY-PAYMENT-INTENT] No tenant record found. Application fee verified successfully.");
+        // Application fee payments for non-tenants don't need a payments table record
+        // The payment is verified via Stripe
+        return new Response(JSON.stringify({ 
+          success: true, 
+          payment_type: 'application_fee',
+          amount: amountInDollars,
+          message: 'Application fee verified. Application submitted successfully.'
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+
+      // If they are an existing tenant, record the payment
+      const { data: newPayment, error: insertError } = await supabaseAdmin
+        .from('payments')
+        .insert({
+          tenant_id: existingTenant.id,
+          property_id: property_id,
+          lease_id: null,
+          amount: amountInDollars,
+          payment_date: new Date().toISOString().split('T')[0],
+          payment_method: 'stripe',
+          status: 'completed',
+          stripe_session_id: payment_intent_id,
+          payment_type: 'application_fee',
+          notes: 'Application fee via Stripe (embedded)',
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error("[VERIFY-PAYMENT-INTENT] Insert error for application fee:", insertError);
+        // Don't fail the entire request - the payment went through
+        console.log("[VERIFY-PAYMENT-INTENT] Payment verified but record insert failed. Continuing...");
+      } else {
+        console.log("[VERIFY-PAYMENT-INTENT] Application fee payment recorded:", newPayment?.id);
+      }
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        payment_type: 'application_fee',
+        amount: amountInDollars,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    // For non-application_fee payments, proceed with normal flow
     // Resolve IDs if needed
     let resolvedTenantId = tenant_id;
     let resolvedPropertyId = property_id;

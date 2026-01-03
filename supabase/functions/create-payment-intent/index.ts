@@ -74,6 +74,10 @@ serve(async (req) => {
       throw new Error("lease_id is required for deposit/rent payments");
     }
 
+    if (payment_type === 'application_fee' && !property_id) {
+      throw new Error("property_id is required for application fee payments");
+    }
+
     // Build metadata with proper ownership validation
     const metadata: Record<string, string> = {
       payment_type,
@@ -81,6 +85,14 @@ serve(async (req) => {
     };
 
     let resolvedPropertyId = property_id;
+
+    // Handle application fee payments
+    if (payment_type === 'application_fee') {
+      // For application fees, we just need the property_id
+      // The user is applying for this property, so no tenant/lease validation needed
+      console.log("[CREATE-PAYMENT-INTENT] Application fee for property:", property_id);
+      metadata.property_id = property_id!;
+    }
 
     // Validate ownership based on payment type
     if (payment_type === 'balance') {
@@ -163,11 +175,13 @@ serve(async (req) => {
       console.log("[CREATE-PAYMENT-INTENT] Lease payment validated for lease:", lease_id);
     }
 
-    // Include property_id in metadata
-    if (resolvedPropertyId) {
-      metadata.property_id = resolvedPropertyId;
-    } else if (property_id) {
-      metadata.property_id = property_id;
+    // Include property_id in metadata (for non-application_fee types)
+    if (payment_type !== 'application_fee') {
+      if (resolvedPropertyId) {
+        metadata.property_id = resolvedPropertyId;
+      } else if (property_id) {
+        metadata.property_id = property_id;
+      }
     }
 
     // Initialize Stripe

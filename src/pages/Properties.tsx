@@ -4,14 +4,13 @@ import { useAvailableProperties } from '@/hooks/useProperties';
 import { useAuth } from '@/contexts/AuthContext';
 import { useApplicationFee } from '@/hooks/useAppSettings';
 import { useCreateApplication } from '@/hooks/useApplications';
-import { useStripeCheckout } from '@/hooks/useStripePayments';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ImageGallery } from '@/components/properties/ImageGallery';
-import { ApplicationForm } from '@/components/applications/ApplicationForm';
+import { ApplicationForm, ApplicationFormData } from '@/components/applications/ApplicationForm';
 import { 
   Building2, 
   MapPin, 
@@ -25,27 +24,6 @@ import type { Database } from '@/integrations/supabase/types';
 
 type Property = Database['public']['Tables']['properties']['Row'];
 
-interface ApplicationFormData {
-  fullName: string;
-  phone: string;
-  address: string;
-  city: string;
-  state: string;
-  zipCode: string;
-  employerName: string;
-  employerAddress: string;
-  employerPhone: string;
-  jobTitle: string;
-  monthlyIncome: number;
-  cashOnHand: number;
-  driversLicenseFront: string;
-  driversLicenseBack: string;
-  ssnCard: string;
-  backgroundCheckConsent: boolean;
-  termsAccepted: boolean;
-  privacyAccepted: boolean;
-}
-
 export default function Properties() {
   const { data: properties, isLoading } = useAvailableProperties();
   const { user, signOut } = useAuth();
@@ -58,8 +36,8 @@ export default function Properties() {
   // Application flow hooks
   const { data: applicationFee, isLoading: feeLoading } = useApplicationFee();
   const feeAmountDisplay = applicationFee ? `$${(applicationFee.amount / 100).toFixed(0)}` : '$50';
+  const feeAmountCents = applicationFee?.amount || 5000; // Default to $50
   const createApplication = useCreateApplication();
-  const { payApplicationFee, isLoading: isPaymentLoading } = useStripeCheckout();
 
   // Handle auto-apply after login redirect
   useEffect(() => {
@@ -90,8 +68,8 @@ export default function Properties() {
     }
   };
 
-  const handleApplicationSubmit = async (formData: ApplicationFormData) => {
-    if (!applyingProperty || !user) return;
+  const handleSaveApplication = async (formData: ApplicationFormData): Promise<boolean> => {
+    if (!applyingProperty || !user) return false;
     
     try {
       // First, update the user's profile with the application data
@@ -136,12 +114,20 @@ export default function Properties() {
         status: 'pending',
       });
 
-      // Proceed to payment
-      await payApplicationFee(applyingProperty.id);
+      return true;
     } catch (error) {
       console.error('Application submission error:', error);
-      toast.error('Failed to submit application. Please try again.');
+      toast.error('Failed to save application. Please try again.');
+      return false;
     }
+  };
+
+  const handlePaymentSuccess = () => {
+    // Close dialog after a short delay to show success state
+    setTimeout(() => {
+      setIsApplyDialogOpen(false);
+      setApplyingProperty(null);
+    }, 2500);
   };
 
   return (
@@ -409,10 +395,12 @@ export default function Properties() {
             <ApplicationForm
               userId={user.id}
               userEmail={user.email || ''}
+              propertyId={applyingProperty.id}
               propertyAddress={`${applyingProperty.address}, ${applyingProperty.city}`}
               applicationFee={feeAmountDisplay}
-              isPaymentLoading={isPaymentLoading || createApplication.isPending}
-              onSubmit={handleApplicationSubmit}
+              applicationFeeAmount={feeAmountCents}
+              onSaveApplication={handleSaveApplication}
+              onPaymentSuccess={handlePaymentSuccess}
               onCancel={() => setIsApplyDialogOpen(false)}
             />
           )}
