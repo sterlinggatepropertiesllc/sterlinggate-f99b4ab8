@@ -1218,7 +1218,8 @@ export function CreateLeaseWizard({
                     contentEditable={isEditingLease}
                     suppressContentEditableWarning
                     className={cn(
-                      "p-6 rounded-lg bg-white dark:bg-slate-50 text-slate-900 border max-h-[400px] overflow-y-auto prose prose-sm prose-slate max-w-none",
+                      "p-6 rounded-lg bg-white border max-h-[400px] overflow-y-auto prose prose-sm max-w-none",
+                      "[&_*]:!text-slate-900 [&_h1]:!text-slate-900 [&_h2]:!text-slate-900 [&_h3]:!text-slate-900 [&_p]:!text-slate-900 [&_li]:!text-slate-900",
                       isEditingLease 
                         ? "border-primary/50 ring-2 ring-primary/20 focus:outline-none cursor-text" 
                         : "border-border"

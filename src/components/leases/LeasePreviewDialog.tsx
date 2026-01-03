@@ -198,7 +198,8 @@ export function LeasePreviewDialog({
               contentEditable={isEditing}
               suppressContentEditableWarning
               className={cn(
-                "bg-white shadow-lg rounded border p-8 md:p-12 mx-auto max-w-[8.5in] prose prose-sm prose-slate",
+                "bg-white shadow-lg rounded border p-8 md:p-12 mx-auto max-w-[8.5in] prose prose-sm",
+                "[&_*]:!text-slate-900 [&_h1]:!text-slate-900 [&_h2]:!text-slate-900 [&_h3]:!text-slate-900 [&_p]:!text-slate-900 [&_li]:!text-slate-900",
                 isEditing 
                   ? "border-primary/50 ring-2 ring-primary/20 focus:outline-none cursor-text" 
                   : "border-slate-200"
@@ -206,7 +207,6 @@ export function LeasePreviewDialog({
               style={{
                 fontFamily: "'Times New Roman', Times, serif",
                 lineHeight: 1.6,
-                color: '#1a1a1a',
               }}
               dangerouslySetInnerHTML={{ __html: currentHTML }}
             />
