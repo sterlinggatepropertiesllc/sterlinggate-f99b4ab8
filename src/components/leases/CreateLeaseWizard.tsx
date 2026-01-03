@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -124,6 +124,48 @@ export function CreateLeaseWizard({
 
   const { data: tenants, isLoading: tenantsLoading } = useTenantProfiles();
   const createLease = useCreateLease();
+
+  // Reset all state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setCurrentStep(0);
+      setFormData({
+        tenantId: '',
+        tenantName: '',
+        tenantEmail: '',
+        tenantEntityType: 'individual',
+        tenantStateOfFormation: '',
+        guarantorName: '',
+        landlordLegalName: managerName || '',
+        landlordLegalEmail: managerEmail || '',
+        landlordEntityType: 'individual',
+        landlordStateOfFormation: '',
+        propertyId: '',
+        leaseType: 'gross',
+        startDate: '',
+        endDate: '',
+        monthlyRent: 0,
+        securityDeposit: 0,
+        camCharges: 0,
+        propertyTaxResponsibility: 'landlord',
+        insuranceResponsibility: 'tenant',
+        rentDueDay: 1,
+        lateAfterDay: 5,
+        lateFeeType: 'percentage',
+        lateFeePercentage: 5,
+        lateFeeFlatAmount: 0,
+        lateFeeDailyAmount: 0,
+        lateFeeMaxAmount: 0,
+        renewalTerms: '',
+        additionalClauses: '',
+        permittedUse: '',
+        prohibitedUses: '',
+      });
+      setGeneratedLeaseHTML('');
+      setValidationIssues([]);
+      setFullscreenPreviewOpen(false);
+    }
+  }, [open, managerName, managerEmail]);
 
   const selectedProperty = properties.find(p => p.id === formData.propertyId);
 
