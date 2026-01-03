@@ -397,6 +397,15 @@ export default function Index() {
             <div className="flex items-center gap-3">
               <img src={logo} alt="Sterling Gate Properties" className="h-12 w-auto object-contain" />
             </div>
+            <div className="flex items-center gap-6">
+              <Link to="/privacy-policy" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Privacy Policy
+              </Link>
+              <span className="text-border">|</span>
+              <Link to="/terms-of-service" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                Terms of Service
+              </Link>
+            </div>
             <p className="text-muted-foreground text-sm">
               © 2026 Sterling Gate Properties. All rights reserved.
             </p>
