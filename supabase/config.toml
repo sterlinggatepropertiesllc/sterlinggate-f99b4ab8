@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.get-stripe-publishable-key]
 verify_jwt = false
+
+[functions.process-rent-charge]
+verify_jwt = false

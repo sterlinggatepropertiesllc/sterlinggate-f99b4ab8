@@ -595,6 +595,85 @@ export type Database = {
         }
         Relationships: []
       }
+      rent_charges: {
+        Row: {
+          charged_at: string | null
+          created_at: string | null
+          id: string
+          late_fee_amount: number | null
+          late_fee_applied: boolean | null
+          late_fee_applied_at: string | null
+          late_fee_waived: boolean | null
+          late_fee_waived_at: string | null
+          late_fee_waived_by: string | null
+          lease_id: string | null
+          notes: string | null
+          rent_amount: number
+          rent_period: string
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          charged_at?: string | null
+          created_at?: string | null
+          id?: string
+          late_fee_amount?: number | null
+          late_fee_applied?: boolean | null
+          late_fee_applied_at?: string | null
+          late_fee_waived?: boolean | null
+          late_fee_waived_at?: string | null
+          late_fee_waived_by?: string | null
+          lease_id?: string | null
+          notes?: string | null
+          rent_amount: number
+          rent_period: string
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          charged_at?: string | null
+          created_at?: string | null
+          id?: string
+          late_fee_amount?: number | null
+          late_fee_applied?: boolean | null
+          late_fee_applied_at?: string | null
+          late_fee_waived?: boolean | null
+          late_fee_waived_at?: string | null
+          late_fee_waived_by?: string | null
+          lease_id?: string | null
+          notes?: string | null
+          rent_amount?: number
+          rent_period?: string
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rent_charges_late_fee_waived_by_fkey"
+            columns: ["late_fee_waived_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rent_charges_lease_id_fkey"
+            columns: ["lease_id"]
+            isOneToOne: false
+            referencedRelation: "leases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rent_charges_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       signatures: {
         Row: {
           hash_id: string
@@ -648,6 +727,8 @@ export type Database = {
       }
       tenants: {
         Row: {
+          auto_apply_late_fees: boolean | null
+          auto_charge_rent: boolean | null
           created_at: string
           created_by: string | null
           current_balance: number | null
@@ -663,6 +744,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          auto_apply_late_fees?: boolean | null
+          auto_charge_rent?: boolean | null
           created_at?: string
           created_by?: string | null
           current_balance?: number | null
@@ -678,6 +761,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          auto_apply_late_fees?: boolean | null
+          auto_charge_rent?: boolean | null
           created_at?: string
           created_by?: string | null
           current_balance?: number | null
@@ -759,7 +844,27 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_rent_late_fee: {
+        Args: {
+          _created_by?: string
+          _override_amount?: number
+          _rent_charge_id: string
+        }
+        Returns: Json
+      }
       assign_tenant_role: { Args: { _user_id: string }; Returns: undefined }
+      calculate_late_fee: {
+        Args: { _days_late: number; _lease_id: string; _rent_amount: number }
+        Returns: number
+      }
+      charge_tenant_rent: {
+        Args: {
+          _created_by?: string
+          _rent_period?: string
+          _tenant_id: string
+        }
+        Returns: Json
+      }
       create_notification: {
         Args: {
           _message: string
@@ -793,7 +898,13 @@ export type Database = {
           id: string
         }[]
       }
+      process_late_fees: { Args: never; Returns: Json }
+      process_monthly_rent: { Args: never; Returns: Json }
       revoke_tenant_role: { Args: { _user_id: string }; Returns: undefined }
+      waive_rent_late_fee: {
+        Args: { _rent_charge_id: string; _waived_by?: string }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "tenant" | "property_manager"

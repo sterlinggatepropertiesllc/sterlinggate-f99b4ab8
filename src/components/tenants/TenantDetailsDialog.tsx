@@ -12,11 +12,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useUpdateTenant, useDeleteTenant, useRevokeTenantAccess } from '@/hooks/useTenants';
 import { useAuth } from '@/contexts/AuthContext';
 import { BalanceSection } from './BalanceSection';
+import { AutomationSettings } from './AutomationSettings';
+import { RentChargeHistory } from './RentChargeHistory';
+import { QuickRentActions } from './QuickRentActions';
 import { cn } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 import { Users, Mail, Phone, MapPin, DollarSign, CalendarIcon, FileText, Shield, Trash2, Save, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import type { Database } from '@/integrations/supabase/types';
 
 type Property = Database['public']['Tables']['properties']['Row'];
@@ -32,6 +35,8 @@ interface TenantWithRelations {
   is_active: boolean;
   manager_id: string | null;
   current_balance: number | null;
+  auto_charge_rent?: boolean;
+  auto_apply_late_fees?: boolean;
   user: {
     id: string;
     email: string;
@@ -57,6 +62,10 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [currentBalance, setCurrentBalance] = useState(tenant?.current_balance || 0);
+  const [automationSettings, setAutomationSettings] = useState({
+    autoChargeRent: tenant?.auto_charge_rent ?? true,
+    autoApplyLateFees: tenant?.auto_apply_late_fees ?? true,
+  });
   const [editedTenant, setEditedTenant] = useState<{
     property_id: string | null;
     rent_amount: number | null;
@@ -70,6 +79,38 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
     lease_end_date: tenant?.lease_end_date || null,
     notes: (tenant as any)?.notes || null,
   });
+
+  // Fetch active lease for this tenant's user to get late fee config
+  const { data: activeLease } = useQuery({
+    queryKey: ['tenant-lease', tenant?.user_id],
+    queryFn: async () => {
+      if (!tenant?.user_id) return null;
+      
+      const { data, error } = await supabase
+        .from('leases')
+        .select('*')
+        .eq('tenant_id', tenant.user_id)
+        .in('status', ['completed', 'pending_manager_signature', 'pending_tenant_signature'])
+        .gte('end_date', new Date().toISOString().split('T')[0])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!tenant?.user_id && open,
+  });
+
+  const leaseInfo = activeLease ? {
+    rentDueDay: activeLease.rent_due_day || 1,
+    gracePeriodDays: activeLease.grace_period_days || 5,
+    lateFeeType: activeLease.late_fee_type || 'percentage',
+    lateFeePercentage: activeLease.late_fee_percentage || 5,
+    lateFeeFlatAmount: activeLease.late_fee_flat_amount || 0,
+    lateFeeDailyAmount: activeLease.late_fee_daily_amount || 0,
+    lateFeeMaxAmount: activeLease.late_fee_max_amount || undefined,
+  } : null;
 
   const updateTenant = useUpdateTenant();
   const deleteTenant = useDeleteTenant();
@@ -98,6 +139,10 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
         lease_start_date: tenant.lease_start_date,
         lease_end_date: tenant.lease_end_date,
         notes: (tenant as any)?.notes || null,
+      });
+      setAutomationSettings({
+        autoChargeRent: tenant.auto_charge_rent ?? true,
+        autoApplyLateFees: tenant.auto_apply_late_fees ?? true,
       });
     }
     onOpenChange(isOpen);
@@ -312,6 +357,34 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
             leaseStartDate={tenant.lease_start_date}
             managerId={user.id}
             onBalanceUpdate={handleBalanceUpdate}
+          />
+        )}
+
+        {/* Quick Rent Actions */}
+        {user && tenant.manager_id && (
+          <QuickRentActions
+            tenantId={tenant.id}
+            managerId={user.id}
+            rentAmount={editedTenant.rent_amount || tenant.rent_amount}
+          />
+        )}
+
+        {/* Rent Charge History */}
+        {user && tenant.manager_id && (
+          <RentChargeHistory
+            tenantId={tenant.id}
+            managerId={user.id}
+          />
+        )}
+
+        {/* Automation Settings */}
+        {user && tenant.manager_id && (
+          <AutomationSettings
+            tenantId={tenant.id}
+            autoChargeRent={automationSettings.autoChargeRent}
+            autoApplyLateFees={automationSettings.autoApplyLateFees}
+            leaseInfo={leaseInfo}
+            onSettingsChange={setAutomationSettings}
           />
         )}
 
