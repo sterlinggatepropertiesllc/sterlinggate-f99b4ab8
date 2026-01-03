@@ -12,7 +12,7 @@ import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useTenantProfiles } from '@/hooks/useProfiles';
 import { useCreateLease } from '@/hooks/useLeases';
-import { LeaseTerms, LeaseType, LateFeeType, EntityType, LEASE_TYPE_LABELS, LEASE_TYPE_DESCRIPTIONS, generateLeaseHTML } from '@/lib/leaseTemplates';
+import { LeaseTerms, LeaseType, LateFeeType, EntityType, LEASE_TYPE_LABELS, LEASE_TYPE_DESCRIPTIONS } from '@/lib/leaseTemplates';
 import { generateDocumentHash } from '@/hooks/useSignatures';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
@@ -329,14 +329,35 @@ export function CreateLeaseWizard({
         body: leaseData,
       });
 
-      // Handle HTTP errors from edge function
+      // Handle HTTP errors from edge function - parse validation errors from 422 responses
       if (error) {
         console.error('Error generating lease:', error);
-        throw new Error(error.message || 'Failed to generate lease document');
+        
+        // Try to parse validation errors from the error message
+        try {
+          // Supabase wraps edge function errors - try to extract JSON
+          const errorMsg = error.message || '';
+          const jsonMatch = errorMsg.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const errorData = JSON.parse(jsonMatch[0]);
+            if (errorData.type === 'VALIDATION_ERROR' || errorData.type === 'AI_ERROR') {
+              console.log('Validation issues received:', errorData.issues);
+              setValidationIssues(errorData.issues || []);
+              toast.error(errorData.message || 'Please fix the issues before generating');
+              return;
+            }
+          }
+        } catch (parseError) {
+          // Not a validation error, continue with generic error handling
+          console.log('Could not parse validation error:', parseError);
+        }
+        
+        toast.error(error.message || 'Failed to generate lease document');
+        return;
       }
 
-      // Handle structured validation errors (422 response)
-      if (data.type === 'VALIDATION_ERROR' || data.type === 'AI_ERROR') {
+      // Handle structured validation errors (if returned as 2xx)
+      if (data?.type === 'VALIDATION_ERROR' || data?.type === 'AI_ERROR') {
         console.log('Validation issues received:', data.issues);
         setValidationIssues(data.issues || []);
         toast.error(data.message || 'Please fix the issues before generating');
@@ -344,12 +365,13 @@ export function CreateLeaseWizard({
       }
 
       // Handle generic error response
-      if (data.error) {
-        throw new Error(data.error);
+      if (data?.error) {
+        toast.error(data.error);
+        return;
       }
 
       // Validate the generated content
-      if (!isValidLeaseHTML(data.leaseDocument)) {
+      if (!isValidLeaseHTML(data?.leaseDocument)) {
         toast.error('The AI generated invalid content. Please review your inputs and try again.');
         setValidationIssues([{
           field: 'general',
@@ -366,13 +388,6 @@ export function CreateLeaseWizard({
     } catch (error) {
       console.error('Error generating lease:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to generate lease document');
-      
-      // Fallback to template-based generation
-      const terms = getLeaseTerms();
-      if (terms) {
-        setGeneratedLeaseHTML(generateLeaseHTML(terms));
-        toast.info('Using template-based generation as fallback');
-      }
     } finally {
       setIsGeneratingLease(false);
     }
@@ -434,7 +449,7 @@ export function CreateLeaseWizard({
       late_fee_max_amount: formData.lateFeeMaxAmount || null,
       renewal_terms: formData.renewalTerms || null,
       additional_clauses: formData.additionalClauses || null,
-      terms: generatedLeaseHTML || generateLeaseHTML(getLeaseTerms()!),
+      terms: generatedLeaseHTML,
       status: 'pending_tenant_signature',
       document_hash: documentHash,
     });
