@@ -118,6 +118,27 @@ export default {
           "0%": { transform: "scale(1)" },
           "100%": { transform: "scale(1.08)" },
         },
+        "notification-gold-pulse": {
+          "0%, 100%": {
+            boxShadow: "0 0 0 0 rgba(255, 193, 7, 0.6), 0 0 12px rgba(255, 193, 7, 0.4)",
+          },
+          "50%": {
+            boxShadow: "0 0 0 8px rgba(255, 193, 7, 0), 0 0 20px rgba(255, 193, 7, 0.6)",
+          },
+        },
+        "notification-gold-glow": {
+          "0%, 100%": {
+            boxShadow: "0 0 8px rgba(255, 193, 7, 0.5), 0 0 16px rgba(255, 193, 7, 0.3)",
+          },
+          "50%": {
+            boxShadow: "0 0 16px rgba(255, 193, 7, 0.7), 0 0 32px rgba(255, 193, 7, 0.4)",
+          },
+        },
+        "notification-shimmer": {
+          "0%": { opacity: "0.5" },
+          "50%": { opacity: "1" },
+          "100%": { opacity: "0.5" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -130,6 +151,9 @@ export default {
         "float-slow": "float 8s ease-in-out infinite",
         "bounce-subtle": "bounce-subtle 2s ease-in-out infinite",
         "ken-burns": "ken-burns 25s ease-out forwards",
+        "notification-gold-pulse": "notification-gold-pulse 2s ease-in-out infinite",
+        "notification-gold-glow": "notification-gold-glow 2s ease-in-out infinite",
+        "notification-shimmer": "notification-shimmer 2s ease-in-out infinite",
       },
     },
   },

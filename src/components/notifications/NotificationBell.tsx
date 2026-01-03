@@ -35,33 +35,42 @@ export function NotificationBell() {
     <Button
       variant="ghost"
       size="icon"
-      className="relative h-10 w-10 rounded-lg transition-all duration-200 hover:bg-primary/10 hover:text-primary overflow-visible"
+      className={cn(
+        "relative h-10 w-10 rounded-lg transition-all duration-300 hover:bg-primary/10 hover:text-primary overflow-visible",
+        unreadCount > 0 && "animate-notification-gold-ring"
+      )}
     >
-      {/* Halo pulse layer - only when new notification arrives */}
+      {/* Expanding gold halo - only when new notification arrives */}
       {hasNewNotification && (
         <span 
-          className="absolute inset-0 rounded-lg bg-warning/20 animate-notification-halo pointer-events-none"
+          className="absolute inset-0 rounded-lg animate-notification-gold-halo pointer-events-none"
+          style={{ background: 'radial-gradient(circle, rgba(255,193,7,0.3) 0%, rgba(255,193,7,0) 70%)' }}
           aria-hidden="true"
         />
       )}
       
-      {/* Bell icon */}
-      <Bell className="h-5 w-5 relative z-10" />
+      {/* Bell icon with gold shimmer when has notifications */}
+      <Bell 
+        className={cn(
+          "h-5 w-5 relative z-10 transition-colors duration-300",
+          unreadCount > 0 && "text-amber-400"
+        )} 
+      />
       
-      {/* Unread indicator dot - only when unreadCount > 0 */}
+      {/* Premium gold badge with count - always shows count when unreadCount > 0 */}
       {unreadCount > 0 && (
         <span
           className={cn(
-            'absolute top-1.5 right-1.5 z-20',
+            'absolute -top-0.5 -right-0.5 z-20',
             'flex items-center justify-center',
-            'rounded-full bg-warning border-2 border-background',
-            'shadow-sm',
-            unreadCount < 10 
-              ? 'h-2.5 w-2.5' 
-              : 'h-4 min-w-4 px-1 text-[9px] font-bold text-warning-foreground'
+            'rounded-full notification-badge-gold',
+            'border-2 border-background',
+            'animate-notification-badge-glow',
+            'min-w-5 h-5 px-1.5',
+            'text-[10px] font-bold'
           )}
         >
-          {unreadCount >= 10 && (unreadCount > 99 ? '99+' : unreadCount)}
+          {unreadCount > 99 ? '99+' : unreadCount}
         </span>
       )}
     </Button>
