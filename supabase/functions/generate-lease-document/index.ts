@@ -5,6 +5,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+interface TenantInsurance {
+  generalLiabilityCoverage: number;
+  landlordAsAdditionalInsured: boolean;
+  coiRequiredBeforePossession: boolean;
+  annualProofRequired: boolean;
+  cancellationNoticeDays: number;
+}
+
 interface LeaseGenerationRequest {
   leaseType: "triple_net" | "gross" | "modified_gross";
   propertyAddress: string;
@@ -40,6 +48,16 @@ interface LeaseGenerationRequest {
   guarantorName?: string;
   noticeAddressLandlord?: string;
   noticeAddressTenant?: string;
+  emailNoticesPermitted?: boolean;
+  // Tenant insurance (MANDATORY)
+  tenantInsurance?: TenantInsurance;
+  // Renewal options
+  renewalOptionCount?: number;
+  renewalOptionYears?: number;
+  renewalOptionBasis?: "fixed_increase" | "market_rate";
+  renewalOptionIncrease?: number;
+  // Holdover rate
+  holdoverRateMultiplier?: number;
 }
 
 interface ValidationIssue {
@@ -174,6 +192,16 @@ function validateLeaseData(data: LeaseGenerationRequest): ValidationIssue[] {
     });
   }
 
+  // MANDATORY: Check tenant insurance (critical for landlord-protective leases)
+  if (!data.tenantInsurance || !data.tenantInsurance.generalLiabilityCoverage || data.tenantInsurance.generalLiabilityCoverage <= 0) {
+    issues.push({
+      field: 'tenantInsurance',
+      message: 'Tenant General Liability insurance coverage amount is REQUIRED for commercial leases.',
+      step: 4,
+      stepName: 'Insurance & Notices'
+    });
+  }
+
   return issues;
 }
 
@@ -202,155 +230,126 @@ function isValidLeaseHTML(content: string): boolean {
 }
 
 const SYSTEM_PROMPT = `SYSTEM ROLE
-You are a deterministic commercial lease generator inside a property-management system.
-
-Your job is NOT to draft creatively.
-Your job is to assemble a legally enforceable lease using LOCKED system data.
+You are a commercial lease assembly engine inside a property-management platform.
+Your purpose is to generate a LANDLORD-PROTECTIVE, commercially standard, multi-year gross lease using ONLY verified system inputs.
 
 🚨 ABSOLUTE DATA LOCK (NON-NEGOTIABLE)
 
-The following values are injected by the system UI/database and are LEGALLY FINAL:
-- Landlord Legal Name
-- Tenant Legal Name
-- Tenant Email
+The following values are injected by the system and are LEGALLY FINAL:
+- Landlord Legal Name (system-locked)
+- Tenant Legal Name (system-locked)
+- Tenant Email (system-locked)
 - Property Full Address
 - Governing State
 - Lease Type
-- Lease Start Date
-- Lease End Date
-- Monthly Rent
-- Security Deposit
+- Lease Term Dates
+- Rent and Deposit Amounts
 
 🔐 HARD RULES:
 - You are FORBIDDEN from redefining, renaming, or restating these values
-- You are FORBIDDEN from introducing alternative parties (no "admin", no test names)
-- You are FORBIDDEN from introducing new dates
-- You are FORBIDDEN from adding emails unless already provided
+- You are FORBIDDEN from guessing missing data
 - If ANY required value is missing → STOP and request it
-- Never guess
-- Never create placeholders
+- Never create placeholders or test names
 
-🚫 SINGLE-IDENTITY ENFORCEMENT
-
-The lease must contain:
-- ONE definition of Landlord
-- ONE definition of Tenant
-- ONE lease commencement date
-- ONE lease expiration date
-- ONE execution clause
-- ONE signature block per party
-
-🚫 Do NOT repeat "This Lease is entered into…"
-🚫 Do NOT restate parties later in a different way
-🚫 Do NOT create secondary agreements
-
-If duplication would occur → STOP GENERATION
-
-📄 DOCUMENT STRUCTURE (MANDATORY ORDER)
+📄 DOCUMENT STRUCTURE (MANDATORY ORDER - Strict Compliance Required)
 
 Generate ONLY the following sections, in this exact order:
 
-1. Title
-   (Commercial Gross Lease Agreement / Triple Net (NNN) Lease Agreement / Modified Gross Lease Agreement)
+1. TITLE
+   - "COMMERCIAL GROSS LEASE AGREEMENT" (for gross)
+   - "TRIPLE NET (NNN) LEASE AGREEMENT" (for triple_net)
+   - "MODIFIED GROSS LEASE AGREEMENT" (for modified_gross)
 
-2. Parties & Execution
-   (Single paragraph. One identity per party. One effective date.)
+2. PARTIES & EXECUTION (Single paragraph)
+   - One definition per party
+   - One effective date
 
-3. Premises
-   (Complete property address, city, state, ZIP)
+3. PREMISES
+   - Complete property address, city, state, ZIP
 
-4. Term & Possession
-   (One commencement date, one expiration date - use exact dates provided)
+4. TERM, POSSESSION & CONDITION
+   - Lease start date (Commencement Date)
+   - Lease end date (Expiration Date)
+   - Condition upon delivery
 
-5. Rent & Security Deposit
-   (Exact amounts as provided, payment terms, late fees)
+5. RENT & SECURITY DEPOSIT
+   - Base rent amount and payment schedule
+   - Security deposit amount
+   - Late fee structure as provided
+   - Grace period
 
-6. Expense Allocation (Lease-Type Specific)
-   - Gross Lease: tenant pays rent only; landlord pays taxes, insurance, CAM, structure
-   - Triple Net (NNN): tenant pays rent + taxes + insurance + CAM
-   - Modified Gross: expenses shared only as explicitly listed
+6. EXPENSE ALLOCATION (Based on Lease Type)
+   - Gross Lease: Landlord pays taxes, insurance, CAM, structure; tenant pays base rent only
+   - Triple Net: Tenant pays rent + taxes + insurance + CAM
+   - Modified Gross: As explicitly specified
 
-7. Use of Premises
-   (Permitted use, prohibited uses if provided)
+7. USE OF PREMISES
+   - Permitted use (as provided)
+   - Prohibited uses (as provided)
 
-8. Maintenance & Repairs
-   (Allocation based on lease type)
+8. MAINTENANCE & REPAIRS
+   - Allocation per lease type
+   - Tenant interior maintenance for Gross
 
-9. Insurance & Indemnification
-   - Tenant insurance LIMITED to: business liability, tenant contents
-   - No building coverage for tenant on Gross leases
-   - Property insurance per lease type allocation
+9. INSURANCE REQUIREMENTS (MANDATORY - LANDLORD-PROTECTIVE)
+   This section MUST include:
+   - Tenant SHALL maintain Commercial General Liability insurance at the EXACT coverage amount provided
+   - Landlord MUST be named as additional insured (if specified)
+   - Tenant MUST provide Certificate of Insurance (COI) before taking possession (if specified)
+   - Tenant MUST maintain coverage throughout the entire lease term
+   - Annual proof of insurance required (if specified)
+   - Tenant must provide notice of any policy cancellation (use provided days)
+   - CRITICAL: FAILURE TO MAINTAIN INSURANCE CONSTITUTES A MATERIAL DEFAULT
+   - Tenant insurance is LIMITED TO: Business liability, tenant contents and operations
+   - Landlord is responsible for building insurance (structure and building systems)
 
-10. Default & Remedies
+10. INDEMNIFICATION
+    - Tenant indemnifies landlord for tenant-caused damages
+    - Mutual indemnification where applicable
 
-11. Surrender & Holdover
+11. DEFAULT & REMEDIES (LANDLORD-PROTECTIVE)
+    MUST include these hard defaults:
+    - Insurance lapse = MATERIAL DEFAULT
+    - Rent payment failure after grace period = DEFAULT
+    - Abandonment of premises = DEFAULT
+    - Holdover without consent = DEFAULT
+    - Landlord remedies are CUMULATIVE (all remedies may be exercised)
 
-12. Governing Law
-    (State provided in data)
+12. CASUALTY & CONDEMNATION
 
-13. Entire Agreement
+13. SURRENDER & HOLDOVER
+    - Holdover rent = premium rate (use provided multiplier, default 150% of base rent)
+    - Holdover does NOT create new tenancy
 
-14. Amendments
+14. NOTICES
+    - Landlord notice address (as provided or property address)
+    - Tenant notice address (as provided or premises)
+    - Email notices permitted (if specified)
 
-15. Electronic Execution Clause
+15. GOVERNING LAW
+    - State as provided
 
-16. Signature Blocks (ONLY TWO)
-    - Landlord block
-    - Tenant block
+16. ENTIRE AGREEMENT
 
-🚫 No summaries at the end
-🚫 No duplicate headers
-🚫 No explanations
-🚫 No certificates inside the lease body
+17. AMENDMENTS
+    - Must be in writing signed by both parties
 
-🧾 SUMMARY PAGE RULE (CRITICAL)
+18. ELECTRONIC EXECUTION
+    - Intent to sign electronically
+    - Legal equivalence to handwritten signatures
 
-Do NOT generate a "Lease Summary" page.
-If absolutely required for context, it must contain:
-- NO dates
-- NO rent amounts
-- NO deposit amounts
-- NO execution status
-- NO signatures
-
-✍️ ELECTRONIC SIGNATURE RULES
-
-Include ONE electronic execution clause stating:
-- Intent to sign electronically
-- Legal equivalence to handwritten signatures
-- Binding effect upon final signature
-
-Do NOT include:
-- IP addresses
-- Hashes
-- Timestamps
-- Certificates
-- Platform metadata
-
-Those belong outside the lease body.
+19. SIGNATURE BLOCKS (ONLY TWO)
+    - Landlord signature block
+    - Tenant signature block
 
 🚫 FORBIDDEN OUTPUT (HARD FAIL)
-
-You must NOT output:
-- Multiple introductions
-- Multiple signature pages
-- Conflicting dates
-- AI commentary
-- Legal explanations or disclaimers
-- Test data
-- Mixed lease types
-- Restated party definitions
-
-If compliance cannot be guaranteed → STOP AND REQUEST CLARIFICATION
-
-✅ FINAL OUTPUT STANDARD
-
-The lease must read as if:
-- Drafted by a commercial real-estate attorney
-- Reviewed for internal consistency
-- Intended to be enforced in court
-- Zero ambiguity
-- Zero duplication
+- No summaries at the end
+- No duplicate headers or sections
+- No AI commentary or explanations
+- No certificates inside the lease body
+- No restated party definitions
+- No conflicting dates
+- No placeholder data
 
 OUTPUT FORMAT:
 Return the lease document in clean HTML format:
@@ -362,12 +361,7 @@ Return the lease document in clean HTML format:
 - Use <hr> sparingly for major section breaks
 - Apply Tailwind classes: "text-foreground", "text-muted-foreground", "font-semibold", "my-4", "mt-6", "mb-2"
 
-DO NOT include:
-- Markdown code blocks
-- Explanations or commentary
-- Any text outside the HTML lease document
-
-ONLY output the raw HTML lease document.`;
+ONLY output the raw HTML lease document. No markdown, no explanations.`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -470,17 +464,44 @@ RESPONSIBILITIES:
 - Property Taxes: ${leaseData.propertyTaxResponsibility}
 - Insurance: ${leaseData.insuranceResponsibility}
 
+TENANT INSURANCE REQUIREMENTS (MANDATORY):
+${leaseData.tenantInsurance ? `
+- General Liability Coverage: $${leaseData.tenantInsurance.generalLiabilityCoverage.toLocaleString()}
+- Landlord Named as Additional Insured: ${leaseData.tenantInsurance.landlordAsAdditionalInsured ? "YES" : "NO"}
+- Certificate of Insurance Required Before Possession: ${leaseData.tenantInsurance.coiRequiredBeforePossession ? "YES" : "NO"}
+- Annual Proof of Insurance Required: ${leaseData.tenantInsurance.annualProofRequired ? "YES" : "NO"}
+- Notice of Cancellation: ${leaseData.tenantInsurance.cancellationNoticeDays} days
+- FAILURE TO MAINTAIN INSURANCE = MATERIAL DEFAULT
+- Tenant insurance covers: Business liability, tenant contents and operations ONLY
+- Landlord maintains: Building insurance (structure, building systems)
+` : "- Standard commercial insurance requirements apply"}
+
+RENEWAL OPTIONS:
+${leaseData.renewalOptionCount && leaseData.renewalOptionCount > 0 ? `
+- Number of Options: ${leaseData.renewalOptionCount}
+- Length of Each Option: ${leaseData.renewalOptionYears} year(s)
+- Rent Basis: ${leaseData.renewalOptionBasis === "fixed_increase" ? `Fixed ${leaseData.renewalOptionIncrease}% increase` : "Market rate at time of renewal"}
+- 60 days written notice required to exercise option
+` : "No renewal options"}
+
+HOLDOVER:
+- Holdover Rent Rate: ${leaseData.holdoverRateMultiplier || 150}% of base rent
+- Holdover does NOT create a new tenancy
+
+NOTICES:
+- Landlord Notice Address: ${leaseData.noticeAddressLandlord || `${leaseData.propertyAddress}, ${leaseData.propertyCity}, ${leaseData.propertyState} ${leaseData.propertyZip}`}
+- Tenant Notice Address: ${leaseData.noticeAddressTenant || "Premises address after possession"}
+- Email Notices Permitted: ${leaseData.emailNoticesPermitted !== false ? "YES (in addition to written)" : "NO (written only)"}
+
 ${leaseData.permittedUse ? `PERMITTED USE:\n${leaseData.permittedUse}` : "PERMITTED USE: General commercial purposes consistent with the character of the building and in compliance with all applicable laws."}
 
 ${leaseData.prohibitedUses ? `PROHIBITED USES:\n${leaseData.prohibitedUses}` : ""}
-
-${leaseData.renewalTerms ? `RENEWAL OPTIONS:\n${leaseData.renewalTerms}` : ""}
 
 ${leaseData.additionalClauses ? `ADDITIONAL TERMS:\n${leaseData.additionalClauses}` : ""}
 
 GOVERNING LAW: State of ${leaseData.propertyState}
 
-Generate the complete lease document now.`;
+Generate the complete landlord-protective lease document now.`;
 
     console.log("Calling Lovable AI to generate lease document...");
     console.log("Lease type:", leaseData.leaseType);
