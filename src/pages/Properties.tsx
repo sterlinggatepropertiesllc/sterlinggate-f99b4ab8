@@ -5,26 +5,46 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useApplicationFee } from '@/hooks/useAppSettings';
 import { useCreateApplication } from '@/hooks/useApplications';
 import { useStripeCheckout } from '@/hooks/useStripePayments';
+import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ImageGallery } from '@/components/properties/ImageGallery';
+import { ApplicationForm } from '@/components/applications/ApplicationForm';
 import { 
   Building2, 
   MapPin, 
   ArrowLeft, 
   Layers,
   ArrowRight,
-  DollarSign,
-  CreditCard,
-  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import logo from '@/assets/logo.png';
 import type { Database } from '@/integrations/supabase/types';
 
 type Property = Database['public']['Tables']['properties']['Row'];
+
+interface ApplicationFormData {
+  fullName: string;
+  phone: string;
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  employerName: string;
+  employerAddress: string;
+  employerPhone: string;
+  jobTitle: string;
+  monthlyIncome: number;
+  cashOnHand: number;
+  driversLicenseFront: string;
+  driversLicenseBack: string;
+  ssnCard: string;
+  backgroundCheckConsent: boolean;
+  termsAccepted: boolean;
+  privacyAccepted: boolean;
+}
 
 export default function Properties() {
   const { data: properties, isLoading } = useAvailableProperties();
@@ -70,13 +90,57 @@ export default function Properties() {
     }
   };
 
-  const handlePayApplicationFee = async () => {
+  const handleApplicationSubmit = async (formData: ApplicationFormData) => {
     if (!applyingProperty || !user) return;
     
     try {
+      // First, update the user's profile with the application data
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({
+          full_name: formData.fullName,
+          phone: formData.phone,
+        })
+        .eq('id', user.id);
+
+      if (profileError) {
+        console.error('Profile update error:', profileError);
+      }
+
+      // Create the application with all the collected data
+      const personalInfo = {
+        address: formData.address,
+        city: formData.city,
+        state: formData.state,
+        zip_code: formData.zipCode,
+        drivers_license_front_url: formData.driversLicenseFront,
+        drivers_license_back_url: formData.driversLicenseBack,
+        ssn_card_url: formData.ssnCard,
+      };
+
+      const employmentInfo = {
+        employer_name: formData.employerName,
+        employer_address: formData.employerAddress,
+        employer_phone: formData.employerPhone,
+        job_title: formData.jobTitle,
+        monthly_income: formData.monthlyIncome,
+        cash_on_hand: formData.cashOnHand,
+      };
+
+      await createApplication.mutateAsync({
+        applicant_id: user.id,
+        property_id: applyingProperty.id,
+        personal_info: personalInfo,
+        employment_info: employmentInfo,
+        background_check_consent: formData.backgroundCheckConsent,
+        status: 'pending',
+      });
+
+      // Proceed to payment
       await payApplicationFee(applyingProperty.id);
     } catch (error) {
-      toast.error('Failed to initiate payment. Please try again.');
+      console.error('Application submission error:', error);
+      toast.error('Failed to submit application. Please try again.');
     }
   };
 
@@ -332,47 +396,26 @@ export default function Properties() {
         </DialogContent>
       </Dialog>
 
-      {/* Application Fee Dialog */}
+      {/* Application Form Dialog */}
       <Dialog open={isApplyDialogOpen} onOpenChange={setIsApplyDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="font-serif text-xl">Apply for Property</DialogTitle>
-            <DialogDescription>
-              {applyingProperty?.address}, {applyingProperty?.city}
-            </DialogDescription>
+            <DialogTitle className="font-serif text-xl">
+              Apply for Property
+            </DialogTitle>
           </DialogHeader>
           
-          <div className="space-y-6 py-4">
-            <div className="flex items-start gap-4 p-4 rounded-lg bg-warning/10 border border-warning/20">
-              <div className="p-2 rounded-full bg-warning/20">
-                <DollarSign className="h-6 w-6 text-warning" />
-              </div>
-              <div>
-                <h3 className="font-serif text-xl mb-2">Application Fee: {feeAmountDisplay}</h3>
-                <p className="text-muted-foreground text-sm">
-                  A non-refundable application fee of {feeAmountDisplay} is required to process your rental application. 
-                  This covers background check, credit check, and application processing.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              <Button onClick={handlePayApplicationFee} disabled={isPaymentLoading || feeLoading} className="w-full h-12 btn-platinum">
-                {isPaymentLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
-                  </>
-                ) : (
-                  <>
-                    <CreditCard className="mr-2 h-4 w-4" /> Pay {feeAmountDisplay} & Continue
-                  </>
-                )}
-              </Button>
-              <Button variant="outline" onClick={() => setIsApplyDialogOpen(false)} className="w-full">
-                Cancel
-              </Button>
-            </div>
-          </div>
+          {user && applyingProperty && (
+            <ApplicationForm
+              userId={user.id}
+              userEmail={user.email || ''}
+              propertyAddress={`${applyingProperty.address}, ${applyingProperty.city}`}
+              applicationFee={feeAmountDisplay}
+              isPaymentLoading={isPaymentLoading || createApplication.isPending}
+              onSubmit={handleApplicationSubmit}
+              onCancel={() => setIsApplyDialogOpen(false)}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>
