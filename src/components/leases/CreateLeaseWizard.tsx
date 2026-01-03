@@ -331,18 +331,17 @@ export function CreateLeaseWizard({
 
       // Handle HTTP errors from edge function - parse validation errors from 422 responses
       if (error) {
-        console.log('Edge function error received:', error.message);
+        console.log('Edge function error received:', error);
         
-        // Try to parse validation errors from the error message
+        // Supabase FunctionsHttpError has the response in error.context
+        // We need to read the JSON body from there for non-2xx responses
         try {
-          // Supabase wraps edge function errors - try to extract JSON
-          const errorMsg = error.message || '';
-          const jsonMatch = errorMsg.match(/\{[\s\S]*\}/);
-          console.log('JSON match found:', jsonMatch?.[0]);
-          
-          if (jsonMatch) {
-            const errorData = JSON.parse(jsonMatch[0]);
-            console.log('Parsed error data:', errorData);
+          // Check if error has context (Response object from FunctionsHttpError)
+          const errorContext = (error as any).context;
+          if (errorContext && typeof errorContext.json === 'function') {
+            // Clone the response to avoid "body already used" errors
+            const errorData = await errorContext.json();
+            console.log('Parsed error data from context:', errorData);
             
             if (errorData.type === 'VALIDATION_ERROR' || errorData.type === 'AI_ERROR') {
               console.log('Setting validation issues:', errorData.issues);
@@ -351,10 +350,17 @@ export function CreateLeaseWizard({
               setIsGeneratingLease(false);
               return;
             }
+            
+            // If it has an error property but not a type we recognize
+            if (errorData.error) {
+              toast.error(errorData.error);
+              setIsGeneratingLease(false);
+              return;
+            }
           }
         } catch (parseError) {
-          // Not a validation error, continue with generic error handling
-          console.log('Could not parse validation error:', parseError);
+          // Could not parse response body, continue with generic error handling
+          console.log('Could not parse error context:', parseError);
         }
         
         toast.error(error.message || 'Failed to generate lease document');
