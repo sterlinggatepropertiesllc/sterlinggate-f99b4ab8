@@ -69,12 +69,28 @@ interface ApplicationFormProps {
   onCancel: () => void;
 }
 
+// Currency formatting helpers
+const formatCurrency = (value: string | number): string => {
+  const num = typeof value === 'string' ? value.replace(/[^\d]/g, '') : String(value);
+  if (!num) return '';
+  return parseInt(num, 10).toLocaleString('en-US');
+};
+
+const parseCurrency = (value: string): number | undefined => {
+  const num = value.replace(/[^\d]/g, '');
+  return num ? parseInt(num, 10) : undefined;
+};
+
 // Embedded Payment Form Component
 function EmbeddedPaymentForm({
   amount,
+  applicationData,
+  onSaveApplication,
   onSuccess,
 }: {
   amount: number;
+  applicationData: ApplicationFormData;
+  onSaveApplication: (data: ApplicationFormData) => Promise<boolean>;
   onSuccess: () => void;
 }) {
   const stripe = useStripe();
@@ -105,16 +121,25 @@ function EmbeddedPaymentForm({
         console.error('[EmbeddedPaymentForm] confirmPayment error:', error);
         toast.error(error.message || 'Payment failed');
       } else if (paymentIntent?.status === 'succeeded') {
-        console.log('[EmbeddedPaymentForm] Payment succeeded, verifying...');
-        const result = await verifyPayment(paymentIntent.id);
+        console.log('[EmbeddedPaymentForm] Payment succeeded, saving application...');
         
-        if (result?.success) {
-          setPaymentSuccess(true);
-          toast.success('Payment successful! Application submitted.');
-          onSuccess();
+        // NOW save the application - only after payment succeeds
+        const saved = await onSaveApplication(applicationData);
+        
+        if (saved) {
+          console.log('[EmbeddedPaymentForm] Application saved, verifying payment...');
+          const result = await verifyPayment(paymentIntent.id);
+          
+          if (result?.success) {
+            setPaymentSuccess(true);
+            toast.success('Payment successful! Application submitted.');
+            onSuccess();
+          } else {
+            console.error('[EmbeddedPaymentForm] Verification failed:', result);
+            toast.error('Payment processed but verification failed. Please contact support.');
+          }
         } else {
-          console.error('[EmbeddedPaymentForm] Verification failed:', result);
-          toast.error('Payment processed but verification failed. Please contact support.');
+          toast.error('Payment succeeded but failed to save application. Please contact support.');
         }
       }
     } catch (err) {
@@ -212,7 +237,13 @@ export function ApplicationForm({
 }: ApplicationFormProps) {
   const [currentStep, setCurrentStep] = useState(1);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [isSavingApplication, setIsSavingApplication] = useState(false);
+  
+  // Store application data for payment-first flow
+  const [pendingApplicationData, setPendingApplicationData] = useState<ApplicationFormData | null>(null);
+  
+  // Currency display state for formatted inputs
+  const [monthlyIncomeDisplay, setMonthlyIncomeDisplay] = useState('');
+  const [cashOnHandDisplay, setCashOnHandDisplay] = useState('');
   
   // Stripe payment state
   const { createPaymentIntent, isCreating, error: paymentError } = useEmbeddedPayment();
@@ -337,16 +368,10 @@ export function ApplicationForm({
   };
 
   const handleFormSubmit = async (data: ApplicationFormData) => {
-    // First save the application
-    setIsSavingApplication(true);
+    // Don't save application yet - store data for after payment succeeds
+    setPendingApplicationData(data);
     
     try {
-      const saved = await onSaveApplication(data);
-      if (!saved) {
-        setIsSavingApplication(false);
-        return;
-      }
-
       // Create payment intent for application fee
       console.log('[ApplicationForm] Creating payment intent for application fee:', applicationFeeAmount);
       const result = await createPaymentIntent({
@@ -361,13 +386,28 @@ export function ApplicationForm({
         setShowPaymentForm(true);
       } else {
         toast.error('Failed to initialize payment. Please try again.');
+        setPendingApplicationData(null);
       }
     } catch (error) {
       console.error('[ApplicationForm] Error:', error);
       toast.error('Failed to process application');
-    } finally {
-      setIsSavingApplication(false);
+      setPendingApplicationData(null);
     }
+  };
+  
+  // Currency input handlers
+  const handleMonthlyIncomeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatCurrency(e.target.value);
+    setMonthlyIncomeDisplay(formatted);
+    const parsed = parseCurrency(e.target.value);
+    setValue('monthlyIncome', parsed as number);
+  };
+  
+  const handleCashOnHandChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatCurrency(e.target.value);
+    setCashOnHandDisplay(formatted);
+    const parsed = parseCurrency(e.target.value);
+    setValue('cashOnHand', parsed as number);
   };
 
   // Render payment form content
@@ -427,6 +467,8 @@ export function ApplicationForm({
       <StripeProvider clientSecret={clientSecret} publishableKey={publishableKey}>
         <EmbeddedPaymentForm
           amount={applicationFeeAmount}
+          applicationData={pendingApplicationData!}
+          onSaveApplication={onSaveApplication}
           onSuccess={onPaymentSuccess}
         />
       </StripeProvider>
@@ -595,11 +637,13 @@ export function ApplicationForm({
                   <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="monthlyIncome"
-                    type="number"
-                    {...register('monthlyIncome', { valueAsNumber: true })}
+                    type="text"
+                    inputMode="numeric"
+                    value={monthlyIncomeDisplay}
+                    onChange={handleMonthlyIncomeChange}
                     placeholder="5,000"
                     className={cn(
-                      "pl-9 font-mono",
+                      "pl-9 font-mono tracking-wide",
                       errors.monthlyIncome ? 'border-destructive' : ''
                     )}
                   />
@@ -615,11 +659,13 @@ export function ApplicationForm({
                   <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="cashOnHand"
-                    type="number"
-                    {...register('cashOnHand', { valueAsNumber: true })}
+                    type="text"
+                    inputMode="numeric"
+                    value={cashOnHandDisplay}
+                    onChange={handleCashOnHandChange}
                     placeholder="10,000"
                     className={cn(
-                      "pl-9 font-mono",
+                      "pl-9 font-mono tracking-wide",
                       errors.cashOnHand ? 'border-destructive' : ''
                     )}
                   />
@@ -874,8 +920,8 @@ export function ApplicationForm({
                 Next <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (
-              <Button type="submit" disabled={isSavingApplication || isCreating} className="btn-platinum">
-                {isSavingApplication || isCreating ? (
+              <Button type="submit" disabled={isCreating} className="btn-platinum">
+                {isCreating ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
                   </>
