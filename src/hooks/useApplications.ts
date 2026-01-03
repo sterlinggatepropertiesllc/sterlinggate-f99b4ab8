@@ -31,7 +31,11 @@ export function useApplications(propertyManagerId?: string) {
         .order('created_at', { ascending: false });
 
       const { data, error } = await query;
-      if (error) throw error;
+      console.log('[useApplications] Fetched:', data?.length, 'applications');
+      if (error) {
+        console.error('[useApplications] Error:', error);
+        throw error;
+      }
       return data;
     },
   });
