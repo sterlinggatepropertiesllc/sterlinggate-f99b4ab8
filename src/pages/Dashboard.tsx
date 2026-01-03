@@ -99,7 +99,7 @@ export default function Dashboard() {
 
   const queryClient = useQueryClient();
   const { data: properties, isLoading: propertiesLoading } = useManagerProperties(user?.id);
-  const { data: applications, isLoading: applicationsLoading } = useApplications();
+  const { data: applications, isLoading: applicationsLoading, isError: applicationsError, refetch: refetchApplications } = useApplications();
   const { data: tenants, isLoading: tenantsLoading } = useTenants(user?.id);
   const { data: leases, isLoading: leasesLoading } = useLeases(user?.id, role);
   const { data: unreadCount } = useUnreadCount(user?.id);
@@ -661,6 +661,15 @@ export default function Dashboard() {
                     </Card>
                   ))}
                 </div>
+              ) : applicationsError ? (
+                <Card className="p-12 text-center border-destructive border-dashed">
+                  <XCircle className="h-12 w-12 mx-auto text-destructive/50 mb-4" />
+                  <h3 className="text-xl font-serif mb-2">Unable to Load Applications</h3>
+                  <p className="text-muted-foreground mb-6">There was an error loading applications. Please try again.</p>
+                  <Button onClick={() => refetchApplications()} variant="outline">
+                    Retry
+                  </Button>
+                </Card>
               ) : applications && applications.length > 0 ? (
                 <div className="space-y-4">
                   {applications.map((app: any) => (
