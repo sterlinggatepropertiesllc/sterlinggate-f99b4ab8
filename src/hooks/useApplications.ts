@@ -4,6 +4,32 @@ import type { Database } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 
 type Application = Database['public']['Tables']['applications']['Row'];
+
+export function useApplicationPayment(applicantId: string | undefined, propertyId: string | undefined) {
+  return useQuery({
+    queryKey: ['application-payment', applicantId, propertyId],
+    queryFn: async () => {
+      if (!applicantId || !propertyId) return null;
+      
+      // Find payment with application_fee type for this property
+      const { data, error } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('payment_type', 'application_fee')
+        .eq('property_id', propertyId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.error('[useApplicationPayment] Error:', error);
+        return null;
+      }
+      return data;
+    },
+    enabled: !!applicantId && !!propertyId,
+  });
+}
 type ApplicationInsert = Database['public']['Tables']['applications']['Insert'];
 
 export function useApplications(propertyManagerId?: string) {
