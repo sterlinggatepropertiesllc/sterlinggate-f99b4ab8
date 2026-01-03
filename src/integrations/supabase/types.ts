@@ -749,6 +749,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      apply_balance_adjustment: {
+        Args: {
+          _adjustment_type: string
+          _amount: number
+          _created_by?: string
+          _description?: string
+          _tenant_id: string
+        }
+        Returns: Json
+      }
       assign_tenant_role: { Args: { _user_id: string }; Returns: undefined }
       create_notification: {
         Args: {

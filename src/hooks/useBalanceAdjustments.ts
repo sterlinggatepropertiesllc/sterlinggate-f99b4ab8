@@ -15,13 +15,18 @@ interface BalanceAdjustment {
   created_at: string;
 }
 
-interface CreateAdjustmentInput {
+interface ApplyAdjustmentInput {
   tenant_id: string;
   amount: number;
   adjustment_type: 'credit' | 'charge' | 'late_fee' | 'payment' | 'correction';
-  description: string;
-  current_balance: number;
+  description?: string;
   created_by: string;
+}
+
+interface ApplyAdjustmentResult {
+  new_balance: number;
+  previous_balance: number;
+  adjustment_id: string;
 }
 
 export function useBalanceAdjustments(tenantId: string | undefined) {
@@ -98,61 +103,53 @@ export function useRealtimeTenantBalance(tenantId: string | undefined, onUpdate:
   }, [tenantId, onUpdate]);
 }
 
-export function useCreateBalanceAdjustment() {
+// Uses atomic RPC for reliable balance adjustments
+export function useApplyBalanceAdjustment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: CreateAdjustmentInput) => {
-      // Calculate new balance based on adjustment type
-      const isDebit = ['charge', 'late_fee'].includes(input.adjustment_type);
-      const isCredit = ['credit', 'payment'].includes(input.adjustment_type);
-      
-      let newBalance = input.current_balance;
-      if (isDebit) {
-        newBalance = input.current_balance + Math.abs(input.amount);
-      } else if (isCredit) {
-        newBalance = input.current_balance - Math.abs(input.amount);
-      } else {
-        // correction - can be positive or negative
-        newBalance = input.current_balance + input.amount;
+    mutationFn: async (input: ApplyAdjustmentInput): Promise<ApplyAdjustmentResult> => {
+      // Validate amount
+      if (input.adjustment_type !== 'correction' && input.amount <= 0) {
+        throw new Error('Amount must be greater than zero');
+      }
+      if (input.adjustment_type === 'correction' && input.amount === 0) {
+        throw new Error('Correction amount cannot be zero');
       }
 
-      // Insert the adjustment record
-      const { data: adjustment, error: adjustmentError } = await supabase
-        .from('balance_adjustments')
-        .insert({
-          tenant_id: input.tenant_id,
-          amount: input.amount,
-          adjustment_type: input.adjustment_type,
-          description: input.description,
-          previous_balance: input.current_balance,
-          new_balance: newBalance,
-          created_by: input.created_by,
-        })
-        .select()
-        .single();
+      const { data, error } = await supabase.rpc('apply_balance_adjustment', {
+        _tenant_id: input.tenant_id,
+        _adjustment_type: input.adjustment_type,
+        _amount: input.amount,
+        _description: input.description || null,
+        _created_by: input.created_by,
+      });
 
-      if (adjustmentError) throw adjustmentError;
+      if (error) {
+        console.error('Balance adjustment RPC error:', error);
+        throw new Error(error.message || 'Failed to apply balance adjustment');
+      }
 
-      // Update the tenant's current balance
-      const { error: updateError } = await supabase
-        .from('tenants')
-        .update({ current_balance: newBalance })
-        .eq('id', input.tenant_id);
-
-      if (updateError) throw updateError;
-
-      return { adjustment, newBalance };
+      const result = data as unknown as ApplyAdjustmentResult;
+      return result;
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (result, variables) => {
+      // Immediately update caches
       queryClient.invalidateQueries({ queryKey: ['balance-adjustments', variables.tenant_id] });
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
-      toast.success('Balance adjusted successfully');
+      
+      toast.success(`Balance updated to ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(result.new_balance)}`);
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast.error(`Failed to adjust balance: ${error.message}`);
     },
   });
+}
+
+// Legacy hook - kept for backwards compatibility but marked as deprecated
+/** @deprecated Use useApplyBalanceAdjustment instead */
+export function useCreateBalanceAdjustment() {
+  return useApplyBalanceAdjustment();
 }
 
 // Calculate overdue balance based on rent amount and due date
