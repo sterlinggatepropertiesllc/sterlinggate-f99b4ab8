@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Navigate, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
-import { useLease, useUpdateLease } from '@/hooks/useLeases';
-import { useCreateSignature, getClientIP } from '@/hooks/useSignatures';
+import { useLease } from '@/hooks/useLeases';
+import { getClientIP } from '@/hooks/useSignatures';
 import { useProfile } from '@/hooks/useProfiles';
 import { SignaturePad } from '@/components/signatures/SignaturePad';
 import { AuditCertificate } from '@/components/leases/AuditCertificate';
@@ -31,12 +32,11 @@ import { format } from 'date-fns';
 export default function SignLease() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user, loading: authLoading } = useAuth();
-  const { data: lease, isLoading: leaseLoading } = useLease(id);
+  const { data: lease, isLoading: leaseLoading, refetch: refetchLease } = useLease(id);
   const { data: tenantProfile } = useProfile(lease?.tenant_id);
   const { data: managerProfile } = useProfile(lease?.manager_id);
-  const updateLease = useUpdateLease();
-  const createSignature = useCreateSignature();
 
   const [signatureData, setSignatureData] = useState<string | null>(null);
   const [signatureType, setSignatureType] = useState<'draw' | 'type'>('draw');
@@ -45,6 +45,44 @@ export default function SignLease() {
   const [signing, setSigning] = useState(false);
   const [downloadingCertificate, setDownloadingCertificate] = useState(false);
   const [downloading, setDownloading] = useState(false);
+
+  // Real-time subscription for lease and signature updates
+  useEffect(() => {
+    if (!id) return;
+
+    const channel = supabase
+      .channel(`lease-${id}-realtime`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'leases',
+          filter: `id=eq.${id}`,
+        },
+        () => {
+          refetchLease();
+          queryClient.invalidateQueries({ queryKey: ['leases'] });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'signatures',
+          filter: `lease_id=eq.${id}`,
+        },
+        () => {
+          refetchLease();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id, refetchLease, queryClient]);
 
   const isLoading = authLoading || leaseLoading;
   
@@ -110,36 +148,27 @@ export default function SignLease() {
       const ipAddress = await getClientIP();
       const userAgent = navigator.userAgent;
 
-      // Determine new status BEFORE any mutations
-      let newStatus = lease.status;
-      if (isTenant && lease.status === 'pending_tenant_signature') {
-        newStatus = 'pending_manager_signature';
-      } else if (isManager && lease.status === 'pending_manager_signature') {
-        newStatus = 'completed';
-      }
-
-      // Update lease status FIRST (this is what RLS checks for tenant updates)
-      const updateResult = await updateLease.mutateAsync({
-        id: lease.id,
-        status: newStatus,
+      // Use atomic RPC function that handles both signature + status update
+      // Cast to any since the types file hasn't been regenerated yet
+      const { data: result, error } = await (supabase.rpc as any)('sign_lease', {
+        _lease_id: lease.id,
+        _signature_data: signatureData,
+        _signature_type: signatureType,
+        _ip_address: ipAddress,
+        _user_agent: userAgent,
       });
 
-      // Verify the update actually worked (RLS might silently reject)
-      if (!updateResult || updateResult.status !== newStatus) {
-        throw new Error('Lease status update failed. Please refresh and try again.');
+      if (error) throw error;
+      
+      // Check RPC result
+      const rpcResult = result as { success: boolean; error?: string; new_status?: string };
+      if (!rpcResult?.success) {
+        throw new Error(rpcResult?.error || 'Failed to sign lease');
       }
 
-      // Create signature AFTER lease update succeeds
-      await createSignature.mutateAsync({
-        leaseId: lease.id,
-        signerId: user.id,
-        signatureData,
-        signatureType,
-        ipAddress,
-        userAgent,
-      });
+      const newStatus = rpcResult.new_status;
 
-      // Send notifications after both operations succeed
+      // Send notifications after signing succeeds
       if (isTenant && lease.status === 'pending_tenant_signature') {
         await supabase.rpc('create_notification', {
           _user_id: lease.manager_id,
@@ -158,6 +187,10 @@ export default function SignLease() {
         });
       }
 
+      // Invalidate queries to force refetch
+      queryClient.invalidateQueries({ queryKey: ['leases'] });
+      await refetchLease();
+
       toast.success('Lease signed successfully!');
       
       if (newStatus === 'completed') {
@@ -165,9 +198,9 @@ export default function SignLease() {
       } else {
         navigate(isTenant ? '/tenant' : '/dashboard');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Signing error:', error);
-      toast.error('Failed to sign lease. Please try again.');
+      toast.error(error.message || 'Failed to sign lease. Please try again.');
     } finally {
       setSigning(false);
     }
