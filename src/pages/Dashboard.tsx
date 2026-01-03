@@ -112,6 +112,17 @@ export default function Dashboard() {
   const deleteLease = useDeleteLease();
   const { uploadImages, uploading, maxImages } = usePropertyImages();
 
+  // Mark payment notifications as read when Audit tab is opened
+  const handleMarkPaymentNotificationsRead = useCallback(() => {
+    if (activeTab === 'audit') {
+      markAllPaymentNotificationsRead();
+    }
+  }, [activeTab, markAllPaymentNotificationsRead]);
+
+  useEffect(() => {
+    handleMarkPaymentNotificationsRead();
+  }, [handleMarkPaymentNotificationsRead]);
+
   // Realtime subscription for properties
   useEffect(() => {
     if (!user?.id) return;
@@ -317,16 +328,6 @@ export default function Dashboard() {
     { id: 'audit', label: 'Payments', icon: Receipt, badge: unreadPaymentCount },
   ];
 
-  // Mark payment notifications as read when Audit tab is opened
-  const handleMarkPaymentNotificationsRead = useCallback(() => {
-    if (activeTab === 'audit') {
-      markAllPaymentNotificationsRead();
-    }
-  }, [activeTab, markAllPaymentNotificationsRead]);
-
-  useEffect(() => {
-    handleMarkPaymentNotificationsRead();
-  }, [handleMarkPaymentNotificationsRead]);
 
   // Sidebar content component
   const SidebarContent = ({ onNavClick }: { onNavClick?: () => void }) => (
