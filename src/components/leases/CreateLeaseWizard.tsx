@@ -331,19 +331,24 @@ export function CreateLeaseWizard({
 
       // Handle HTTP errors from edge function - parse validation errors from 422 responses
       if (error) {
-        console.error('Error generating lease:', error);
+        console.log('Edge function error received:', error.message);
         
         // Try to parse validation errors from the error message
         try {
           // Supabase wraps edge function errors - try to extract JSON
           const errorMsg = error.message || '';
           const jsonMatch = errorMsg.match(/\{[\s\S]*\}/);
+          console.log('JSON match found:', jsonMatch?.[0]);
+          
           if (jsonMatch) {
             const errorData = JSON.parse(jsonMatch[0]);
+            console.log('Parsed error data:', errorData);
+            
             if (errorData.type === 'VALIDATION_ERROR' || errorData.type === 'AI_ERROR') {
-              console.log('Validation issues received:', errorData.issues);
+              console.log('Setting validation issues:', errorData.issues);
               setValidationIssues(errorData.issues || []);
               toast.error(errorData.message || 'Please fix the issues before generating');
+              setIsGeneratingLease(false);
               return;
             }
           }
@@ -353,6 +358,7 @@ export function CreateLeaseWizard({
         }
         
         toast.error(error.message || 'Failed to generate lease document');
+        setIsGeneratingLease(false);
         return;
       }
 
