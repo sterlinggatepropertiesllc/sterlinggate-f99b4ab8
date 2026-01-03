@@ -12,11 +12,11 @@ import { Calendar as CalendarPicker } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useTenantProfiles } from '@/hooks/useProfiles';
 import { useCreateLease } from '@/hooks/useLeases';
-import { LeaseTerms, LeaseType, LateFeeType, EntityType, LEASE_TYPE_LABELS, LEASE_TYPE_DESCRIPTIONS } from '@/lib/leaseTemplates';
+import { LeaseTerms, LeaseType, LateFeeType, EntityType, LEASE_TYPE_LABELS, LEASE_TYPE_DESCRIPTIONS, TenantInsurance, RenewalOption, DEFAULT_TENANT_INSURANCE, MINIMUM_COMMERCIAL_TERM_MONTHS } from '@/lib/leaseTemplates';
 import { generateDocumentHash } from '@/hooks/useSignatures';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
-import { format, parse } from 'date-fns';
+import { format, parse, differenceInMonths } from 'date-fns';
 import { toast } from 'sonner';
 import { LeasePreviewDialog } from './LeasePreviewDialog';
 import { ValidationIssuesPanel } from './ValidationIssuesPanel';
@@ -69,7 +69,8 @@ const STEPS = [
   { id: 'property', label: 'Select Property', icon: Home },
   { id: 'type', label: 'Lease Type', icon: FileText },
   { id: 'terms', label: 'Lease Terms', icon: DollarSign },
-  { id: 'additional', label: 'Additional Clauses', icon: Shield },
+  { id: 'insurance', label: 'Insurance & Notices', icon: Shield },
+  { id: 'additional', label: 'Additional Clauses', icon: FileText },
   { id: 'document', label: 'Preview Document', icon: Eye },
   { id: 'confirm', label: 'Confirm & Send', icon: Send },
 ];
@@ -117,6 +118,19 @@ export function CreateLeaseWizard({
     additionalClauses: '',
     permittedUse: '',
     prohibitedUses: '',
+    // Tenant Insurance (MANDATORY for commercial leases)
+    tenantInsurance: { ...DEFAULT_TENANT_INSURANCE } as TenantInsurance,
+    // Notice addresses
+    noticeAddressLandlord: '',
+    noticeAddressTenant: '',
+    emailNoticesPermitted: true,
+    // Renewal options (structured)
+    renewalOptionCount: 0,
+    renewalOptionYears: 1,
+    renewalOptionBasis: 'fixed_increase' as 'fixed_increase' | 'market_rate',
+    renewalOptionIncrease: 3,
+    // Holdover rate
+    holdoverRateMultiplier: 150,
   });
   const [generatedLeaseHTML, setGeneratedLeaseHTML] = useState<string>('');
   const [isGeneratingLease, setIsGeneratingLease] = useState(false);
@@ -163,6 +177,15 @@ export function CreateLeaseWizard({
         additionalClauses: '',
         permittedUse: '',
         prohibitedUses: '',
+        tenantInsurance: { ...DEFAULT_TENANT_INSURANCE },
+        noticeAddressLandlord: '',
+        noticeAddressTenant: '',
+        emailNoticesPermitted: true,
+        renewalOptionCount: 0,
+        renewalOptionYears: 1,
+        renewalOptionBasis: 'fixed_increase',
+        renewalOptionIncrease: 3,
+        holdoverRateMultiplier: 150,
       });
       setGeneratedLeaseHTML('');
       setValidationIssues([]);
@@ -244,6 +267,16 @@ export function CreateLeaseWizard({
     }
   };
 
+  // Calculate lease duration for validation
+  const getLeaseDurationMonths = (): number => {
+    if (!formData.startDate || !formData.endDate) return 0;
+    const start = parse(formData.startDate, 'yyyy-MM-dd', new Date());
+    const end = parse(formData.endDate, 'yyyy-MM-dd', new Date());
+    return differenceInMonths(end, start);
+  };
+
+  const isShortTermLease = getLeaseDurationMonths() > 0 && getLeaseDurationMonths() < MINIMUM_COMMERCIAL_TERM_MONTHS;
+
   const canProceed = () => {
     switch (currentStep) {
       case 0: 
@@ -254,9 +287,11 @@ export function CreateLeaseWizard({
       case 1: return !!formData.propertyId;
       case 2: return !!formData.leaseType;
       case 3: return formData.startDate && formData.endDate && formData.monthlyRent > 0;
-      case 4: return true;
-      case 5: return !!generatedLeaseHTML && isValidLeaseHTML(generatedLeaseHTML); // Must have VALID document
-      case 6: return true; // Confirm & send
+      case 4: // Insurance step - must have coverage amount > 0
+        return formData.tenantInsurance.generalLiabilityCoverage > 0;
+      case 5: return true; // Additional clauses (optional)
+      case 6: return !!generatedLeaseHTML && isValidLeaseHTML(generatedLeaseHTML); // Must have VALID document
+      case 7: return true; // Confirm & send
       default: return false;
     }
   };
@@ -358,6 +393,19 @@ export function CreateLeaseWizard({
         additionalClauses: formData.additionalClauses || undefined,
         permittedUse: formData.permittedUse || undefined,
         prohibitedUses: formData.prohibitedUses || undefined,
+        // Tenant insurance (MANDATORY)
+        tenantInsurance: formData.tenantInsurance,
+        // Notice addresses
+        noticeAddressLandlord: formData.noticeAddressLandlord || undefined,
+        noticeAddressTenant: formData.noticeAddressTenant || undefined,
+        emailNoticesPermitted: formData.emailNoticesPermitted,
+        // Renewal options
+        renewalOptionCount: formData.renewalOptionCount,
+        renewalOptionYears: formData.renewalOptionYears,
+        renewalOptionBasis: formData.renewalOptionBasis,
+        renewalOptionIncrease: formData.renewalOptionIncrease,
+        // Holdover rate
+        holdoverRateMultiplier: formData.holdoverRateMultiplier,
       };
 
       const { data, error } = await supabase.functions.invoke('generate-lease-document', {
@@ -545,6 +593,15 @@ export function CreateLeaseWizard({
       additionalClauses: '',
       permittedUse: '',
       prohibitedUses: '',
+      tenantInsurance: { ...DEFAULT_TENANT_INSURANCE },
+      noticeAddressLandlord: '',
+      noticeAddressTenant: '',
+      emailNoticesPermitted: true,
+      renewalOptionCount: 0,
+      renewalOptionYears: 1,
+      renewalOptionBasis: 'fixed_increase',
+      renewalOptionIncrease: 3,
+      holdoverRateMultiplier: 150,
     });
     setGeneratedLeaseHTML('');
   };
@@ -1072,7 +1129,229 @@ export function CreateLeaseWizard({
           </div>
         );
 
-      case 4: // Additional Clauses
+      case 4: // Insurance & Notices (MANDATORY)
+        return (
+          <div className="space-y-6">
+            {/* Short-term lease warning */}
+            {isShortTermLease && (
+              <div className="p-4 rounded-lg bg-warning/10 border border-warning/30">
+                <p className="text-sm font-medium text-warning">
+                  ⚠️ Short-Term Commercial Lease
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  This lease is less than {MINIMUM_COMMERCIAL_TERM_MONTHS} months. Standard commercial terms will still apply.
+                </p>
+              </div>
+            )}
+
+            {/* Tenant Insurance Section */}
+            <div className="space-y-4 p-4 border border-border rounded-lg bg-secondary/20">
+              <div className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-primary" />
+                <Label className="text-base font-medium">Tenant Insurance Requirements <span className="text-destructive">*</span></Label>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Commercial leases require tenant insurance. Failure to maintain insurance constitutes a material default.
+              </p>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>General Liability Coverage ($) <span className="text-destructive">*</span></Label>
+                  <Input
+                    type="number"
+                    value={formData.tenantInsurance.generalLiabilityCoverage || ''}
+                    onChange={(e) => updateFormData({
+                      tenantInsurance: {
+                        ...formData.tenantInsurance,
+                        generalLiabilityCoverage: e.target.value === '' ? 0 : Number(e.target.value)
+                      }
+                    })}
+                    placeholder="1000000"
+                  />
+                  <p className="text-xs text-muted-foreground">Minimum CGL coverage amount (e.g., 1,000,000)</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Notice of Cancellation (days)</Label>
+                  <Input
+                    type="number"
+                    value={formData.tenantInsurance.cancellationNoticeDays || ''}
+                    onChange={(e) => updateFormData({
+                      tenantInsurance: {
+                        ...formData.tenantInsurance,
+                        cancellationNoticeDays: e.target.value === '' ? 30 : Number(e.target.value)
+                      }
+                    })}
+                    placeholder="30"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.tenantInsurance.landlordAsAdditionalInsured}
+                    onChange={(e) => updateFormData({
+                      tenantInsurance: {
+                        ...formData.tenantInsurance,
+                        landlordAsAdditionalInsured: e.target.checked
+                      }
+                    })}
+                    className="rounded border-border"
+                  />
+                  <span className="text-sm">Landlord as Additional Insured</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.tenantInsurance.coiRequiredBeforePossession}
+                    onChange={(e) => updateFormData({
+                      tenantInsurance: {
+                        ...formData.tenantInsurance,
+                        coiRequiredBeforePossession: e.target.checked
+                      }
+                    })}
+                    className="rounded border-border"
+                  />
+                  <span className="text-sm">COI Required Before Possession</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.tenantInsurance.annualProofRequired}
+                    onChange={(e) => updateFormData({
+                      tenantInsurance: {
+                        ...formData.tenantInsurance,
+                        annualProofRequired: e.target.checked
+                      }
+                    })}
+                    className="rounded border-border"
+                  />
+                  <span className="text-sm">Annual Proof of Insurance Required</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Renewal Options Section */}
+            <div className="space-y-4 p-4 border border-border rounded-lg bg-secondary/20">
+              <Label className="text-base font-medium">Renewal Options</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Number of Options (0-3)</Label>
+                  <Select
+                    value={String(formData.renewalOptionCount)}
+                    onValueChange={(v) => updateFormData({ renewalOptionCount: Number(v) })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">No renewal options</SelectItem>
+                      <SelectItem value="1">1 option</SelectItem>
+                      <SelectItem value="2">2 options</SelectItem>
+                      <SelectItem value="3">3 options</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {formData.renewalOptionCount > 0 && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Option Length (years)</Label>
+                      <Select
+                        value={String(formData.renewalOptionYears)}
+                        onValueChange={(v) => updateFormData({ renewalOptionYears: Number(v) })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">1 year</SelectItem>
+                          <SelectItem value="2">2 years</SelectItem>
+                          <SelectItem value="3">3 years</SelectItem>
+                          <SelectItem value="5">5 years</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Rent Basis</Label>
+                      <Select
+                        value={formData.renewalOptionBasis}
+                        onValueChange={(v) => updateFormData({ renewalOptionBasis: v as 'fixed_increase' | 'market_rate' })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="fixed_increase">Fixed % Increase</SelectItem>
+                          <SelectItem value="market_rate">Market Rate</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {formData.renewalOptionBasis === 'fixed_increase' && (
+                      <div className="space-y-2">
+                        <Label>Increase Percentage (%)</Label>
+                        <Input
+                          type="number"
+                          value={formData.renewalOptionIncrease || ''}
+                          onChange={(e) => updateFormData({ renewalOptionIncrease: Number(e.target.value) || 3 })}
+                          placeholder="3"
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Notice Addresses Section */}
+            <div className="space-y-4 p-4 border border-border rounded-lg bg-secondary/20">
+              <Label className="text-base font-medium">Notice Addresses</Label>
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <Label>Landlord Notice Address</Label>
+                  <Input
+                    value={formData.noticeAddressLandlord}
+                    onChange={(e) => updateFormData({ noticeAddressLandlord: e.target.value })}
+                    placeholder="Leave blank to use property address"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Tenant Notice Address</Label>
+                  <Input
+                    value={formData.noticeAddressTenant}
+                    onChange={(e) => updateFormData({ noticeAddressTenant: e.target.value })}
+                    placeholder="Leave blank to use premises address after possession"
+                  />
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.emailNoticesPermitted}
+                    onChange={(e) => updateFormData({ emailNoticesPermitted: e.target.checked })}
+                    className="rounded border-border"
+                  />
+                  <span className="text-sm">Email notices permitted (in addition to written)</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Holdover Rate */}
+            <div className="space-y-2 p-4 border border-border rounded-lg bg-secondary/20">
+              <Label>Holdover Rent Rate (%)</Label>
+              <Input
+                type="number"
+                value={formData.holdoverRateMultiplier || ''}
+                onChange={(e) => updateFormData({ holdoverRateMultiplier: Number(e.target.value) || 150 })}
+                placeholder="150"
+              />
+              <p className="text-xs text-muted-foreground">
+                Percentage of base rent charged during holdover (e.g., 150 = 150% of rent)
+              </p>
+            </div>
+          </div>
+        );
+
+      case 5: // Additional Clauses
         return (
           <div className="space-y-6">
             <div className="space-y-2">
@@ -1096,16 +1375,6 @@ export function CreateLeaseWizard({
             </div>
 
             <div className="space-y-2">
-              <Label>Renewal Terms (Optional)</Label>
-              <Textarea
-                value={formData.renewalTerms}
-                onChange={(e) => updateFormData({ renewalTerms: e.target.value })}
-                placeholder="e.g., Tenant has the option to renew for an additional 12-month term with 60 days written notice..."
-                rows={3}
-              />
-            </div>
-
-            <div className="space-y-2">
               <Label>Additional Clauses (Optional)</Label>
               <Textarea
                 value={formData.additionalClauses}
@@ -1117,7 +1386,7 @@ export function CreateLeaseWizard({
           </div>
         );
 
-      case 5: // Document Preview
+      case 6: // Document Preview
         return (
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -1245,7 +1514,7 @@ export function CreateLeaseWizard({
           </div>
         );
 
-      case 6: // Confirm & Send
+      case 7: // Confirm & Send
         return (
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-lg bg-secondary/50 border border-border">

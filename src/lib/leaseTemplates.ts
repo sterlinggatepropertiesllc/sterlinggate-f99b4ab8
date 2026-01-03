@@ -1,10 +1,27 @@
 // Legal Lease Templates for US Commercial Properties
+// Landlord-Protective Commercial Lease System
 
 export type LeaseType = 'triple_net' | 'gross' | 'modified_gross';
 
 export type LateFeeType = 'flat' | 'percentage' | 'daily' | 'flat_plus_daily' | 'flat_plus_percentage' | 'percentage_plus_daily' | 'all';
 
 export type EntityType = 'individual' | 'llc' | 'corporation';
+
+// Renewal option configuration
+export interface RenewalOption {
+  lengthYears: number;
+  rentBasis: 'fixed_increase' | 'market_rate';
+  increasePercentage?: number; // Only for fixed_increase
+}
+
+// Tenant insurance requirements (MANDATORY for commercial leases)
+export interface TenantInsurance {
+  generalLiabilityCoverage: number; // e.g., 1000000 for $1M
+  landlordAsAdditionalInsured: boolean;
+  coiRequiredBeforePossession: boolean;
+  annualProofRequired: boolean;
+  cancellationNoticeDays: number; // Default 30
+}
 
 export interface LeaseTerms {
   leaseType: LeaseType;
@@ -41,18 +58,43 @@ export interface LeaseTerms {
   guarantorName?: string;
   noticeAddressLandlord?: string;
   noticeAddressTenant?: string;
+  emailNoticesPermitted?: boolean;
+  
+  // Renewal options (structured)
+  renewalOptions?: RenewalOption[];
+  
+  // Tenant insurance requirements (MANDATORY)
+  tenantInsurance?: TenantInsurance;
+  
+  // Holdover rate multiplier (default 150%)
+  holdoverRateMultiplier?: number;
+  
+  // Grace period for rent (default from lateAfterDay)
+  gracePeriodDays?: number;
 }
+
+// Minimum lease term in months (below this triggers short-term warning)
+export const MINIMUM_COMMERCIAL_TERM_MONTHS = 12;
 
 export const LEASE_TYPE_LABELS: Record<LeaseType, string> = {
   triple_net: 'Triple Net (NNN) Lease',
-  gross: 'Gross Lease',
+  gross: 'Commercial Gross Lease',
   modified_gross: 'Modified Gross Lease',
 };
 
 export const LEASE_TYPE_DESCRIPTIONS: Record<LeaseType, string> = {
   triple_net: 'Tenant pays base rent plus property taxes, insurance, and maintenance costs (CAM)',
-  gross: 'Landlord pays all property expenses; tenant pays flat monthly rent',
+  gross: 'Landlord-protective gross lease with mandatory tenant insurance requirements',
   modified_gross: 'Expenses are shared between landlord and tenant as negotiated',
+};
+
+// Default insurance values
+export const DEFAULT_TENANT_INSURANCE: TenantInsurance = {
+  generalLiabilityCoverage: 1000000,
+  landlordAsAdditionalInsured: true,
+  coiRequiredBeforePossession: true,
+  annualProofRequired: true,
+  cancellationNoticeDays: 30,
 };
 
 function formatCurrency(amount: number): string {
