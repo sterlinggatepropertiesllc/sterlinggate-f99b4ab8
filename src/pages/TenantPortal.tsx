@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Navigate, Link } from 'react-router-dom';
+import { Navigate, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMyApplications } from '@/hooks/useApplications';
@@ -68,6 +68,7 @@ export default function TenantPortal() {
 
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const { data: myApplications, isLoading: applicationsLoading } = useMyApplications(user?.id);
   const { data: leases, isLoading: leasesLoading } = useLeases(user?.id, role);
@@ -217,6 +218,16 @@ export default function TenantPortal() {
       supabase.removeChannel(channel);
     };
   }, [tenantRecord?.id, queryClient, refetchTenant]);
+
+  // Handle tab navigation from URL query params (for notification clicks)
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['dashboard', 'applications', 'leases', 'payments', 'documents', 'messages'].includes(tabParam)) {
+      setActiveTab(tabParam as PortalTab);
+      // Clear the query param after setting the tab
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Wait for both auth and role to be fully loaded before redirecting
   if (loading || (user && role === null)) {

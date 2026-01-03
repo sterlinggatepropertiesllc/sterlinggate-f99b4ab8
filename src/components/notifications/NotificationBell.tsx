@@ -3,10 +3,11 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { NotificationCenter } from './NotificationCenter';
-import { useNotifications } from '@/hooks/useNotifications';
+import { useNotifications, Notification } from '@/hooks/useNotifications';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 export function NotificationBell() {
   const {
@@ -23,6 +24,8 @@ export function NotificationBell() {
 
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // Reset new notification flag when opening the notification center
   useEffect(() => {
@@ -30,6 +33,49 @@ export function NotificationBell() {
       resetNewNotificationFlag();
     }
   }, [open, resetNewNotificationFlag]);
+
+  // Handle notification click - navigate to relevant section
+  const handleNotificationClick = useCallback((notification: Notification) => {
+    // Close the notification panel
+    setOpen(false);
+    
+    // Determine which dashboard we're on
+    const isAdminDashboard = location.pathname === '/dashboard';
+    const isTenantPortal = location.pathname === '/tenant';
+    
+    // Map notification type to tab
+    let targetTab = '';
+    switch (notification.type) {
+      case 'application_received':
+        targetTab = 'applications';
+        break;
+      case 'application_approved':
+      case 'application_rejected':
+        targetTab = 'applications';
+        break;
+      case 'rent_received':
+        targetTab = 'audit';
+        break;
+      case 'lease_signed':
+        targetTab = 'leases';
+        break;
+      case 'message_received':
+        targetTab = 'messages';
+        break;
+      case 'maintenance_request':
+        targetTab = 'properties';
+        break;
+      default:
+        return;
+    }
+    
+    // Navigate with query param to set the tab
+    if (isAdminDashboard) {
+      navigate(`/dashboard?tab=${targetTab}`);
+    } else if (isTenantPortal) {
+      navigate(`/tenant?tab=${targetTab}`);
+    }
+  }, [location.pathname, navigate]);
 
   const bellButton = (
     <Button
@@ -84,6 +130,7 @@ export function NotificationBell() {
       onMarkAsRead={markAsRead}
       onMarkAllAsRead={markAllAsRead}
       onClearAll={clearAll}
+      onNavigate={handleNotificationClick}
       isMobile={isMobile}
     />
   );

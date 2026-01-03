@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Navigate, Link, useNavigate } from 'react-router-dom';
+import { Navigate, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useManagerProperties, useCreateProperty, useUpdateProperty, useDeleteProperty } from '@/hooks/useProperties';
@@ -81,6 +81,7 @@ type Property = Database['public']['Tables']['properties']['Row'];
 export default function Dashboard() {
   const { user, role, loading, signOut } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
   const [isCreateLeaseOpen, setIsCreateLeaseOpen] = useState(false);
@@ -122,6 +123,16 @@ export default function Dashboard() {
   useEffect(() => {
     handleMarkPaymentNotificationsRead();
   }, [handleMarkPaymentNotificationsRead]);
+
+  // Handle tab navigation from URL query params (for notification clicks)
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['overview', 'properties', 'applications', 'tenants', 'leases', 'messages', 'analytics', 'audit'].includes(tabParam)) {
+      setActiveTab(tabParam as DashboardTab);
+      // Clear the query param after setting the tab
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Realtime subscription for properties
   useEffect(() => {
