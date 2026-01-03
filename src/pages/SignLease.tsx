@@ -110,7 +110,21 @@ export default function SignLease() {
       const ipAddress = await getClientIP();
       const userAgent = navigator.userAgent;
 
-      // Create signature
+      // Determine new status BEFORE any mutations
+      let newStatus = lease.status;
+      if (isTenant && lease.status === 'pending_tenant_signature') {
+        newStatus = 'pending_manager_signature';
+      } else if (isManager && lease.status === 'pending_manager_signature') {
+        newStatus = 'completed';
+      }
+
+      // Update lease status FIRST (this is what RLS checks for tenant updates)
+      await updateLease.mutateAsync({
+        id: lease.id,
+        status: newStatus,
+      });
+
+      // Create signature AFTER lease update succeeds
       await createSignature.mutateAsync({
         leaseId: lease.id,
         signerId: user.id,
@@ -120,12 +134,8 @@ export default function SignLease() {
         userAgent,
       });
 
-      // Update lease status
-      let newStatus = lease.status;
+      // Send notifications after both operations succeed
       if (isTenant && lease.status === 'pending_tenant_signature') {
-        newStatus = 'pending_manager_signature';
-        
-        // Notify manager that tenant has signed
         await supabase.rpc('create_notification', {
           _user_id: lease.manager_id,
           _type: 'lease_signed',
@@ -134,9 +144,6 @@ export default function SignLease() {
           _metadata: { lease_id: lease.id, property_id: lease.property_id }
         });
       } else if (isManager && lease.status === 'pending_manager_signature') {
-        newStatus = 'completed';
-        
-        // Notify tenant that lease is fully executed
         await supabase.rpc('create_notification', {
           _user_id: lease.tenant_id,
           _type: 'lease_signed',
@@ -145,11 +152,6 @@ export default function SignLease() {
           _metadata: { lease_id: lease.id, property_id: lease.property_id }
         });
       }
-
-      await updateLease.mutateAsync({
-        id: lease.id,
-        status: newStatus,
-      });
 
       toast.success('Lease signed successfully!');
       

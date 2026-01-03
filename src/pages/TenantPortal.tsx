@@ -450,7 +450,10 @@ export default function TenantPortal() {
                     )}
                   </Card>
 
-                  <Card className="p-4 md:p-5 hover:shadow-md transition-shadow">
+                  <Card 
+                    className="p-4 md:p-5 hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => setActiveTab('leases')}
+                  >
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
                         <p className="text-xs md:text-sm text-muted-foreground">Next Rent Due</p>
@@ -465,7 +468,10 @@ export default function TenantPortal() {
                     </div>
                   </Card>
 
-                  <Card className="p-4 md:p-5 hover:shadow-md transition-shadow">
+                  <Card 
+                    className="p-4 md:p-5 hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => setActiveTab('leases')}
+                  >
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
                         <p className="text-xs md:text-sm text-muted-foreground">Pending Actions</p>
@@ -488,7 +494,10 @@ export default function TenantPortal() {
                     </div>
                   </Card>
 
-                  <Card className="p-4 md:p-5 hover:shadow-md transition-shadow">
+                  <Card 
+                    className="p-4 md:p-5 hover:shadow-md transition-shadow cursor-pointer"
+                    onClick={() => setActiveTab('messages')}
+                  >
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
                         <p className="text-xs md:text-sm text-muted-foreground">Messages</p>

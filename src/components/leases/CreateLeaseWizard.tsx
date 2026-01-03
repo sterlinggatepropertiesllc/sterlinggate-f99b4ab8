@@ -1249,19 +1249,19 @@ export function CreateLeaseWizard({
         return (
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 rounded-lg bg-secondary/50 border border-border">
-              <div>
+              <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">Landlord</p>
                 <p className="font-medium">{formData.landlordLegalName}</p>
-                <p className="text-sm text-muted-foreground">{formData.landlordLegalEmail}</p>
-                <Badge variant="outline" className="mt-1 text-xs capitalize">
+                <p className="text-sm text-muted-foreground truncate">{formData.landlordLegalEmail}</p>
+                <Badge variant="outline" className="mt-2 text-xs capitalize">
                   {formData.landlordEntityType === 'llc' ? 'LLC' : formData.landlordEntityType}
                 </Badge>
               </div>
-              <div>
+              <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">Tenant</p>
                 <p className="font-medium">{formData.tenantName}</p>
-                <p className="text-sm text-muted-foreground">{formData.tenantEmail}</p>
-                <Badge variant="outline" className="mt-1 text-xs capitalize">
+                <p className="text-sm text-muted-foreground truncate">{formData.tenantEmail}</p>
+                <Badge variant="outline" className="mt-2 text-xs capitalize">
                   {formData.tenantEntityType === 'llc' ? 'LLC' : formData.tenantEntityType}
                 </Badge>
               </div>
@@ -1275,17 +1275,17 @@ export function CreateLeaseWizard({
               </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-4 p-4 rounded-lg bg-secondary/50 border border-border">
-              <div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 p-4 rounded-lg bg-secondary/50 border border-border">
+              <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">Monthly Rent</p>
                 <p className="font-medium text-lg">${formData.monthlyRent.toLocaleString()}</p>
               </div>
-              <div>
+              <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">Security Deposit</p>
                 <p className="font-medium text-lg">${formData.securityDeposit.toLocaleString()}</p>
               </div>
               {formData.camCharges > 0 && (
-                <div>
+                <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">CAM Charges</p>
                   <p className="font-medium text-lg">${formData.camCharges.toLocaleString()}</p>
                 </div>
