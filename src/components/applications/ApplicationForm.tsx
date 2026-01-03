@@ -34,19 +34,15 @@ import { cn } from '@/lib/utils';
 const applicationSchema = z.object({
   // Personal Info
   fullName: z.string().min(2, 'Full name is required'),
-  phone: z.string().min(10, 'Valid phone number is required'),
+  phone: z.string().min(14, 'Valid phone number is required'), // (555) 123-4567 format
   address: z.string().min(5, 'Current address is required'),
   city: z.string().min(2, 'City is required'),
   state: z.string().min(2, 'State is required'),
   zipCode: z.string().min(5, 'Valid ZIP code is required'),
   
-  // Employment Info
-  employerName: z.string().min(2, 'Employer name is required'),
-  employerAddress: z.string().min(5, 'Employer address is required'),
-  employerPhone: z.string().min(10, 'Employer phone is required'),
-  jobTitle: z.string().min(2, 'Job title is required'),
-  monthlyIncome: z.number().min(1, 'Monthly income is required'),
-  cashOnHand: z.number().min(0, 'Cash on hand is required'),
+  // Financial Info (simplified)
+  monthlyIncome: z.number().min(1, 'Monthly gross income is required'),
+  cashOnHand: z.number().min(1, 'Cash on hand is required'),
   
   // Documents
   driversLicenseFront: z.string().min(1, 'Driver\'s license front is required'),
@@ -197,7 +193,7 @@ function EmbeddedPaymentForm({
 
 const steps = [
   { id: 1, name: 'Personal Info', icon: User },
-  { id: 2, name: 'Employment', icon: Briefcase },
+  { id: 2, name: 'Financials', icon: DollarSign },
   { id: 3, name: 'Documents', icon: FileCheck },
   { id: 4, name: 'Consent', icon: Shield },
   { id: 5, name: 'Review', icon: CreditCard },
@@ -234,12 +230,8 @@ export function ApplicationForm({
       city: '',
       state: '',
       zipCode: '',
-      employerName: '',
-      employerAddress: '',
-      employerPhone: '',
-      jobTitle: '',
-      monthlyIncome: 0,
-      cashOnHand: 0,
+      monthlyIncome: undefined as unknown as number, // Show placeholder instead of 0
+      cashOnHand: undefined as unknown as number, // Show placeholder instead of 0
       driversLicenseFront: '',
       driversLicenseBack: '',
       ssnCard: '',
@@ -288,6 +280,20 @@ export function ApplicationForm({
     fetchPublishableKey();
   }, [clientSecret, publishableKey]);
 
+  // Premium phone formatting
+  const formatPhoneNumber = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    if (digits.length === 0) return '';
+    if (digits.length <= 3) return `(${digits}`;
+    if (digits.length <= 6) return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhoneNumber(e.target.value);
+    setValue('phone', formatted);
+  };
+
   const validateStep = async (step: number): Promise<boolean> => {
     let fieldsToValidate: (keyof ApplicationFormData)[] = [];
     
@@ -296,7 +302,7 @@ export function ApplicationForm({
         fieldsToValidate = ['fullName', 'phone', 'address', 'city', 'state', 'zipCode'];
         break;
       case 2:
-        fieldsToValidate = ['employerName', 'employerAddress', 'employerPhone', 'jobTitle', 'monthlyIncome', 'cashOnHand'];
+        fieldsToValidate = ['monthlyIncome', 'cashOnHand'];
         break;
       case 3:
         fieldsToValidate = ['driversLicenseFront', 'driversLicenseBack', 'ssnCard'];
@@ -508,9 +514,14 @@ export function ApplicationForm({
                 <Label htmlFor="phone">Phone Number *</Label>
                 <Input
                   id="phone"
-                  {...register('phone')}
+                  value={watchedValues.phone || ''}
+                  onChange={handlePhoneChange}
                   placeholder="(555) 123-4567"
-                  className={errors.phone ? 'border-destructive' : ''}
+                  className={cn(
+                    "font-mono tracking-wide",
+                    errors.phone ? 'border-destructive' : ''
+                  )}
+                  maxLength={14}
                 />
                 {errors.phone && (
                   <p className="text-xs text-destructive">{errors.phone.message}</p>
@@ -573,93 +584,49 @@ export function ApplicationForm({
             </div>
           )}
 
-          {/* Step 2: Employment Information */}
+          {/* Step 2: Financial Information */}
           {currentStep === 2 && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-serif mb-4">Employment Information</h3>
+            <div className="space-y-6">
+              <h3 className="text-lg font-serif mb-4">Financial Information</h3>
               
               <div className="space-y-2">
-                <Label htmlFor="employerName">Current Employer Name *</Label>
-                <Input
-                  id="employerName"
-                  {...register('employerName')}
-                  placeholder="Acme Corporation"
-                  className={errors.employerName ? 'border-destructive' : ''}
-                />
-                {errors.employerName && (
-                  <p className="text-xs text-destructive">{errors.employerName.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="employerAddress">Employer Address *</Label>
-                <Input
-                  id="employerAddress"
-                  {...register('employerAddress')}
-                  placeholder="456 Business Ave, Suite 100, City, State 12345"
-                  className={errors.employerAddress ? 'border-destructive' : ''}
-                />
-                {errors.employerAddress && (
-                  <p className="text-xs text-destructive">{errors.employerAddress.message}</p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="employerPhone">Employer Phone *</Label>
-                  <Input
-                    id="employerPhone"
-                    {...register('employerPhone')}
-                    placeholder="(555) 987-6543"
-                    className={errors.employerPhone ? 'border-destructive' : ''}
-                  />
-                  {errors.employerPhone && (
-                    <p className="text-xs text-destructive">{errors.employerPhone.message}</p>
-                  )}
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="jobTitle">Job Title *</Label>
-                  <Input
-                    id="jobTitle"
-                    {...register('jobTitle')}
-                    placeholder="Senior Manager"
-                    className={errors.jobTitle ? 'border-destructive' : ''}
-                  />
-                  {errors.jobTitle && (
-                    <p className="text-xs text-destructive">{errors.jobTitle.message}</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="monthlyIncome">Monthly Gross Income ($) *</Label>
+                <Label htmlFor="monthlyIncome">Monthly Gross Income ($) *</Label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="monthlyIncome"
                     type="number"
                     {...register('monthlyIncome', { valueAsNumber: true })}
-                    placeholder="5000"
-                    className={errors.monthlyIncome ? 'border-destructive' : ''}
+                    placeholder="5,000"
+                    className={cn(
+                      "pl-9 font-mono",
+                      errors.monthlyIncome ? 'border-destructive' : ''
+                    )}
                   />
-                  {errors.monthlyIncome && (
-                    <p className="text-xs text-destructive">{errors.monthlyIncome.message}</p>
-                  )}
                 </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="cashOnHand">Cash on Hand / Savings ($) *</Label>
+                {errors.monthlyIncome && (
+                  <p className="text-xs text-destructive">{errors.monthlyIncome.message}</p>
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="cashOnHand">Cash on Hand / Savings ($) *</Label>
+                <div className="relative">
+                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="cashOnHand"
                     type="number"
                     {...register('cashOnHand', { valueAsNumber: true })}
-                    placeholder="10000"
-                    className={errors.cashOnHand ? 'border-destructive' : ''}
+                    placeholder="10,000"
+                    className={cn(
+                      "pl-9 font-mono",
+                      errors.cashOnHand ? 'border-destructive' : ''
+                    )}
                   />
-                  {errors.cashOnHand && (
-                    <p className="text-xs text-destructive">{errors.cashOnHand.message}</p>
-                  )}
                 </div>
+                {errors.cashOnHand && (
+                  <p className="text-xs text-destructive">{errors.cashOnHand.message}</p>
+                )}
               </div>
             </div>
           )}
@@ -828,13 +795,11 @@ export function ApplicationForm({
                 <Card>
                   <CardContent className="p-4">
                     <h4 className="font-medium mb-3 flex items-center gap-2">
-                      <Briefcase className="h-4 w-4 text-primary" />
-                      Employment Information
+                      <DollarSign className="h-4 w-4 text-primary" />
+                      Financial Information
                     </h4>
                     <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div><span className="text-muted-foreground">Employer:</span> {watchedValues.employerName}</div>
-                      <div><span className="text-muted-foreground">Job Title:</span> {watchedValues.jobTitle}</div>
-                      <div><span className="text-muted-foreground">Monthly Income:</span> ${watchedValues.monthlyIncome?.toLocaleString()}</div>
+                      <div><span className="text-muted-foreground">Monthly Gross Income:</span> ${watchedValues.monthlyIncome?.toLocaleString()}</div>
                       <div><span className="text-muted-foreground">Cash on Hand:</span> ${watchedValues.cashOnHand?.toLocaleString()}</div>
                     </div>
                   </CardContent>

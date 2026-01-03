@@ -96,11 +96,7 @@ export default function Properties() {
         ssn_card_url: formData.ssnCard,
       };
 
-      const employmentInfo = {
-        employer_name: formData.employerName,
-        employer_address: formData.employerAddress,
-        employer_phone: formData.employerPhone,
-        job_title: formData.jobTitle,
+      const financialInfo = {
         monthly_income: formData.monthlyIncome,
         cash_on_hand: formData.cashOnHand,
       };
@@ -109,7 +105,7 @@ export default function Properties() {
         applicant_id: user.id,
         property_id: applyingProperty.id,
         personal_info: personalInfo,
-        employment_info: employmentInfo,
+        employment_info: financialInfo, // Now stores financial info
         background_check_consent: formData.backgroundCheckConsent,
         status: 'pending',
       });
