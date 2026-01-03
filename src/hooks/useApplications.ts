@@ -7,7 +7,7 @@ type Application = Database['public']['Tables']['applications']['Row'];
 type ApplicationInsert = Database['public']['Tables']['applications']['Insert'];
 
 export function useApplications(propertyManagerId?: string) {
-  return useQuery({
+  const query = useQuery({
     queryKey: ['applications', propertyManagerId],
     queryFn: async () => {
       let query = supabase
@@ -19,7 +19,8 @@ export function useApplications(propertyManagerId?: string) {
             address,
             city,
             state,
-            rent_amount
+            rent_amount,
+            manager_id
           ),
           profiles:applicant_id (
             id,
@@ -39,6 +40,15 @@ export function useApplications(propertyManagerId?: string) {
       return data;
     },
   });
+
+  return {
+    ...query,
+    data: query.data,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error,
+    refetch: query.refetch,
+  };
 }
 
 export function useMyApplications(userId: string | undefined) {
