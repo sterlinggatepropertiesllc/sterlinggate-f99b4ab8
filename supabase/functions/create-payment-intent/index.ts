@@ -105,6 +105,24 @@ serve(async (req) => {
       metadata.tenant_id = body.tenant_id!;
       resolvedPropertyId = tenantData.property_id;
       
+      // If tenant has no property_id, try to find it from an active lease
+      if (!resolvedPropertyId) {
+        console.log("[CREATE-PAYMENT-INTENT] No property_id on tenant, checking leases...");
+        const { data: leaseData } = await supabaseAdmin
+          .from('leases')
+          .select('property_id')
+          .eq('tenant_id', user.id)
+          .in('status', ['completed', 'pending_tenant_signature', 'pending_manager_signature'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (leaseData?.property_id) {
+          resolvedPropertyId = leaseData.property_id;
+          console.log("[CREATE-PAYMENT-INTENT] Found property_id from lease:", resolvedPropertyId);
+        }
+      }
+      
       console.log("[CREATE-PAYMENT-INTENT] Balance payment validated for tenant:", body.tenant_id);
     }
 

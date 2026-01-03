@@ -19,30 +19,70 @@ export function StripeProvider({ children, clientSecret, publishableKey }: Strip
     return loadStripe(publishableKey);
   }, [publishableKey]);
 
+  // Mass Effect-inspired dark theme
   const appearance: Appearance = {
-    theme: 'stripe',
+    theme: 'night',
     variables: {
-      colorPrimary: 'hsl(222.2, 47.4%, 11.2%)',
-      colorBackground: 'hsl(0, 0%, 100%)',
-      colorText: 'hsl(222.2, 84%, 4.9%)',
-      colorDanger: 'hsl(0, 84.2%, 60.2%)',
+      colorPrimary: '#00d4ff', // Mass Effect cyan
+      colorBackground: '#0a0e1a', // Deep space black with blue tint
+      colorText: '#e8f4fc', // Light blue-white
+      colorTextSecondary: '#7db8d9', // Muted cyan
+      colorDanger: '#ff6a00', // Mass Effect orange for errors
       fontFamily: 'system-ui, sans-serif',
-      borderRadius: '8px',
+      borderRadius: '6px',
       spacingUnit: '4px',
+      colorTextPlaceholder: '#4a6b8a',
     },
     rules: {
       '.Input': {
-        border: '1px solid hsl(214.3, 31.8%, 91.4%)',
-        boxShadow: 'none',
+        backgroundColor: '#0f1624',
+        border: '1px solid #1a3350',
+        boxShadow: 'inset 0 1px 3px rgba(0, 0, 0, 0.4)',
         padding: '12px',
+        color: '#e8f4fc',
       },
       '.Input:focus': {
-        border: '1px solid hsl(222.2, 47.4%, 11.2%)',
-        boxShadow: '0 0 0 1px hsl(222.2, 47.4%, 11.2%)',
+        border: '1px solid #00d4ff',
+        boxShadow: '0 0 0 1px #00d4ff, 0 0 12px rgba(0, 212, 255, 0.25)',
+      },
+      '.Input:hover': {
+        border: '1px solid #2a4a6a',
       },
       '.Label': {
         fontWeight: '500',
         marginBottom: '8px',
+        color: '#7db8d9',
+        textTransform: 'uppercase',
+        fontSize: '11px',
+        letterSpacing: '0.5px',
+      },
+      '.Tab': {
+        backgroundColor: '#0f1624',
+        border: '1px solid #1a3350',
+        color: '#7db8d9',
+      },
+      '.Tab:hover': {
+        backgroundColor: '#152030',
+        border: '1px solid #2a4a6a',
+      },
+      '.Tab--selected': {
+        backgroundColor: '#1a3350',
+        border: '1px solid #00d4ff',
+        color: '#00d4ff',
+        boxShadow: '0 0 8px rgba(0, 212, 255, 0.2)',
+      },
+      '.TabIcon': {
+        fill: '#7db8d9',
+      },
+      '.TabIcon--selected': {
+        fill: '#00d4ff',
+      },
+      '.Block': {
+        backgroundColor: '#0f1624',
+        border: '1px solid #1a3350',
+      },
+      '.Error': {
+        color: '#ff6a00',
       },
     },
   };

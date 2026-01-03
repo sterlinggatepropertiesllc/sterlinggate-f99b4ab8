@@ -108,10 +108,66 @@ serve(async (req) => {
       }
     }
 
+    // If still no property_id, try to find from tenant's active lease
+    if (resolvedTenantId && !resolvedPropertyId) {
+      console.log("[VERIFY-PAYMENT-INTENT] Looking up property from tenant's lease...");
+      
+      // First get the user_id from the tenant record
+      const { data: tenantData } = await supabaseAdmin
+        .from('tenants')
+        .select('user_id, property_id')
+        .eq('id', resolvedTenantId)
+        .single();
+
+      if (tenantData?.property_id) {
+        resolvedPropertyId = tenantData.property_id;
+        console.log("[VERIFY-PAYMENT-INTENT] Found property_id from tenant:", resolvedPropertyId);
+      } else if (tenantData?.user_id) {
+        // Try to find property from lease
+        const { data: leaseData } = await supabaseAdmin
+          .from('leases')
+          .select('property_id')
+          .eq('tenant_id', tenantData.user_id)
+          .in('status', ['completed', 'pending_tenant_signature', 'pending_manager_signature'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (leaseData?.property_id) {
+          resolvedPropertyId = leaseData.property_id;
+          console.log("[VERIFY-PAYMENT-INTENT] Found property_id from lease:", resolvedPropertyId);
+        }
+      }
+    }
+
     // Ensure we have required IDs
-    if (!resolvedTenantId || !resolvedPropertyId) {
-      console.error("[VERIFY-PAYMENT-INTENT] Missing required IDs:", { resolvedTenantId, resolvedPropertyId });
-      throw new Error("Could not determine tenant or property for payment record");
+    if (!resolvedTenantId) {
+      console.error("[VERIFY-PAYMENT-INTENT] Missing tenant_id:", { resolvedTenantId, resolvedPropertyId });
+      throw new Error("Could not determine tenant for payment record");
+    }
+
+    // For balance payments, property_id may legitimately be null if tenant has no property assigned
+    // We'll handle this gracefully by allowing null but logging it
+    if (!resolvedPropertyId) {
+      console.warn("[VERIFY-PAYMENT-INTENT] No property_id found, checking if we can proceed...");
+      
+      // Try one more lookup from the tenant's property_id field
+      if (resolvedTenantId) {
+        const { data: tenantCheck } = await supabaseAdmin
+          .from('tenants')
+          .select('property_id')
+          .eq('id', resolvedTenantId)
+          .single();
+        
+        if (tenantCheck?.property_id) {
+          resolvedPropertyId = tenantCheck.property_id;
+        }
+      }
+      
+      if (!resolvedPropertyId) {
+        console.error("[VERIFY-PAYMENT-INTENT] Still no property_id, cannot record payment");
+        throw new Error("Could not determine property for payment record. Please ensure tenant has an assigned property.");
+      }
     }
 
     // Insert payment record
