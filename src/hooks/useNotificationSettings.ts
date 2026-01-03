@@ -135,6 +135,84 @@ export function useNotificationSettings() {
     }
   }, [settings]);
 
+  const testNotificationType = useCallback(async (type: string) => {
+    if (!settings?.discord_webhook_url) {
+      toast({
+        title: 'No webhook URL',
+        description: 'Please save a Discord webhook URL first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const testData: Record<string, { title: string; message: string; metadata?: Record<string, unknown> }> = {
+      application_received: {
+        title: 'New Application Received',
+        message: 'John Smith applied for 123 Oak Street, Unit 4B',
+        metadata: { applicant: 'John Smith', property: '123 Oak Street, Unit 4B' }
+      },
+      application_approved: {
+        title: 'Application Approved!',
+        message: 'Your application for 456 Maple Avenue has been approved',
+        metadata: { property: '456 Maple Avenue', status: 'Approved' }
+      },
+      application_rejected: {
+        title: 'Application Update',
+        message: 'Your application for 789 Pine Road was not approved',
+        metadata: { property: '789 Pine Road', status: 'Declined' }
+      },
+      rent_received: {
+        title: 'Payment Received',
+        message: '$1,500.00 received from Jane Doe for 123 Oak Street',
+        metadata: { amount: '$1,500.00', tenant: 'Jane Doe', property: '123 Oak Street' }
+      },
+      maintenance_request: {
+        title: 'Maintenance Request',
+        message: 'New maintenance request for 456 Maple Avenue: Leaky faucet in kitchen',
+        metadata: { property: '456 Maple Avenue', issue: 'Leaky faucet in kitchen' }
+      },
+      lease_signed: {
+        title: 'Lease Signed',
+        message: 'John Smith signed the lease for 123 Oak Street',
+        metadata: { tenant: 'John Smith', property: '123 Oak Street' }
+      },
+      message_received: {
+        title: 'New Message',
+        message: 'Jane Doe: Hi, I have a question about my lease renewal...',
+        metadata: { from: 'Jane Doe' }
+      },
+    };
+
+    const data = testData[type];
+    if (!data) return;
+
+    try {
+      const response = await supabase.functions.invoke('send-discord-notification', {
+        body: {
+          webhook_url: settings.discord_webhook_url,
+          title: data.title,
+          message: data.message,
+          type: type,
+          metadata: data.metadata
+        }
+      });
+
+      if (response.error) throw response.error;
+
+      toast({
+        title: 'Test sent!',
+        description: `Check your Discord channel for the "${data.title}" notification.`,
+      });
+    } catch (error) {
+      console.error('Error testing notification type:', error);
+      toast({
+        title: 'Test failed',
+        description: 'Could not send test message. Please check your webhook URL.',
+        variant: 'destructive',
+      });
+    }
+  }, [settings]);
+
   useEffect(() => {
     fetchSettings();
   }, [fetchSettings]);
@@ -145,6 +223,7 @@ export function useNotificationSettings() {
     saving,
     updateSettings,
     testDiscordWebhook,
+    testNotificationType,
     refetch: fetchSettings
   };
 }

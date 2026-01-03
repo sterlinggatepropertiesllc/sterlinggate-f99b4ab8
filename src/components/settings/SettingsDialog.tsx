@@ -16,7 +16,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
 export function SettingsDialog() {
-  const { settings, loading, saving, updateSettings, testDiscordWebhook } = useNotificationSettings();
+  const { settings, loading, saving, updateSettings, testDiscordWebhook, testNotificationType } = useNotificationSettings();
   const [open, setOpen] = useState(false);
 
   return (
@@ -72,6 +72,7 @@ export function SettingsDialog() {
                 saving={saving}
                 onUpdate={updateSettings}
                 onTestWebhook={testDiscordWebhook}
+                onTestType={testNotificationType}
               />
             </TabsContent>
 
