@@ -27,7 +27,8 @@ import {
   CheckCircle2,
   DollarSign,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  AlertTriangle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -53,6 +54,7 @@ const applicationSchema = z.object({
   backgroundCheckConsent: z.boolean().refine(val => val === true, 'You must consent to background check'),
   termsAccepted: z.boolean().refine(val => val === true, 'You must accept the Terms of Service'),
   privacyAccepted: z.boolean().refine(val => val === true, 'You must accept the Privacy Policy'),
+  nonRefundableAcknowledged: z.boolean().refine(val => val === true, 'You must acknowledge that the application fee is non-refundable'),
 });
 
 export type ApplicationFormData = z.infer<typeof applicationSchema>;
@@ -269,6 +271,7 @@ export function ApplicationForm({
       backgroundCheckConsent: false,
       termsAccepted: false,
       privacyAccepted: false,
+      nonRefundableAcknowledged: false,
     },
   });
 
@@ -895,6 +898,36 @@ export function ApplicationForm({
                     </div>
                   </CardContent>
                 </Card>
+
+                {/* Non-Refundable Acknowledgment */}
+                <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 space-y-3">
+                      <div>
+                        <h4 className="font-semibold text-destructive">Important Notice</h4>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          The application fee of <strong>{applicationFee}</strong> is <strong>non-refundable</strong> regardless of whether your application is approved or denied. This fee covers the cost of background checks and application processing.
+                        </p>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <Checkbox
+                          id="nonRefundableAcknowledged"
+                          checked={watchedValues.nonRefundableAcknowledged}
+                          onCheckedChange={(checked) => setValue('nonRefundableAcknowledged', checked === true)}
+                        />
+                        <div>
+                          <label htmlFor="nonRefundableAcknowledged" className="text-sm font-medium cursor-pointer">
+                            I understand and agree that this application fee is non-refundable *
+                          </label>
+                          {errors.nonRefundableAcknowledged && (
+                            <p className="text-xs text-destructive mt-1">{errors.nonRefundableAcknowledged.message}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
                 <p className="text-sm text-muted-foreground text-center">
                   Property: <strong>{propertyAddress}</strong>
