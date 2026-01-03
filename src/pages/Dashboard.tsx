@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Navigate, Link } from 'react-router-dom';
+import { Navigate, Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useManagerProperties, useCreateProperty, useUpdateProperty, useDeleteProperty } from '@/hooks/useProperties';
@@ -80,6 +80,7 @@ type Property = Database['public']['Tables']['properties']['Row'];
 
 export default function Dashboard() {
   const { user, role, loading, signOut } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
   const [isCreateLeaseOpen, setIsCreateLeaseOpen] = useState(false);
@@ -858,9 +859,25 @@ export default function Dashboard() {
                     };
                     const config = statusConfig[lease.status as keyof typeof statusConfig] || statusConfig.draft;
 
+                    const navigateToLease = () => {
+                      // Keep existing behavior: clicking the card opens the sign/view page
+                      navigate(`/sign-lease/${lease.id}`);
+                    };
+
                     return (
-                      <Link key={lease.id} to={`/sign-lease/${lease.id}`} className="block">
-                        <Card className="p-6 hover:shadow-card transition-smooth cursor-pointer hover:border-primary/30">
+                      <div key={lease.id} className="block">
+                        <Card
+                          role="button"
+                          tabIndex={0}
+                          onClick={navigateToLease}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              navigateToLease();
+                            }
+                          }}
+                          className="p-6 hover:shadow-card transition-smooth cursor-pointer hover:border-primary/30"
+                        >
                           <div className="flex items-center justify-between">
                             <div>
                               <h3 className="font-serif text-xl mb-1">{lease.properties?.address}</h3>
@@ -870,7 +887,7 @@ export default function Dashboard() {
                                 <span>${Number(lease.monthly_rent).toLocaleString()}/mo</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3" onClick={(e) => e.preventDefault()}>
+                            <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
                               <Badge 
                                 variant="outline"
                                 className={config.className}
@@ -921,7 +938,6 @@ export default function Dashboard() {
                                     size="sm" 
                                     variant="outline" 
                                     className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                    onClick={(e) => e.stopPropagation()}
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
@@ -956,7 +972,7 @@ export default function Dashboard() {
                             </div>
                           </div>
                         </Card>
-                      </Link>
+                      </div>
                     );
                   })}
                 </div>
