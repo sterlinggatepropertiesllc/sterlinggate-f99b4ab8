@@ -604,260 +604,232 @@ button,
 }
 
 /* ============================================
-   GLOBAL MOBILE REFINEMENT LAYER v2
+   UNIFIED MOBILE DESIGN SYSTEM
    ============================================
-   Mobile-only UI optimizations (max-width: 768px)
-   Desktop remains pixel-identical
-   Focus: Tighter typography, smarter wrapping, compact density
+   Single, consolidated mobile layer (max-width: 768px)
+   Desktop remains untouched
+   Priority: Clarity, consistency, calm
    ============================================ */
 
 @media (max-width: 768px) {
-  /* ----------------------------------------
-     1. SMART WRAPPING (Word-level priority)
-     ---------------------------------------- */
-  
-  /* Default to word-level wrapping, NOT character-level */
-  * {
-    word-break: normal;
-    overflow-wrap: break-word;
-    hyphens: none;
-  }
-  
-  /* Only allow character breaks as last resort on very long strings */
-  [class*="address"],
-  [class*="email"],
-  [class*="url"] {
-    word-break: break-all;
-  }
+
+  /* ===========================================
+     SECTION 1: FOUNDATION
+     =========================================== */
   
   /* Prevent horizontal scroll */
   body {
     overflow-x: hidden;
   }
   
-  /* ----------------------------------------
-     2. COMPACT MOBILE TYPOGRAPHY (15-25% smaller)
-     ---------------------------------------- */
+  /* Word-level wrapping by default */
+  * {
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
   
-  /* Page titles - significantly smaller */
+  /* Flex children respect containers */
+  .flex > *,
+  .grid > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* ===========================================
+     SECTION 2: UNIFIED TYPOGRAPHY
+     Consistent scale across all screens
+     =========================================== */
+  
+  /* Page titles */
   h1, .text-4xl, .text-5xl {
-    font-size: 1.375rem !important;
-    line-height: 1.25 !important;
+    font-size: 1.25rem !important;
+    line-height: 1.3 !important;
     font-weight: 600 !important;
   }
   
   /* Section headings */
   h2, .text-3xl {
-    font-size: 1.125rem !important;
-    line-height: 1.3 !important;
+    font-size: 1.0625rem !important;
+    line-height: 1.35 !important;
     font-weight: 600 !important;
   }
   
-  /* Card/item titles */
+  /* Card titles */
   h3, .text-2xl {
-    font-size: 1rem !important;
-    line-height: 1.35 !important;
+    font-size: 0.9375rem !important;
+    line-height: 1.4 !important;
     font-weight: 500 !important;
   }
   
   /* Subheadings */
   h4, .text-xl {
-    font-size: 0.9375rem !important;
-    line-height: 1.35 !important;
-  }
-  
-  /* Body text - tighter */
-  .text-lg {
     font-size: 0.875rem !important;
     line-height: 1.4 !important;
   }
   
-  .text-base, p {
+  /* Body text */
+  .text-lg {
     font-size: 0.8125rem !important;
-    line-height: 1.45 !important;
+    line-height: 1.5 !important;
+  }
+  
+  p, .text-base {
+    font-size: 0.8125rem !important;
+    line-height: 1.5 !important;
   }
   
   .text-sm {
     font-size: 0.75rem !important;
-    line-height: 1.4 !important;
+    line-height: 1.45 !important;
   }
   
-  /* Metadata - clearly secondary */
-  .text-xs {
+  /* Metadata */
+  .text-xs, .text-muted-foreground {
     font-size: 0.6875rem !important;
-    line-height: 1.35 !important;
-  }
-  
-  .text-muted-foreground {
-    font-size: 0.75rem !important;
     line-height: 1.4 !important;
   }
-  
-  /* ----------------------------------------
-     3. PRICE & CURRENCY PROTECTION
-     ---------------------------------------- */
-  
-  /* Prices MUST stay on one line */
-  [class*="price"],
-  [class*="amount"],
-  [class*="rent"],
-  [class*="DollarSign"] + span,
-  span:has(> [class*="DollarSign"]),
-  .flex:has([class*="DollarSign"]) {
-    white-space: nowrap !important;
-    flex-shrink: 0 !important;
-  }
-  
-  /* Currency display - compact */
-  [class*="DollarSign"] {
-    width: 0.875rem !important;
-    height: 0.875rem !important;
-  }
-  
-  /* ----------------------------------------
-     4. COMPACT STATUS BADGES
-     ---------------------------------------- */
-  
-  [class*="Badge"],
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    height: 1.25rem !important;
-    min-height: 1.25rem !important;
-    max-height: 1.25rem !important;
-    padding: 0 0.375rem !important;
-    font-size: 0.625rem !important;
-    font-weight: 500 !important;
-    line-height: 1 !important;
-    white-space: nowrap !important;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    border-radius: 0.25rem !important;
-  }
-  
-  /* Badge icons - smaller */
-  [class*="Badge"] svg,
-  .badge svg {
-    width: 0.625rem !important;
-    height: 0.625rem !important;
-    flex-shrink: 0;
-  }
-  
-  /* ----------------------------------------
-     5. COMPACT CARDS
-     ---------------------------------------- */
+
+  /* ===========================================
+     SECTION 3: UNIFIED CARD PATTERN
+     Order: Title → Status → Info → Actions
+     =========================================== */
   
   [class*="Card"],
   .card {
     overflow: hidden;
   }
   
-  /* Reduced card padding */
-  [class*="Card"] > div:first-child,
-  .card > div:first-child {
-    padding: 0.75rem !important;
+  /* Consistent card padding */
+  .p-6, .p-5, .p-4 {
+    padding: 0.875rem !important;
   }
   
-  .p-6 {
-    padding: 0.75rem !important;
-  }
-  
-  .p-4 {
-    padding: 0.625rem !important;
-  }
-  
-  /* Card internal spacing - tighter */
-  [class*="Card"] .space-y-4 > * + * {
+  /* Card internal spacing */
+  [class*="Card"] .space-y-4 > * + *,
+  [class*="Card"] .space-y-3 > * + * {
     margin-top: 0.5rem !important;
   }
   
-  [class*="Card"] .space-y-3 > * + * {
-    margin-top: 0.375rem !important;
-  }
-  
-  [class*="Card"] .space-y-2 > * + * {
-    margin-top: 0.25rem !important;
-  }
-  
-  [class*="Card"] .gap-4 {
+  [class*="Card"] .gap-4,
+  [class*="Card"] .gap-3 {
     gap: 0.5rem !important;
   }
+
+  /* ===========================================
+     SECTION 4: STATUS BADGES
+     Compact, single-line, predictable
+     =========================================== */
   
-  [class*="Card"] .gap-3 {
-    gap: 0.375rem !important;
+  [class*="Badge"],
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: 1.375rem !important;
+    padding: 0 0.5rem !important;
+    font-size: 0.625rem !important;
+    font-weight: 500 !important;
+    white-space: nowrap !important;
+    border-radius: 0.25rem !important;
   }
   
-  [class*="Card"] .mb-4 {
-    margin-bottom: 0.5rem !important;
+  [class*="Badge"] svg,
+  .badge svg {
+    width: 0.625rem !important;
+    height: 0.625rem !important;
+    flex-shrink: 0;
   }
+
+  /* ===========================================
+     SECTION 5: UNIFIED BUTTON SYSTEM
+     Consistent sizing, clear hierarchy
+     =========================================== */
   
-  [class*="Card"] .mt-4 {
-    margin-top: 0.5rem !important;
-  }
-  
-  /* ----------------------------------------
-     6. COMPACT BUTTONS
-     ---------------------------------------- */
-  
+  /* Base button */
   button,
   [class*="Button"],
   .btn {
     min-height: 40px;
-    padding: 0.5rem 0.75rem !important;
+    padding: 0.5rem 0.875rem !important;
     font-size: 0.8125rem !important;
-    line-height: 1.25 !important;
+    line-height: 1.3 !important;
     white-space: nowrap !important;
     gap: 0.375rem !important;
   }
   
   /* Small buttons */
   button[class*="sm"],
-  [class*="Button"][class*="sm"],
-  .size-sm {
-    min-height: 32px !important;
-    padding: 0.375rem 0.5rem !important;
+  [class*="Button"][class*="sm"] {
+    min-height: 34px !important;
+    padding: 0.375rem 0.625rem !important;
     font-size: 0.75rem !important;
   }
   
-  /* Large buttons - still compact */
+  /* Large buttons */
   button[class*="lg"],
-  [class*="Button"][class*="lg"],
-  .size-lg {
+  [class*="Button"][class*="lg"] {
     min-height: 44px !important;
     padding: 0.5rem 1rem !important;
     font-size: 0.8125rem !important;
   }
   
-  /* Button icons - proportional */
+  /* Button icons */
   button svg,
   [class*="Button"] svg {
     width: 0.875rem !important;
     height: 0.875rem !important;
     flex-shrink: 0;
   }
+
+  /* ===========================================
+     SECTION 6: ACTION STACKING
+     Cards with actions stack vertically
+     =========================================== */
   
-  /* ----------------------------------------
-     7. GLOBAL SPACING COMPRESSION
-     ---------------------------------------- */
+  /* Action containers stack */
+  [class*="Card"] .flex:has(button),
+  [class*="Card"] .flex:has([class*="Button"]),
+  .flex-wrap:has(button),
+  .flex-wrap:has([class*="Button"]) {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.5rem !important;
+  }
   
-  /* Horizontal padding reduction */
+  /* Buttons take full width in stacks */
+  [class*="Card"] .flex > button,
+  [class*="Card"] .flex > [class*="Button"],
+  [class*="Card"] .flex > a:has(button),
+  [class*="Card"] .flex > a:has([class*="Button"]) {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+  
+  /* Links with buttons */
+  [class*="Card"] a:has(button),
+  [class*="Card"] a:has([class*="Button"]) {
+    width: 100% !important;
+    display: block !important;
+  }
+
+  /* ===========================================
+     SECTION 7: VERTICAL RHYTHM
+     Consistent, calming spacing
+     =========================================== */
+  
+  /* Page-level spacing */
   .px-6, .px-8 {
-    padding-left: 0.75rem !important;
-    padding-right: 0.75rem !important;
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
   }
   
-  .px-4, .px-5 {
-    padding-left: 0.625rem !important;
-    padding-right: 0.625rem !important;
-  }
-  
-  /* Vertical spacing reduction */
   .py-6, .py-8 {
-    padding-top: 0.75rem !important;
-    padding-bottom: 0.75rem !important;
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
   }
   
+  /* Section spacing */
+  .space-y-8 > * + *,
   .space-y-6 > * + * {
     margin-top: 0.75rem !important;
   }
@@ -866,7 +838,8 @@ button,
     margin-top: 0.5rem !important;
   }
   
-  .gap-6 {
+  /* Gap normalization */
+  .gap-8, .gap-6 {
     gap: 0.75rem !important;
   }
   
@@ -874,41 +847,69 @@ button,
     gap: 0.5rem !important;
   }
   
+  /* Margins */
   .mb-8, .mb-6 {
     margin-bottom: 0.75rem !important;
-  }
-  
-  .mb-4 {
-    margin-bottom: 0.5rem !important;
   }
   
   .mt-8, .mt-6 {
     margin-top: 0.75rem !important;
   }
+
+  /* ===========================================
+     SECTION 8: SIDEBAR / NAVIGATION
+     Lightweight, temporary feeling
+     =========================================== */
   
-  /* ----------------------------------------
-     8. DATE & METADATA NORMALIZATION
-     ---------------------------------------- */
-  
-  /* Dates - compact, single line preferred */
-  time,
-  [class*="date"],
-  [class*="Date"],
-  .text-muted-foreground:has(time) {
-    white-space: nowrap;
-    font-size: 0.6875rem !important;
+  [class*="Sidebar"] {
+    background: hsl(var(--sidebar-background)) !important;
   }
   
-  /* Applied/Created labels */
-  span:contains("Applied"),
-  span:contains("Created"),
-  span:contains("Updated") {
-    font-size: 0.6875rem !important;
+  [class*="SidebarMenuItem"],
+  [class*="Sidebar"] nav a,
+  [class*="Sidebar"] nav button {
+    min-height: 44px;
+    padding: 0.625rem 0.875rem !important;
+    font-size: 0.8125rem !important;
   }
   
-  /* ----------------------------------------
-     9. GRID SINGLE-COLUMN FORCE
-     ---------------------------------------- */
+  /* Sheet-based sidebar */
+  [class*="SheetContent"]:has([class*="Sidebar"]),
+  [class*="SheetContent"] {
+    padding: 0.875rem !important;
+    max-width: 280px !important;
+  }
+
+  /* ===========================================
+     SECTION 9: FORMS
+     =========================================== */
+  
+  input, textarea, select {
+    font-size: 16px !important; /* Prevents iOS zoom */
+    min-height: 44px;
+    padding: 0.5rem 0.75rem !important;
+  }
+  
+  label {
+    font-size: 0.75rem !important;
+    margin-bottom: 0.375rem;
+  }
+
+  /* ===========================================
+     SECTION 10: DIALOGS
+     =========================================== */
+  
+  [class*="DialogContent"] {
+    width: calc(100vw - 2rem) !important;
+    max-width: 100% !important;
+    max-height: 90vh !important;
+    margin: 1rem !important;
+    padding: 1rem !important;
+  }
+
+  /* ===========================================
+     SECTION 11: GRIDS → SINGLE COLUMN
+     =========================================== */
   
   .grid-cols-2,
   .grid-cols-3,
@@ -918,267 +919,39 @@ button,
   .md\:grid-cols-3 {
     grid-template-columns: 1fr !important;
   }
+
+  /* ===========================================
+     SECTION 12: PRICE PROTECTION
+     Currency values stay on one line
+     =========================================== */
   
-  /* ----------------------------------------
-     10. FLEX ROW SAFETY
-     ---------------------------------------- */
-  
-  /* Prevent flex rows from overflowing */
-  .flex-row,
-  .flex.items-center {
-    flex-wrap: wrap;
-    gap: 0.375rem;
+  [class*="DollarSign"] + span,
+  .flex:has([class*="DollarSign"]) span {
+    white-space: nowrap !important;
   }
-  
-  /* Flex children respect container */
-  .flex > * {
-    min-width: 0;
-    max-width: 100%;
-  }
-  
-  /* ----------------------------------------
-     11. FORM ELEMENTS - COMPACT
-     ---------------------------------------- */
-  
-  input, textarea, select {
-    font-size: 16px !important; /* Prevents iOS zoom */
-    min-height: 40px;
-    padding: 0.5rem 0.625rem !important;
-  }
-  
-  label {
-    font-size: 0.75rem !important;
-    margin-bottom: 0.25rem;
-  }
-  
-  /* ----------------------------------------
-     12. DIALOGS & SHEETS
-     ---------------------------------------- */
-  
-  [class*="DialogContent"] {
-    width: calc(100vw - 1.5rem) !important;
-    max-width: 100% !important;
-    max-height: 90vh !important;
-    margin: 0.75rem !important;
-    padding: 0.75rem !important;
-  }
-  
-  [class*="SheetContent"] {
-    padding: 0.75rem !important;
-  }
-  
-  /* ----------------------------------------
-     13. NAVIGATION ITEMS
-     ---------------------------------------- */
-  
-  [class*="SidebarMenuItem"],
-  nav a,
-  nav button {
-    min-height: 40px;
-    padding: 0.5rem 0.75rem !important;
-    font-size: 0.8125rem !important;
-  }
-  
-  /* ----------------------------------------
-     14. ICON SIZING
-     ---------------------------------------- */
-  
-  /* Default icons - smaller on mobile */
-  .h-5.w-5 {
-    width: 1rem !important;
-    height: 1rem !important;
-  }
+
+  /* ===========================================
+     SECTION 13: ICON CONSISTENCY
+     =========================================== */
   
   .h-6.w-6 {
     width: 1.125rem !important;
     height: 1.125rem !important;
   }
   
+  .h-5.w-5 {
+    width: 1rem !important;
+    height: 1rem !important;
+  }
+  
   .h-4.w-4 {
     width: 0.875rem !important;
     height: 0.875rem !important;
   }
-  
-  /* ----------------------------------------
-     15. MOBILE ACTION LAYOUT SYSTEM
-     ---------------------------------------- */
-  
-  /* Action groups: stack vertically on mobile */
-  .flex-wrap,
-  .flex.gap-2,
-  .flex.gap-3,
-  .flex.gap-4,
-  [class*="Card"] .flex:has(button),
-  [class*="Card"] .flex:has([class*="Button"]),
-  [class*="CardFooter"],
-  .card-footer {
-    flex-direction: column !important;
-    align-items: stretch !important;
-    gap: 0.5rem !important;
-  }
-  
-  /* All buttons in action groups: full width */
-  .flex-wrap > button,
-  .flex-wrap > [class*="Button"],
-  .flex-wrap > a:has(button),
-  .flex-wrap > a:has([class*="Button"]),
-  [class*="Card"] .flex > button,
-  [class*="Card"] .flex > [class*="Button"],
-  [class*="Card"] .flex > a:has(button),
-  [class*="Card"] .flex > a:has([class*="Button"]),
-  [class*="CardFooter"] > button,
-  [class*="CardFooter"] > [class*="Button"],
-  [class*="CardFooter"] > a {
-    width: 100% !important;
-    justify-content: center !important;
-  }
-  
-  /* Links containing buttons also full width */
-  [class*="Card"] a:has(button),
-  [class*="Card"] a:has([class*="Button"]) {
-    width: 100% !important;
-    display: block !important;
-  }
-  
-  /* ----------------------------------------
-     16. BUTTON VISUAL HIERARCHY
-     ---------------------------------------- */
-  
-  /* Primary buttons: prominent but compact */
-  button:not([class*="outline"]):not([class*="ghost"]):not([class*="secondary"]),
-  [class*="Button"]:not([class*="outline"]):not([class*="ghost"]):not([class*="secondary"]) {
-    min-height: 42px !important;
-    font-weight: 500 !important;
-  }
-  
-  /* Secondary/outline buttons: quieter */
-  button[class*="outline"],
-  button[class*="secondary"],
-  [class*="Button"][class*="outline"],
-  [class*="Button"][class*="secondary"] {
-    min-height: 38px !important;
-    font-weight: 400 !important;
-    opacity: 0.9;
-  }
-  
-  /* Ghost/tertiary buttons: subtle */
-  button[class*="ghost"],
-  [class*="Button"][class*="ghost"] {
-    min-height: 36px !important;
-    font-weight: 400 !important;
-    opacity: 0.85;
-  }
-  
-  /* ----------------------------------------
-     17. CARD CONTENT-ACTION SEPARATION
-     ---------------------------------------- */
-  
-  /* Clear separation between content and actions */
-  [class*="Card"] > div:last-child:has(button),
-  [class*="Card"] > div:last-child:has([class*="Button"]) {
-    margin-top: 0.75rem !important;
-    padding-top: 0.75rem !important;
-    border-top: 1px solid hsl(var(--border) / 0.5) !important;
-  }
-  
-  /* Card action area padding */
-  [class*="CardFooter"],
-  .card-footer,
-  [class*="Card"] .flex:has(button):last-child {
-    padding: 0.75rem !important;
-    background: hsl(var(--muted) / 0.3);
-    border-radius: 0 0 var(--radius) var(--radius);
-  }
-  
-  /* ----------------------------------------
-     18. PAYMENT & LEASE ACTION SAFETY
-     ---------------------------------------- */
-  
-  /* Payment buttons: never side-by-side */
-  [class*="pay"],
-  [class*="Pay"],
-  button:has([class*="CreditCard"]),
-  [class*="Button"]:has([class*="CreditCard"]),
-  button:has([class*="DollarSign"]),
-  [class*="Button"]:has([class*="DollarSign"]) {
-    width: 100% !important;
-    white-space: nowrap !important;
-    justify-content: center !important;
-  }
-  
-  /* Payment button containers stack */
-  .flex:has(button:has([class*="CreditCard"])),
-  .flex:has([class*="Button"]:has([class*="CreditCard"])) {
-    flex-direction: column !important;
-    gap: 0.5rem !important;
-  }
-  
-  /* Currency values protected */
-  button span:has([class*="Dollar"]),
-  [class*="Button"] span:has([class*="Dollar"]),
-  button:contains("$"),
-  [class*="Button"]:contains("$") {
-    white-space: nowrap !important;
-    overflow: visible !important;
-  }
-  
-  /* ----------------------------------------
-     19. VERTICAL DENSITY FINAL PASS
-     ---------------------------------------- */
-  
-  /* Reduce section gaps */
-  .space-y-8 > * + * {
-    margin-top: 0.625rem !important;
-  }
-  
-  .space-y-6 > * + * {
-    margin-top: 0.5rem !important;
-  }
-  
-  /* Card list spacing */
-  .space-y-4 > [class*="Card"] + [class*="Card"],
-  .space-y-6 > [class*="Card"] + [class*="Card"] {
-    margin-top: 0.625rem !important;
-  }
-  
-  /* Page header compression */
-  .mb-8:has(h1),
-  .mb-6:has(h1),
-  header.mb-8,
-  header.mb-6 {
-    margin-bottom: 0.5rem !important;
-  }
-  
-  /* Section dividers tighter */
-  [class*="Separator"],
-  hr {
-    margin-top: 0.5rem !important;
-    margin-bottom: 0.5rem !important;
-  }
-  
-  /* Tab content padding */
-  [class*="TabsContent"] {
-    padding-top: 0.5rem !important;
-  }
-  
-  /* ----------------------------------------
-     20. DEFENSIVE UTILITIES
-     ---------------------------------------- */
-  
-  .mobile-nowrap {
-    white-space: nowrap !important;
-  }
-  
-  .mobile-compact {
-    font-size: 0.75rem !important;
-    padding: 0.25rem 0.5rem !important;
-  }
-  
-  .mobile-truncate {
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    white-space: nowrap !important;
-  }
+
+  /* ===========================================
+     SECTION 14: UTILITY CLASSES
+     =========================================== */
   
   .mobile-stack {
     flex-direction: column !important;
@@ -1190,8 +963,7 @@ button,
     width: 100% !important;
   }
   
-  .mobile-center {
-    justify-content: center !important;
-    text-align: center !important;
+  .mobile-nowrap {
+    white-space: nowrap !important;
   }
 }
