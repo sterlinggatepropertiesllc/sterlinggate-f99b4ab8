@@ -205,9 +205,11 @@
       hsl(220 12% 28%) 40%,
       hsl(220 10% 24%) 100%
     );
-    color: hsl(0 0% 100%);
+    /* Tailwind utilities can override component-layer colors; keep this readable */
+    color: hsl(var(--foreground)) !important;
+    text-shadow: 0 1px 0 hsl(220 25% 4% / 0.55);
     border: 1px solid hsl(220 10% 40% / 0.7);
-    box-shadow: 
+    box-shadow:
       0 2px 8px hsl(220 20% 5% / 0.4),
       0 8px 24px hsl(220 20% 5% / 0.3),
       inset 0 1px 0 hsl(220 10% 50% / 0.4),
