@@ -63,73 +63,74 @@
   }
 
   .dark {
-    /* Sterling Elegance - Deep Anthracite + Sterling Silver */
-    --background: 220 18% 10%;
-    --foreground: 220 10% 95%;
+    /* Sterling Elegance - Deep Anthracite with Vibrant Accents */
+    --background: 220 20% 8%;
+    --foreground: 220 10% 96%;
 
-    --card: 220 18% 13%;
-    --card-foreground: 220 10% 95%;
+    --card: 220 18% 12%;
+    --card-foreground: 220 10% 96%;
 
-    --popover: 220 18% 13%;
-    --popover-foreground: 220 10% 95%;
+    --popover: 220 18% 12%;
+    --popover-foreground: 220 10% 96%;
 
-    /* Sterling Silver primary */
-    --primary: 220 12% 82%;
-    --primary-foreground: 220 18% 10%;
+    /* Gold-tinted silver primary for premium feel */
+    --primary: 42 80% 55%;
+    --primary-foreground: 220 20% 8%;
 
-    /* Slate charcoal surfaces */
+    /* Slate charcoal surfaces with subtle warmth */
     --secondary: 220 15% 16%;
-    --secondary-foreground: 220 10% 90%;
+    --secondary-foreground: 220 10% 92%;
 
-    /* Muted steel */
+    /* Muted steel with better contrast */
     --muted: 220 12% 18%;
-    --muted-foreground: 220 10% 55%;
+    --muted-foreground: 220 10% 60%;
 
-    /* Cool platinum accent */
-    --accent: 220 8% 75%;
-    --accent-foreground: 220 18% 10%;
+    /* Warm gold accent for premium touch */
+    --accent: 42 75% 50%;
+    --accent-foreground: 220 20% 8%;
 
-    /* Success - elegant teal */
-    --success: 170 40% 45%;
-    --success-foreground: 220 18% 10%;
+    /* Success - vibrant emerald */
+    --success: 158 64% 48%;
+    --success-foreground: 220 20% 8%;
 
-    /* Warning - warm amber */
-    --warning: 35 80% 55%;
-    --warning-foreground: 220 18% 10%;
+    /* Warning - rich amber gold */
+    --warning: 38 95% 55%;
+    --warning-foreground: 220 20% 8%;
 
-    --destructive: 0 60% 55%;
+    /* Destructive - vivid coral red */
+    --destructive: 0 72% 58%;
     --destructive-foreground: 0 0% 100%;
 
-    /* Subtle silver borders */
+    /* Subtle silver borders with slight warmth */
     --border: 220 12% 22%;
     --input: 220 12% 22%;
-    --ring: 220 12% 75%;
+    --ring: 42 70% 50%;
 
-    /* Sidebar - deeper anthracite */
-    --sidebar-background: 220 20% 8%;
-    --sidebar-foreground: 220 10% 90%;
-    --sidebar-primary: 220 12% 80%;
-    --sidebar-primary-foreground: 220 20% 8%;
+    /* Sidebar - deeper anthracite with gold accents */
+    --sidebar-background: 220 22% 7%;
+    --sidebar-foreground: 220 10% 92%;
+    --sidebar-primary: 42 80% 55%;
+    --sidebar-primary-foreground: 220 22% 7%;
     --sidebar-accent: 220 15% 14%;
-    --sidebar-accent-foreground: 220 10% 90%;
+    --sidebar-accent-foreground: 220 10% 92%;
     --sidebar-border: 220 15% 14%;
-    --sidebar-ring: 220 12% 80%;
+    --sidebar-ring: 42 80% 55%;
 
     /* Design tokens */
-    --gradient-primary: linear-gradient(135deg, hsl(220 18% 13%) 0%, hsl(220 15% 18%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(220 12% 75%) 0%, hsl(220 15% 85%) 100%);
-    --gradient-hero: linear-gradient(180deg, hsl(220 18% 10%) 0%, hsl(220 20% 8%) 100%);
-    --gradient-overlay: linear-gradient(180deg, rgba(20,25,35,0.75) 0%, rgba(15,20,28,0.92) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(220 18% 12%) 0%, hsl(220 15% 18%) 100%);
+    --gradient-accent: linear-gradient(135deg, hsl(42 80% 50%) 0%, hsl(42 90% 60%) 100%);
+    --gradient-hero: linear-gradient(180deg, hsl(220 20% 8%) 0%, hsl(220 22% 6%) 100%);
+    --gradient-overlay: linear-gradient(180deg, rgba(15,20,30,0.75) 0%, rgba(10,15,22,0.92) 100%);
     --gradient-gold: linear-gradient(
       135deg,
-      hsl(var(--warning)) 0%,
-      hsl(44 92% 58%) 45%,
-      hsl(35 88% 52%) 100%
+      hsl(38 95% 50%) 0%,
+      hsl(45 100% 55%) 45%,
+      hsl(42 95% 58%) 100%
     );
-    --shadow-soft: 0 4px 20px -2px hsl(220 30% 5% / 0.4);
-    --shadow-card: 0 8px 30px -4px hsl(220 30% 5% / 0.5);
-    --shadow-elevated: 0 20px 60px -10px hsl(220 30% 5% / 0.6);
-    --shadow-glow: 0 0 50px hsl(220 15% 75% / 0.15);
+    --shadow-soft: 0 4px 20px -2px hsl(220 30% 3% / 0.5);
+    --shadow-card: 0 8px 30px -4px hsl(220 30% 3% / 0.6);
+    --shadow-elevated: 0 20px 60px -10px hsl(220 30% 3% / 0.7);
+    --shadow-glow: 0 0 50px hsl(42 80% 55% / 0.12);
   }
 }
 
