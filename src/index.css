@@ -198,21 +198,64 @@
   }
 
   .btn-platinum {
-    @apply text-background font-medium transition-all duration-300;
-    background: linear-gradient(135deg, hsl(220 10% 75%) 0%, hsl(220 8% 85%) 50%, hsl(220 10% 70%) 100%);
+    @apply relative overflow-hidden font-medium tracking-wide transition-all duration-500;
+    background: linear-gradient(
+      145deg,
+      hsl(220 15% 22%) 0%,
+      hsl(220 12% 28%) 40%,
+      hsl(220 10% 24%) 100%
+    );
+    color: hsl(220 10% 90%);
+    border: 1px solid hsl(220 10% 35% / 0.6);
     box-shadow: 
-      0 4px 20px hsl(220 15% 50% / 0.25),
-      inset 0 1px 0 hsl(220 10% 95% / 0.4),
-      inset 0 -1px 0 hsl(220 10% 50% / 0.2);
+      0 2px 8px hsl(220 20% 5% / 0.4),
+      0 8px 24px hsl(220 20% 5% / 0.3),
+      inset 0 1px 0 hsl(220 10% 45% / 0.3),
+      inset 0 -1px 0 hsl(220 15% 15% / 0.5);
+  }
+
+  .btn-platinum::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(220 10% 70% / 0.15) 50%,
+      transparent 100%
+    );
+    transition: left 0.6s ease;
+  }
+
+  .btn-platinum:hover::before {
+    left: 100%;
   }
 
   .btn-platinum:hover {
-    background: linear-gradient(135deg, hsl(220 10% 80%) 0%, hsl(220 8% 90%) 50%, hsl(220 10% 75%) 100%);
+    background: linear-gradient(
+      145deg,
+      hsl(220 15% 26%) 0%,
+      hsl(220 12% 32%) 40%,
+      hsl(220 10% 28%) 100%
+    );
+    border-color: hsl(220 10% 45% / 0.7);
     box-shadow: 
-      0 8px 30px hsl(220 15% 50% / 0.35),
-      inset 0 1px 0 hsl(220 10% 95% / 0.5),
-      inset 0 -1px 0 hsl(220 10% 50% / 0.2);
+      0 4px 12px hsl(220 20% 5% / 0.5),
+      0 12px 32px hsl(220 20% 5% / 0.4),
+      inset 0 1px 0 hsl(220 10% 50% / 0.4),
+      inset 0 -1px 0 hsl(220 15% 15% / 0.5);
     transform: translateY(-2px);
+  }
+
+  .btn-platinum:active {
+    transform: translateY(0);
+    box-shadow: 
+      0 2px 6px hsl(220 20% 5% / 0.4),
+      inset 0 1px 0 hsl(220 10% 40% / 0.3),
+      inset 0 2px 4px hsl(220 15% 10% / 0.3);
   }
 
   .btn-outline-silver {
