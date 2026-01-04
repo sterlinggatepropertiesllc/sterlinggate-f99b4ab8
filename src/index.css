@@ -198,13 +198,21 @@
   }
 
   .btn-platinum {
-    @apply bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-300;
-    box-shadow: 0 4px 20px hsl(220 15% 75% / 0.2);
+    @apply text-background font-medium transition-all duration-300;
+    background: linear-gradient(135deg, hsl(220 10% 75%) 0%, hsl(220 8% 85%) 50%, hsl(220 10% 70%) 100%);
+    box-shadow: 
+      0 4px 20px hsl(220 15% 50% / 0.25),
+      inset 0 1px 0 hsl(220 10% 95% / 0.4),
+      inset 0 -1px 0 hsl(220 10% 50% / 0.2);
   }
 
   .btn-platinum:hover {
-    box-shadow: 0 8px 30px hsl(220 15% 75% / 0.3);
-    transform: translateY(-1px);
+    background: linear-gradient(135deg, hsl(220 10% 80%) 0%, hsl(220 8% 90%) 50%, hsl(220 10% 75%) 100%);
+    box-shadow: 
+      0 8px 30px hsl(220 15% 50% / 0.35),
+      inset 0 1px 0 hsl(220 10% 95% / 0.5),
+      inset 0 -1px 0 hsl(220 10% 50% / 0.2);
+    transform: translateY(-2px);
   }
 
   .btn-outline-silver {
