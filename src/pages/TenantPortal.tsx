@@ -746,35 +746,71 @@ export default function TenantPortal() {
                     ))}
                   </div>
                 ) : leases && leases.length > 0 ? (
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     {leases.map((lease: any) => (
-                      <Card key={lease.id} className="p-6">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="font-serif text-xl mb-1">{lease.properties?.address}</h3>
-                            <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
-                              <span>{new Date(lease.start_date).toLocaleDateString()} - {new Date(lease.end_date).toLocaleDateString()}</span>
-                              <span className="flex items-center gap-1">
-                                <DollarSign className="h-4 w-4" />
-                                ${Number(lease.monthly_rent).toLocaleString()}/mo
-                              </span>
+                      <Card key={lease.id} className="overflow-hidden">
+                        {/* Header with Property & Status */}
+                        <div className="p-6 pb-4">
+                          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-serif text-2xl font-medium text-foreground truncate">
+                                {lease.properties?.address}
+                              </h3>
+                              <p className="text-muted-foreground mt-1">
+                                {lease.properties?.city}, {lease.properties?.state} {lease.properties?.zip_code}
+                              </p>
+                            </div>
+                            <Badge 
+                              className={`shrink-0 text-sm px-4 py-2 font-medium ${
+                                lease.status === 'completed' 
+                                  ? 'bg-success/15 text-success border-success/30' 
+                                  : lease.status === 'pending_tenant_signature' 
+                                  ? 'bg-warning/15 text-warning border-warning/30' 
+                                  : 'bg-muted text-muted-foreground'
+                              }`}
+                            >
+                              {lease.status === 'completed' && <CheckCircle2 className="h-4 w-4 mr-2" />}
+                              {lease.status === 'pending_tenant_signature' && <Clock className="h-4 w-4 mr-2" />}
+                              {lease.status.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                            </Badge>
+                          </div>
+                        </div>
+
+                        {/* Lease Details */}
+                        <div className="px-6 py-4 bg-muted/30 border-y border-border/50">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <div className="flex items-start gap-3">
+                              <div className="p-2 rounded-lg bg-primary/10">
+                                <CalendarDays className="h-5 w-5 text-primary" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Lease Period</p>
+                                <p className="text-lg font-medium text-foreground mt-0.5">
+                                  {format(new Date(lease.start_date), 'MMM d, yyyy')} → {format(new Date(lease.end_date), 'MMM d, yyyy')}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-start gap-3">
+                              <div className="p-2 rounded-lg bg-primary/10">
+                                <DollarSign className="h-5 w-5 text-primary" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Monthly Rent</p>
+                                <p className="text-lg font-medium text-foreground mt-0.5">
+                                  ${Number(lease.monthly_rent).toLocaleString()}
+                                </p>
+                              </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <Badge 
-                              variant="outline"
-                              className={
-                                lease.status === 'completed' ? 'border-success text-success' :
-                                lease.status === 'pending_tenant_signature' ? 'border-warning text-warning' :
-                                'border-muted text-muted-foreground'
-                              }
-                            >
-                              {lease.status.replace(/_/g, ' ')}
-                            </Badge>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="p-6 pt-4">
+                          <div className="flex flex-wrap gap-3">
                             {lease.status === 'pending_tenant_signature' && (
-                              <Link to={`/sign-lease/${lease.id}`}>
-                                <Button>
-                                  <PenTool className="h-4 w-4 mr-2" /> Sign Lease
+                              <Link to={`/sign-lease/${lease.id}`} className="flex-1 sm:flex-none">
+                                <Button className="w-full sm:w-auto" size="lg">
+                                  <PenTool className="h-5 w-5 mr-2" /> Sign Lease
                                 </Button>
                               </Link>
                             )}
@@ -783,21 +819,25 @@ export default function TenantPortal() {
                                 {lease.security_deposit && (
                                   <Button 
                                     variant="outline"
+                                    size="lg"
+                                    className="flex-1 sm:flex-none"
                                     onClick={() => handlePayDeposit(lease.id, Number(lease.security_deposit))}
                                   >
-                                    <CreditCard className="h-4 w-4 mr-2" />
-                                    Pay Deposit (${Number(lease.security_deposit).toLocaleString()})
+                                    <CreditCard className="h-5 w-5 mr-2" />
+                                    Pay Deposit · ${Number(lease.security_deposit).toLocaleString()}
                                   </Button>
                                 )}
                                 <Button 
+                                  size="lg"
+                                  className="flex-1 sm:flex-none"
                                   onClick={() => handlePayRent(lease.id, Number(lease.monthly_rent))}
                                 >
-                                  <CreditCard className="h-4 w-4 mr-2" />
-                                  Pay Rent (${Number(lease.monthly_rent).toLocaleString()})
+                                  <CreditCard className="h-5 w-5 mr-2" />
+                                  Pay Rent · ${Number(lease.monthly_rent).toLocaleString()}
                                 </Button>
-                                <Link to={`/sign-lease/${lease.id}`}>
-                                  <Button variant="ghost" size="sm">
-                                    <Download className="h-4 w-4 mr-2" /> View
+                                <Link to={`/sign-lease/${lease.id}`} className="flex-1 sm:flex-none">
+                                  <Button variant="secondary" size="lg" className="w-full sm:w-auto">
+                                    <FileText className="h-5 w-5 mr-2" /> View Lease
                                   </Button>
                                 </Link>
                               </>
