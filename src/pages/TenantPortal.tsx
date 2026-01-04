@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useMyApplications } from '@/hooks/useApplications';
 import { useLeases } from '@/hooks/useLeases';
 import { useUnreadCount } from '@/hooks/useMessages';
-import { useStripeCheckout } from '@/hooks/useStripePayments';
+import { RentPaymentDialog } from '@/components/payments/RentPaymentDialog';
 import { useProfile } from '@/hooks/useProfiles';
 import { usePayments } from '@/hooks/usePayments';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -75,10 +75,13 @@ export default function TenantPortal() {
   const { data: unreadCount } = useUnreadCount(user?.id);
   const { data: tenantProfile } = useProfile(user?.id);
 
-  const { paySecurityDeposit, payRent, payBalance, isLoading: isPaymentLoading } = useStripeCheckout();
-  const [pendingPayment, setPendingPayment] = useState<{ type: string; id: string; amount?: number } | null>(null);
-  const [isPayingBalance, setIsPayingBalance] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [rentPaymentDialog, setRentPaymentDialog] = useState<{
+    open: boolean;
+    leaseId: string;
+    amount: number;
+    type: 'rent' | 'security_deposit';
+  } | null>(null);
 
   // Fetch tenant's actual balance from tenants table
   const { data: tenantRecord, refetch: refetchTenant } = useQuery({
@@ -246,22 +249,12 @@ export default function TenantPortal() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  const handlePayDeposit = async (leaseId: string, amount: number) => {
-    setPendingPayment({ type: 'deposit', id: leaseId, amount });
-    const result = await paySecurityDeposit(leaseId, amount);
-    if (result.success) {
-      toast.info('Complete your deposit payment in the new tab');
-    }
-    setPendingPayment(null);
+  const handlePayDeposit = (leaseId: string, amount: number) => {
+    setRentPaymentDialog({ open: true, leaseId, amount, type: 'security_deposit' });
   };
 
-  const handlePayRent = async (leaseId: string, amount: number) => {
-    setPendingPayment({ type: 'rent', id: leaseId, amount });
-    const result = await payRent(leaseId, amount);
-    if (result.success) {
-      toast.info('Complete your rent payment in the new tab');
-    }
-    setPendingPayment(null);
+  const handlePayRent = (leaseId: string, amount: number) => {
+    setRentPaymentDialog({ open: true, leaseId, amount, type: 'rent' });
   };
 
 
@@ -596,11 +589,8 @@ export default function TenantPortal() {
                             size="sm" 
                             className="mt-2"
                             onClick={() => handlePayRent(activeLeases[0].id, nextRent)}
-                            disabled={isPaymentLoading}
                           >
-                            {isPaymentLoading ? (
-                              <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                            ) : null}
+                            <CreditCard className="h-4 w-4 mr-1" />
                             Pay Now
                           </Button>
                         </div>
@@ -794,25 +784,15 @@ export default function TenantPortal() {
                                   <Button 
                                     variant="outline"
                                     onClick={() => handlePayDeposit(lease.id, Number(lease.security_deposit))}
-                                    disabled={isPaymentLoading && pendingPayment?.id === lease.id && pendingPayment?.type === 'deposit'}
                                   >
-                                    {isPaymentLoading && pendingPayment?.id === lease.id && pendingPayment?.type === 'deposit' ? (
-                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    ) : (
-                                      <CreditCard className="h-4 w-4 mr-2" />
-                                    )}
+                                    <CreditCard className="h-4 w-4 mr-2" />
                                     Pay Deposit (${Number(lease.security_deposit).toLocaleString()})
                                   </Button>
                                 )}
                                 <Button 
                                   onClick={() => handlePayRent(lease.id, Number(lease.monthly_rent))}
-                                  disabled={isPaymentLoading && pendingPayment?.id === lease.id && pendingPayment?.type === 'rent'}
                                 >
-                                  {isPaymentLoading && pendingPayment?.id === lease.id && pendingPayment?.type === 'rent' ? (
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                  ) : (
-                                    <CreditCard className="h-4 w-4 mr-2" />
-                                  )}
+                                  <CreditCard className="h-4 w-4 mr-2" />
                                   Pay Rent (${Number(lease.monthly_rent).toLocaleString()})
                                 </Button>
                                 <Link to={`/sign-lease/${lease.id}`}>
@@ -1056,7 +1036,7 @@ export default function TenantPortal() {
         </main>
       </div>
 
-      {/* Payment Dialog */}
+      {/* Balance Payment Dialog */}
       {tenantRecord?.id && (
         <PaymentDialog
           open={showPaymentDialog}
@@ -1069,6 +1049,20 @@ export default function TenantPortal() {
           }}
         />
       )}
+
+      {/* Rent/Deposit Payment Dialog */}
+      <RentPaymentDialog
+        open={rentPaymentDialog?.open ?? false}
+        onClose={() => setRentPaymentDialog(null)}
+        leaseId={rentPaymentDialog?.leaseId ?? ''}
+        amount={rentPaymentDialog?.amount ?? 0}
+        paymentType={rentPaymentDialog?.type ?? 'rent'}
+        onSuccess={() => {
+          refetchTenant();
+          toast.success('Payment completed successfully!');
+          setRentPaymentDialog(null);
+        }}
+      />
     </div>
   );
 }
