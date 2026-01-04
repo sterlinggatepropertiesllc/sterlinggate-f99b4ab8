@@ -1000,7 +1000,169 @@ button,
   }
   
   /* ----------------------------------------
-     15. DEFENSIVE UTILITIES
+     15. MOBILE ACTION LAYOUT SYSTEM
+     ---------------------------------------- */
+  
+  /* Action groups: stack vertically on mobile */
+  .flex-wrap,
+  .flex.gap-2,
+  .flex.gap-3,
+  .flex.gap-4,
+  [class*="Card"] .flex:has(button),
+  [class*="Card"] .flex:has([class*="Button"]),
+  [class*="CardFooter"],
+  .card-footer {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.5rem !important;
+  }
+  
+  /* All buttons in action groups: full width */
+  .flex-wrap > button,
+  .flex-wrap > [class*="Button"],
+  .flex-wrap > a:has(button),
+  .flex-wrap > a:has([class*="Button"]),
+  [class*="Card"] .flex > button,
+  [class*="Card"] .flex > [class*="Button"],
+  [class*="Card"] .flex > a:has(button),
+  [class*="Card"] .flex > a:has([class*="Button"]),
+  [class*="CardFooter"] > button,
+  [class*="CardFooter"] > [class*="Button"],
+  [class*="CardFooter"] > a {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+  
+  /* Links containing buttons also full width */
+  [class*="Card"] a:has(button),
+  [class*="Card"] a:has([class*="Button"]) {
+    width: 100% !important;
+    display: block !important;
+  }
+  
+  /* ----------------------------------------
+     16. BUTTON VISUAL HIERARCHY
+     ---------------------------------------- */
+  
+  /* Primary buttons: prominent but compact */
+  button:not([class*="outline"]):not([class*="ghost"]):not([class*="secondary"]),
+  [class*="Button"]:not([class*="outline"]):not([class*="ghost"]):not([class*="secondary"]) {
+    min-height: 42px !important;
+    font-weight: 500 !important;
+  }
+  
+  /* Secondary/outline buttons: quieter */
+  button[class*="outline"],
+  button[class*="secondary"],
+  [class*="Button"][class*="outline"],
+  [class*="Button"][class*="secondary"] {
+    min-height: 38px !important;
+    font-weight: 400 !important;
+    opacity: 0.9;
+  }
+  
+  /* Ghost/tertiary buttons: subtle */
+  button[class*="ghost"],
+  [class*="Button"][class*="ghost"] {
+    min-height: 36px !important;
+    font-weight: 400 !important;
+    opacity: 0.85;
+  }
+  
+  /* ----------------------------------------
+     17. CARD CONTENT-ACTION SEPARATION
+     ---------------------------------------- */
+  
+  /* Clear separation between content and actions */
+  [class*="Card"] > div:last-child:has(button),
+  [class*="Card"] > div:last-child:has([class*="Button"]) {
+    margin-top: 0.75rem !important;
+    padding-top: 0.75rem !important;
+    border-top: 1px solid hsl(var(--border) / 0.5) !important;
+  }
+  
+  /* Card action area padding */
+  [class*="CardFooter"],
+  .card-footer,
+  [class*="Card"] .flex:has(button):last-child {
+    padding: 0.75rem !important;
+    background: hsl(var(--muted) / 0.3);
+    border-radius: 0 0 var(--radius) var(--radius);
+  }
+  
+  /* ----------------------------------------
+     18. PAYMENT & LEASE ACTION SAFETY
+     ---------------------------------------- */
+  
+  /* Payment buttons: never side-by-side */
+  [class*="pay"],
+  [class*="Pay"],
+  button:has([class*="CreditCard"]),
+  [class*="Button"]:has([class*="CreditCard"]),
+  button:has([class*="DollarSign"]),
+  [class*="Button"]:has([class*="DollarSign"]) {
+    width: 100% !important;
+    white-space: nowrap !important;
+    justify-content: center !important;
+  }
+  
+  /* Payment button containers stack */
+  .flex:has(button:has([class*="CreditCard"])),
+  .flex:has([class*="Button"]:has([class*="CreditCard"])) {
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+  }
+  
+  /* Currency values protected */
+  button span:has([class*="Dollar"]),
+  [class*="Button"] span:has([class*="Dollar"]),
+  button:contains("$"),
+  [class*="Button"]:contains("$") {
+    white-space: nowrap !important;
+    overflow: visible !important;
+  }
+  
+  /* ----------------------------------------
+     19. VERTICAL DENSITY FINAL PASS
+     ---------------------------------------- */
+  
+  /* Reduce section gaps */
+  .space-y-8 > * + * {
+    margin-top: 0.625rem !important;
+  }
+  
+  .space-y-6 > * + * {
+    margin-top: 0.5rem !important;
+  }
+  
+  /* Card list spacing */
+  .space-y-4 > [class*="Card"] + [class*="Card"],
+  .space-y-6 > [class*="Card"] + [class*="Card"] {
+    margin-top: 0.625rem !important;
+  }
+  
+  /* Page header compression */
+  .mb-8:has(h1),
+  .mb-6:has(h1),
+  header.mb-8,
+  header.mb-6 {
+    margin-bottom: 0.5rem !important;
+  }
+  
+  /* Section dividers tighter */
+  [class*="Separator"],
+  hr {
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+  }
+  
+  /* Tab content padding */
+  [class*="TabsContent"] {
+    padding-top: 0.5rem !important;
+  }
+  
+  /* ----------------------------------------
+     20. DEFENSIVE UTILITIES
      ---------------------------------------- */
   
   .mobile-nowrap {
@@ -1016,5 +1178,20 @@ button,
     overflow: hidden !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
+  }
+  
+  .mobile-stack {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 0.5rem !important;
+  }
+  
+  .mobile-full {
+    width: 100% !important;
+  }
+  
+  .mobile-center {
+    justify-content: center !important;
+    text-align: center !important;
   }
 }
