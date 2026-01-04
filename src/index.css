@@ -604,364 +604,417 @@ button,
 }
 
 /* ============================================
-   GLOBAL MOBILE REFINEMENT LAYER
+   GLOBAL MOBILE REFINEMENT LAYER v2
    ============================================
-   Mobile-only UI/UX optimizations (max-width: 768px)
+   Mobile-only UI optimizations (max-width: 768px)
    Desktop remains pixel-identical
+   Focus: Tighter typography, smarter wrapping, compact density
    ============================================ */
 
 @media (max-width: 768px) {
   /* ----------------------------------------
-     1. GLOBAL TEXT CONTAINMENT (Critical)
+     1. SMART WRAPPING (Word-level priority)
      ---------------------------------------- */
   
-  /* Force all text to stay within containers */
-  *,
-  *::before,
-  *::after {
-    word-break: break-word;
-    overflow-wrap: anywhere;
+  /* Default to word-level wrapping, NOT character-level */
+  * {
+    word-break: normal;
+    overflow-wrap: break-word;
+    hyphens: none;
   }
   
-  /* Specific text element safety */
-  h1, h2, h3, h4, h5, h6,
-  p, span, label, a,
-  [class*="text-"],
-  [class*="font-"] {
-    max-width: 100%;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-    white-space: normal;
+  /* Only allow character breaks as last resort on very long strings */
+  [class*="address"],
+  [class*="email"],
+  [class*="url"] {
+    word-break: break-all;
   }
   
-  /* Prevent horizontal scroll from any text */
+  /* Prevent horizontal scroll */
   body {
     overflow-x: hidden;
   }
   
   /* ----------------------------------------
-     2. MOBILE TYPOGRAPHY SCALE
+     2. COMPACT MOBILE TYPOGRAPHY (15-25% smaller)
      ---------------------------------------- */
   
-  /* Slightly reduce heading sizes for mobile readability */
+  /* Page titles - significantly smaller */
   h1, .text-4xl, .text-5xl {
-    font-size: clamp(1.5rem, 6vw, 2rem) !important;
-    line-height: 1.3 !important;
+    font-size: 1.375rem !important;
+    line-height: 1.25 !important;
+    font-weight: 600 !important;
   }
   
+  /* Section headings */
   h2, .text-3xl {
-    font-size: clamp(1.25rem, 5vw, 1.75rem) !important;
+    font-size: 1.125rem !important;
+    line-height: 1.3 !important;
+    font-weight: 600 !important;
+  }
+  
+  /* Card/item titles */
+  h3, .text-2xl {
+    font-size: 1rem !important;
+    line-height: 1.35 !important;
+    font-weight: 500 !important;
+  }
+  
+  /* Subheadings */
+  h4, .text-xl {
+    font-size: 0.9375rem !important;
     line-height: 1.35 !important;
   }
   
-  h3, .text-2xl {
-    font-size: clamp(1.125rem, 4.5vw, 1.5rem) !important;
+  /* Body text - tighter */
+  .text-lg {
+    font-size: 0.875rem !important;
     line-height: 1.4 !important;
   }
   
-  h4, .text-xl {
-    font-size: clamp(1rem, 4vw, 1.25rem) !important;
+  .text-base, p {
+    font-size: 0.8125rem !important;
+    line-height: 1.45 !important;
+  }
+  
+  .text-sm {
+    font-size: 0.75rem !important;
     line-height: 1.4 !important;
   }
   
-  /* Increase line height for better readability on small screens */
-  p, span, label, .text-sm, .text-base {
-    line-height: 1.6 !important;
-  }
-  
-  /* Metadata and helper text */
+  /* Metadata - clearly secondary */
   .text-xs {
-    font-size: 0.7rem !important;
-    line-height: 1.5 !important;
+    font-size: 0.6875rem !important;
+    line-height: 1.35 !important;
   }
   
   .text-muted-foreground {
-    line-height: 1.5 !important;
+    font-size: 0.75rem !important;
+    line-height: 1.4 !important;
   }
   
   /* ----------------------------------------
-     3. CARD & CONTAINER DISCIPLINE
+     3. PRICE & CURRENCY PROTECTION
      ---------------------------------------- */
   
-  /* Cards must flex vertically, never fixed height */
-  [class*="Card"],
-  .card {
-    display: flex;
-    flex-direction: column;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
+  /* Prices MUST stay on one line */
+  [class*="price"],
+  [class*="amount"],
+  [class*="rent"],
+  [class*="DollarSign"] + span,
+  span:has(> [class*="DollarSign"]),
+  .flex:has([class*="DollarSign"]) {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
   }
   
-  /* Card content padding normalization */
-  [class*="CardContent"],
-  .card-content {
-    padding: 1rem !important;
-  }
-  
-  /* Card headers and footers */
-  [class*="CardHeader"] {
-    padding: 1rem 1rem 0.5rem !important;
-  }
-  
-  [class*="CardFooter"] {
-    padding: 0.5rem 1rem 1rem !important;
-  }
-  
-  /* Flex/grid containers safety */
-  .flex, .grid {
-    min-width: 0;
-  }
-  
-  .flex > *,
-  .grid > * {
-    min-width: 0;
-    max-width: 100%;
+  /* Currency display - compact */
+  [class*="DollarSign"] {
+    width: 0.875rem !important;
+    height: 0.875rem !important;
   }
   
   /* ----------------------------------------
-     4. STATUS BADGE SAFETY
+     4. COMPACT STATUS BADGES
      ---------------------------------------- */
   
-  /* Badges must auto-size and never overflow */
   [class*="Badge"],
   .badge {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    max-width: 100%;
-    height: auto !important;
-    min-height: 1.5rem;
-    padding: 0.25rem 0.5rem !important;
-    font-size: 0.7rem !important;
-    white-space: nowrap;
+    gap: 0.25rem;
+    height: 1.25rem !important;
+    min-height: 1.25rem !important;
+    max-height: 1.25rem !important;
+    padding: 0 0.375rem !important;
+    font-size: 0.625rem !important;
+    font-weight: 500 !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
     overflow: hidden;
     text-overflow: ellipsis;
-    flex-shrink: 0;
+    border-radius: 0.25rem !important;
   }
   
-  /* Badge icons stay aligned */
+  /* Badge icons - smaller */
   [class*="Badge"] svg,
   .badge svg {
+    width: 0.625rem !important;
+    height: 0.625rem !important;
     flex-shrink: 0;
-    width: 0.75rem;
-    height: 0.75rem;
-    margin-right: 0.25rem;
   }
   
   /* ----------------------------------------
-     5. BUTTON & CTA BEHAVIOR
+     5. COMPACT CARDS
      ---------------------------------------- */
   
-  /* Buttons: tap-friendly, text-safe */
+  [class*="Card"],
+  .card {
+    overflow: hidden;
+  }
+  
+  /* Reduced card padding */
+  [class*="Card"] > div:first-child,
+  .card > div:first-child {
+    padding: 0.75rem !important;
+  }
+  
+  .p-6 {
+    padding: 0.75rem !important;
+  }
+  
+  .p-4 {
+    padding: 0.625rem !important;
+  }
+  
+  /* Card internal spacing - tighter */
+  [class*="Card"] .space-y-4 > * + * {
+    margin-top: 0.5rem !important;
+  }
+  
+  [class*="Card"] .space-y-3 > * + * {
+    margin-top: 0.375rem !important;
+  }
+  
+  [class*="Card"] .space-y-2 > * + * {
+    margin-top: 0.25rem !important;
+  }
+  
+  [class*="Card"] .gap-4 {
+    gap: 0.5rem !important;
+  }
+  
+  [class*="Card"] .gap-3 {
+    gap: 0.375rem !important;
+  }
+  
+  [class*="Card"] .mb-4 {
+    margin-bottom: 0.5rem !important;
+  }
+  
+  [class*="Card"] .mt-4 {
+    margin-top: 0.5rem !important;
+  }
+  
+  /* ----------------------------------------
+     6. COMPACT BUTTONS
+     ---------------------------------------- */
+  
   button,
   [class*="Button"],
   .btn {
-    min-height: 44px;
-    padding: 0.625rem 1rem !important;
-    font-size: 0.875rem !important;
-    line-height: 1.4 !important;
-    white-space: normal;
-    word-break: break-word;
-    overflow-wrap: anywhere;
+    min-height: 40px;
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.8125rem !important;
+    line-height: 1.25 !important;
+    white-space: nowrap !important;
+    gap: 0.375rem !important;
   }
   
   /* Small buttons */
   button[class*="sm"],
-  [class*="Button"][class*="sm"] {
-    min-height: 36px;
-    padding: 0.5rem 0.75rem !important;
-    font-size: 0.8rem !important;
+  [class*="Button"][class*="sm"],
+  .size-sm {
+    min-height: 32px !important;
+    padding: 0.375rem 0.5rem !important;
+    font-size: 0.75rem !important;
   }
   
-  /* Large buttons */
+  /* Large buttons - still compact */
   button[class*="lg"],
-  [class*="Button"][class*="lg"] {
-    min-height: 48px;
-    padding: 0.75rem 1.25rem !important;
-    font-size: 0.9rem !important;
+  [class*="Button"][class*="lg"],
+  .size-lg {
+    min-height: 44px !important;
+    padding: 0.5rem 1rem !important;
+    font-size: 0.8125rem !important;
   }
   
-  /* Button icons stay aligned */
+  /* Button icons - proportional */
   button svg,
   [class*="Button"] svg {
+    width: 0.875rem !important;
+    height: 0.875rem !important;
     flex-shrink: 0;
-    width: 1rem;
-    height: 1rem;
-  }
-  
-  /* Icon-only buttons */
-  button[class*="icon"],
-  [class*="Button"][class*="icon"] {
-    padding: 0.5rem !important;
-    min-width: 44px;
   }
   
   /* ----------------------------------------
-     6. GLOBAL SPACING NORMALIZATION
+     7. GLOBAL SPACING COMPRESSION
      ---------------------------------------- */
   
-  /* Reduce excessive horizontal padding */
-  .px-6, .px-8, .px-10, .px-12 {
-    padding-left: 1rem !important;
-    padding-right: 1rem !important;
+  /* Horizontal padding reduction */
+  .px-6, .px-8 {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
   }
   
-  .p-6, .p-8, .p-10, .p-12 {
-    padding: 1rem !important;
+  .px-4, .px-5 {
+    padding-left: 0.625rem !important;
+    padding-right: 0.625rem !important;
   }
   
-  /* Consistent vertical rhythm */
-  .space-y-6 > * + *,
-  .space-y-8 > * + * {
-    margin-top: 1rem !important;
+  /* Vertical spacing reduction */
+  .py-6, .py-8 {
+    padding-top: 0.75rem !important;
+    padding-bottom: 0.75rem !important;
   }
   
-  .gap-6, .gap-8 {
-    gap: 1rem !important;
+  .space-y-6 > * + * {
+    margin-top: 0.75rem !important;
   }
   
-  /* Margin normalization */
-  .mb-6, .mb-8, .mb-10, .mb-12 {
-    margin-bottom: 1rem !important;
+  .space-y-4 > * + * {
+    margin-top: 0.5rem !important;
   }
   
-  .mt-6, .mt-8, .mt-10, .mt-12 {
-    margin-top: 1rem !important;
+  .gap-6 {
+    gap: 0.75rem !important;
+  }
+  
+  .gap-4 {
+    gap: 0.5rem !important;
+  }
+  
+  .mb-8, .mb-6 {
+    margin-bottom: 0.75rem !important;
+  }
+  
+  .mb-4 {
+    margin-bottom: 0.5rem !important;
+  }
+  
+  .mt-8, .mt-6 {
+    margin-top: 0.75rem !important;
   }
   
   /* ----------------------------------------
-     7. GRID & FLEX RESPONSIVE SAFETY
+     8. DATE & METADATA NORMALIZATION
      ---------------------------------------- */
   
-  /* Force single column on very small screens */
+  /* Dates - compact, single line preferred */
+  time,
+  [class*="date"],
+  [class*="Date"],
+  .text-muted-foreground:has(time) {
+    white-space: nowrap;
+    font-size: 0.6875rem !important;
+  }
+  
+  /* Applied/Created labels */
+  span:contains("Applied"),
+  span:contains("Created"),
+  span:contains("Updated") {
+    font-size: 0.6875rem !important;
+  }
+  
+  /* ----------------------------------------
+     9. GRID SINGLE-COLUMN FORCE
+     ---------------------------------------- */
+  
   .grid-cols-2,
   .grid-cols-3,
   .grid-cols-4,
-  .sm\\:grid-cols-2,
-  .md\\:grid-cols-2,
-  .md\\:grid-cols-3 {
+  .sm\:grid-cols-2,
+  .md\:grid-cols-2,
+  .md\:grid-cols-3 {
     grid-template-columns: 1fr !important;
   }
   
-  /* Flex wrap safety */
-  .flex-row {
+  /* ----------------------------------------
+     10. FLEX ROW SAFETY
+     ---------------------------------------- */
+  
+  /* Prevent flex rows from overflowing */
+  .flex-row,
+  .flex.items-center {
     flex-wrap: wrap;
+    gap: 0.375rem;
   }
   
-  /* Flex items stack on mobile */
-  .flex.items-center.justify-between {
-    flex-wrap: wrap;
-    gap: 0.5rem;
+  /* Flex children respect container */
+  .flex > * {
+    min-width: 0;
+    max-width: 100%;
   }
   
   /* ----------------------------------------
-     8. TABLE & LIST SAFETY
+     11. FORM ELEMENTS - COMPACT
      ---------------------------------------- */
   
-  /* Tables become scrollable */
-  table {
-    display: block;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  
-  /* Table cells text safety */
-  td, th {
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  
-  /* Lists vertical spacing */
-  ul, ol {
-    padding-left: 1.25rem;
-  }
-  
-  li {
-    margin-bottom: 0.5rem;
-    line-height: 1.5;
-  }
-  
-  /* ----------------------------------------
-     9. FORM ELEMENTS
-     ---------------------------------------- */
-  
-  /* Inputs and textareas */
   input, textarea, select {
     font-size: 16px !important; /* Prevents iOS zoom */
-    min-height: 44px;
-    padding: 0.625rem 0.75rem !important;
+    min-height: 40px;
+    padding: 0.5rem 0.625rem !important;
   }
   
-  /* Labels */
   label {
-    font-size: 0.875rem !important;
-    margin-bottom: 0.375rem;
-    display: block;
+    font-size: 0.75rem !important;
+    margin-bottom: 0.25rem;
   }
   
   /* ----------------------------------------
-     10. DIALOG & SHEET MOBILE OPTIMIZATION
+     12. DIALOGS & SHEETS
      ---------------------------------------- */
   
-  /* Dialogs take full width on mobile */
   [class*="DialogContent"] {
-    width: calc(100vw - 2rem) !important;
+    width: calc(100vw - 1.5rem) !important;
     max-width: 100% !important;
-    max-height: 85vh !important;
-    margin: 1rem !important;
-    padding: 1rem !important;
-  }
-  
-  /* Sheets slide up properly */
-  [class*="SheetContent"] {
-    padding: 1rem !important;
     max-height: 90vh !important;
+    margin: 0.75rem !important;
+    padding: 0.75rem !important;
+  }
+  
+  [class*="SheetContent"] {
+    padding: 0.75rem !important;
   }
   
   /* ----------------------------------------
-     11. NAVIGATION & SIDEBAR
+     13. NAVIGATION ITEMS
      ---------------------------------------- */
   
-  /* Sidebar items */
-  [class*="SidebarMenuItem"] {
-    padding: 0.75rem 1rem !important;
-    min-height: 44px;
-  }
-  
-  /* Nav links */
-  nav a, nav button {
-    min-height: 44px;
+  [class*="SidebarMenuItem"],
+  nav a,
+  nav button {
+    min-height: 40px;
     padding: 0.5rem 0.75rem !important;
+    font-size: 0.8125rem !important;
   }
   
   /* ----------------------------------------
-     12. DEFENSIVE UTILITIES
+     14. ICON SIZING
      ---------------------------------------- */
   
-  /* Hide elements that break mobile layout */
-  .mobile-hide-overflow {
-    display: none !important;
+  /* Default icons - smaller on mobile */
+  .h-5.w-5 {
+    width: 1rem !important;
+    height: 1rem !important;
   }
   
-  /* Force truncation where needed */
+  .h-6.w-6 {
+    width: 1.125rem !important;
+    height: 1.125rem !important;
+  }
+  
+  .h-4.w-4 {
+    width: 0.875rem !important;
+    height: 0.875rem !important;
+  }
+  
+  /* ----------------------------------------
+     15. DEFENSIVE UTILITIES
+     ---------------------------------------- */
+  
+  .mobile-nowrap {
+    white-space: nowrap !important;
+  }
+  
+  .mobile-compact {
+    font-size: 0.75rem !important;
+    padding: 0.25rem 0.5rem !important;
+  }
+  
   .mobile-truncate {
     overflow: hidden !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
-    max-width: 100% !important;
-  }
-  
-  /* Full width on mobile */
-  .mobile-full-width {
-    width: 100% !important;
-  }
-  
-  /* Stack flex items vertically */
-  .mobile-stack {
-    flex-direction: column !important;
-    align-items: stretch !important;
   }
 }
