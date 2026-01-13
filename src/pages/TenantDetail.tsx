@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,9 +15,26 @@ import { TenantHistoryTab } from '@/components/tenants/TenantHistoryTab';
 export default function TenantDetail() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('overview');
+  
+  // Initialize activeTab from URL query param
+  const [activeTab, setActiveTab] = useState(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['overview', 'properties', 'balance', 'history'].includes(tabParam)) {
+      return tabParam;
+    }
+    return 'overview';
+  });
+
+  // Clear the query param after reading it for cleaner URLs
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam) {
+      setSearchParams({}, { replace: true });
+    }
+  }, []);
 
   // Fetch tenant with profile and property info
   const { data: tenant, isLoading, refetch } = useQuery({
