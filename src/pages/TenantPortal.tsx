@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Navigate, Link, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -9,6 +9,7 @@ import { RentPaymentDialog } from '@/components/payments/RentPaymentDialog';
 import { useProfile } from '@/hooks/useProfiles';
 import { usePayments } from '@/hooks/usePayments';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useTenantProperties } from '@/hooks/useTenantProperties';
 import { supabase } from '@/integrations/supabase/client';
 import { PaymentDialog } from '@/components/payments/PaymentDialog';
 import { Button } from '@/components/ui/button';
@@ -101,8 +102,17 @@ export default function TenantPortal() {
     enabled: !!user?.id,
   });
 
-  // Check if tenant has a property assigned
-  const hasPropertyAssigned = tenantRecord?.property_id !== null && tenantRecord?.property_id !== undefined;
+  // Fetch tenant's assigned properties from tenant_properties junction table
+  const { data: tenantProperties } = useTenantProperties(tenantRecord?.id);
+
+  // Calculate total monthly rent across all assigned properties
+  const totalMonthlyRent = useMemo(() => {
+    if (!tenantProperties || tenantProperties.length === 0) return 0;
+    return tenantProperties.reduce((sum, tp) => sum + (tp.rent_amount || 0), 0);
+  }, [tenantProperties]);
+
+  // Check if tenant has any properties assigned via tenant_properties
+  const hasPropertyAssigned = tenantProperties && tenantProperties.length > 0;
 
 
   // Fetch tenant's payment history using tenant record ID (not user ID)
@@ -293,7 +303,6 @@ export default function TenantPortal() {
 
   const pendingLeases = leases?.filter((l: any) => l.status === 'pending_tenant_signature') || [];
   const activeLeases = leases?.filter((l: any) => l.status === 'completed') || [];
-  const nextRent = activeLeases.length > 0 ? Number(activeLeases[0].monthly_rent) : 0;
   
   // Calculate next rent due date (1st of next month)
   const today = new Date();
@@ -563,11 +572,15 @@ export default function TenantPortal() {
                       <Card className="p-4 md:p-5 hover:shadow-md transition-shadow">
                         <div className="flex items-start justify-between">
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs md:text-sm text-muted-foreground">Monthly Rent</p>
-                            <p className="text-xl md:text-2xl font-serif mt-1 truncate">
-                              ${Number(tenantRecord?.rent_amount || 0).toLocaleString()}
+                            <p className="text-xs md:text-sm text-muted-foreground">
+                              Total Monthly Rent
                             </p>
-                            <p className="text-xs text-muted-foreground mt-0.5">Due 1st of month</p>
+                            <p className="text-xl md:text-2xl font-serif mt-1 truncate">
+                              ${totalMonthlyRent.toLocaleString()}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {tenantProperties?.length || 0} {(tenantProperties?.length || 0) === 1 ? 'property' : 'properties'}
+                            </p>
                           </div>
                           <div className="w-10 h-10 md:w-11 md:h-11 bg-accent/50 rounded-xl flex items-center justify-center flex-shrink-0">
                             <CalendarDays className="h-5 w-5 md:h-6 md:w-6 text-foreground/70" />
@@ -667,37 +680,52 @@ export default function TenantPortal() {
                   </Card>
                 )}
 
-                {/* Upcoming Payment Preview */}
-                {activeLeases.length > 0 && (
+                {/* My Properties - Show all assigned properties with individual pay buttons */}
+                {tenantProperties && tenantProperties.length > 0 && (
                   <Card>
-                    <div className="p-4 md:p-5 border-b border-border">
-                      <h3 className="font-serif text-lg">Upcoming Payment</h3>
+                    <div className="p-4 md:p-5 border-b border-border flex items-center justify-between">
+                      <h3 className="font-serif text-lg">My Properties</h3>
+                      <Badge variant="outline" className="text-xs">
+                        Due {nextRentDueDate}
+                      </Badge>
                     </div>
-                    <div className="p-4 md:p-5">
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
-                          <div className="w-10 h-10 md:w-12 md:h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <CreditCard className="h-5 w-5 md:h-6 md:w-6 text-primary" />
+                    <div className="divide-y divide-border">
+                      {tenantProperties.map((tp) => {
+                        // Find matching active lease for this property
+                        const matchingLease = activeLeases.find(
+                          (lease: any) => lease.property_id === tp.property_id
+                        );
+                        const rentAmount = tp.rent_amount || 0;
+
+                        return (
+                          <div key={tp.id} className="p-4 md:p-5 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
+                              <div className="w-10 h-10 md:w-12 md:h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <Building2 className="h-5 w-5 md:h-6 md:w-6 text-primary" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium truncate">{tp.property?.address || 'Property'}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {tp.property?.city}, {tp.property?.state}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <p className="text-xl md:text-2xl font-serif">${rentAmount.toLocaleString()}</p>
+                              {matchingLease && (
+                                <Button 
+                                  size="sm" 
+                                  className="mt-2"
+                                  onClick={() => handlePayRent(matchingLease.id, rentAmount)}
+                                >
+                                  <CreditCard className="h-4 w-4 mr-1" />
+                                  Pay Rent
+                                </Button>
+                              )}
+                            </div>
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="font-medium truncate">{activeLeases[0].properties?.address || 'Property'}</p>
-                            <p className="text-sm text-muted-foreground">
-                              Due {nextRentDueDate}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="text-xl md:text-2xl font-serif">${nextRent.toLocaleString()}</p>
-                          <Button 
-                            size="sm" 
-                            className="mt-2"
-                            onClick={() => handlePayRent(activeLeases[0].id, nextRent)}
-                          >
-                            <CreditCard className="h-4 w-4 mr-1" />
-                            Pay Now
-                          </Button>
-                        </div>
-                      </div>
+                        );
+                      })}
                     </div>
                   </Card>
                 )}
