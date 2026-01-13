@@ -40,6 +40,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { OverdueRentAlert } from '@/components/notifications/OverdueRentAlert';
 import { SettingsDialog } from '@/components/settings/SettingsDialog';
 import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard';
 import { AuditDashboard } from '@/components/audit/AuditDashboard';
@@ -468,6 +469,7 @@ export default function Dashboard() {
                 </h2>
               </div>
               <div className="flex items-center gap-1 md:gap-2">
+                <OverdueRentAlert managerId={user?.id} />
                 <NotificationBell />
                 <SettingsDialog />
               </div>
