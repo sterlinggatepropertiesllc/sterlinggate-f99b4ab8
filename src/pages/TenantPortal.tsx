@@ -226,6 +226,33 @@ export default function TenantPortal() {
     };
   }, [tenantRecord?.id, queryClient, refetchTenant]);
 
+  // Realtime subscription for tenant's property assignments
+  useEffect(() => {
+    if (!tenantRecord?.id) return;
+
+    const channel = supabase
+      .channel('tenant-properties-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tenant_properties',
+          filter: `tenant_id=eq.${tenantRecord.id}`,
+        },
+        () => {
+          // Refetch tenant record (includes property_id) and leases
+          refetchTenant();
+          queryClient.invalidateQueries({ queryKey: ['leases'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [tenantRecord?.id, queryClient, refetchTenant]);
+
   // Handle tab navigation from URL query params (for notification clicks)
   useEffect(() => {
     const tabParam = searchParams.get('tab');
