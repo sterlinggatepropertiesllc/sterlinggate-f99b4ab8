@@ -69,10 +69,7 @@ export function TenantPropertiesSection({ tenantId, properties }: TenantProperti
   };
 
   const handleRemove = async (tp: TenantProperty) => {
-    await removeProperty.mutateAsync({
-      id: tp.id,
-      tenant_id: tp.tenant_id,
-    });
+    await removeProperty.mutateAsync(tp.id);
   };
 
   if (isLoading) {

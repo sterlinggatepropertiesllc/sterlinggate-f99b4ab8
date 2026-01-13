@@ -159,11 +159,11 @@ export function useUpdateTenantProperty() {
   });
 }
 
-export function useRemoveTenantProperty() {
+export function useRemoveTenantProperty(tenantId?: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, tenant_id }: { id: string; tenant_id: string }) => {
+    mutationFn: async (id: string) => {
       const { error } = await supabase
         .from('tenant_properties')
         .delete()
@@ -171,13 +171,46 @@ export function useRemoveTenantProperty() {
 
       if (error) throw error;
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['tenant-properties', variables.tenant_id] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-properties', tenantId] });
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
       toast.success('Property removed from tenant');
     },
     onError: (error) => {
       toast.error(`Failed to remove property: ${error.message}`);
+    },
+  });
+}
+
+export function useSetPrimaryProperty() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ tenantId, tenantPropertyId }: { tenantId: string; tenantPropertyId: string }) => {
+      // First, unset all primaries for this tenant
+      await supabase
+        .from('tenant_properties')
+        .update({ is_primary: false })
+        .eq('tenant_id', tenantId);
+
+      // Then set the new primary
+      const { data, error } = await supabase
+        .from('tenant_properties')
+        .update({ is_primary: true })
+        .eq('id', tenantPropertyId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-properties', variables.tenantId] });
+      queryClient.invalidateQueries({ queryKey: ['tenants'] });
+      toast.success('Primary property updated');
+    },
+    onError: (error) => {
+      toast.error(`Failed to set primary: ${error.message}`);
     },
   });
 }

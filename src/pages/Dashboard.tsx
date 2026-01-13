@@ -800,10 +800,7 @@ export default function Dashboard() {
                         <TableRow 
                           key={tenant.id} 
                           className="cursor-pointer hover:bg-muted/50 transition-colors"
-                          onClick={() => {
-                            setSelectedTenant(tenant);
-                            setIsTenantDetailsOpen(true);
-                          }}
+                          onClick={() => navigate(`/dashboard/tenant/${tenant.id}`)}
                         >
                           <TableCell>
                             <div className="flex items-center gap-3">
