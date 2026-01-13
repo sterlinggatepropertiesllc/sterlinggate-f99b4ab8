@@ -251,8 +251,9 @@ export default function TenantPortal() {
           filter: `tenant_id=eq.${tenantRecord.id}`,
         },
         () => {
-          // Refetch tenant record (includes property_id) and leases
+          // Refetch tenant record and invalidate tenant-properties query
           refetchTenant();
+          queryClient.invalidateQueries({ queryKey: ['tenant-properties', tenantRecord.id] });
           queryClient.invalidateQueries({ queryKey: ['leases'] });
         }
       )
@@ -671,12 +672,30 @@ export default function TenantPortal() {
                   </Card>
                 )}
 
-                {/* All Caught Up */}
-                {pendingLeases.length === 0 && (
+                {/* All Caught Up - only show if no pending leases AND no outstanding balance */}
+                {pendingLeases.length === 0 && currentBalance <= 0 && (
                   <Card className="border-success/30 bg-success/5 p-6 text-center">
                     <CheckCircle2 className="h-10 w-10 text-success mx-auto mb-3" />
                     <h3 className="font-serif text-lg mb-1">You're all caught up!</h3>
                     <p className="text-muted-foreground text-sm">No pending actions at this time</p>
+                  </Card>
+                )}
+
+                {/* Outstanding Balance Alert - show when no pending leases but has outstanding balance */}
+                {pendingLeases.length === 0 && currentBalance > 0 && (
+                  <Card className="border-warning/30 bg-warning/5 p-6 text-center">
+                    <AlertCircle className="h-10 w-10 text-warning mx-auto mb-3" />
+                    <h3 className="font-serif text-lg mb-1">Outstanding Balance</h3>
+                    <p className="text-muted-foreground text-sm mb-3">
+                      You have ${currentBalance.toLocaleString()} due
+                    </p>
+                    <Button 
+                      onClick={() => setShowPaymentDialog(true)} 
+                      className="gap-2"
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      Make Payment
+                    </Button>
                   </Card>
                 )}
 
@@ -697,6 +716,12 @@ export default function TenantPortal() {
                         );
                         const rentAmount = tp.rent_amount || 0;
 
+                        // Robust property address handling
+                        const propertyAddress = tp.property?.address || 'Unknown Property';
+                        const propertyLocation = [tp.property?.city, tp.property?.state]
+                          .filter(Boolean)
+                          .join(', ');
+
                         return (
                           <div key={tp.id} className="p-4 md:p-5 flex items-center justify-between gap-4">
                             <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
@@ -704,10 +729,12 @@ export default function TenantPortal() {
                                 <Building2 className="h-5 w-5 md:h-6 md:w-6 text-primary" />
                               </div>
                               <div className="min-w-0 flex-1">
-                                <p className="font-medium truncate">{tp.property?.address || 'Property'}</p>
-                                <p className="text-sm text-muted-foreground">
-                                  {tp.property?.city}, {tp.property?.state}
-                                </p>
+                                <p className="font-medium truncate">{propertyAddress}</p>
+                                {propertyLocation && (
+                                  <p className="text-sm text-muted-foreground">
+                                    {propertyLocation}
+                                  </p>
+                                )}
                               </div>
                             </div>
                             <div className="text-right flex-shrink-0">
