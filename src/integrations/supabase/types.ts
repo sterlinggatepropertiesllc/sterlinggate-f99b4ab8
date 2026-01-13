@@ -45,6 +45,7 @@ export type Database = {
           created_at: string
           employment_info: Json
           id: string
+          payment_id: string | null
           personal_info: Json
           property_id: string
           rejection_reason: string | null
@@ -59,6 +60,7 @@ export type Database = {
           created_at?: string
           employment_info?: Json
           id?: string
+          payment_id?: string | null
           personal_info?: Json
           property_id: string
           rejection_reason?: string | null
@@ -73,6 +75,7 @@ export type Database = {
           created_at?: string
           employment_info?: Json
           id?: string
+          payment_id?: string | null
           personal_info?: Json
           property_id?: string
           rejection_reason?: string | null
@@ -87,6 +90,13 @@ export type Database = {
             columns: ["applicant_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "applications_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
             referencedColumns: ["id"]
           },
           {

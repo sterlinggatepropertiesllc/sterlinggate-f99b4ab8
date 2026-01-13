@@ -66,7 +66,7 @@ interface ApplicationFormProps {
   propertyAddress: string;
   applicationFee: string;
   applicationFeeAmount: number; // In cents
-  onSaveApplication: (data: ApplicationFormData) => Promise<boolean>;
+  onSaveApplication: (data: ApplicationFormData, paymentId: string) => Promise<boolean>;
   onPaymentSuccess: () => void;
   onCancel: () => void;
 }
@@ -92,7 +92,7 @@ function EmbeddedPaymentForm({
 }: {
   amount: number;
   applicationData: ApplicationFormData;
-  onSaveApplication: (data: ApplicationFormData) => Promise<boolean>;
+  onSaveApplication: (data: ApplicationFormData, paymentId: string) => Promise<boolean>;
   onSuccess: () => void;
 }) {
   const stripe = useStripe();
@@ -123,25 +123,27 @@ function EmbeddedPaymentForm({
         console.error('[EmbeddedPaymentForm] confirmPayment error:', error);
         toast.error(error.message || 'Payment failed');
       } else if (paymentIntent?.status === 'succeeded') {
-        console.log('[EmbeddedPaymentForm] Payment succeeded, saving application...');
+        console.log('[EmbeddedPaymentForm] Payment succeeded, verifying payment...');
         
-        // NOW save the application - only after payment succeeds
-        const saved = await onSaveApplication(applicationData);
+        // First verify payment to get the payment_id
+        const result = await verifyPayment(paymentIntent.id);
         
-        if (saved) {
-          console.log('[EmbeddedPaymentForm] Application saved, verifying payment...');
-          const result = await verifyPayment(paymentIntent.id);
+        if (result?.success && result?.payment_id) {
+          console.log('[EmbeddedPaymentForm] Payment verified, payment_id:', result.payment_id);
           
-          if (result?.success) {
+          // NOW save the application with the payment_id
+          const saved = await onSaveApplication(applicationData, result.payment_id);
+          
+          if (saved) {
             setPaymentSuccess(true);
             toast.success('Payment successful! Application submitted.');
             onSuccess();
           } else {
-            console.error('[EmbeddedPaymentForm] Verification failed:', result);
-            toast.error('Payment processed but verification failed. Please contact support.');
+            toast.error('Payment succeeded but failed to save application. Please contact support.');
           }
         } else {
-          toast.error('Payment succeeded but failed to save application. Please contact support.');
+          console.error('[EmbeddedPaymentForm] Verification failed:', result);
+          toast.error('Payment processed but verification failed. Please contact support.');
         }
       }
     } catch (err) {
