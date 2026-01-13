@@ -69,22 +69,56 @@ function PaymentForm({
       if (error) {
         console.error('[RentPaymentForm] confirmPayment error:', error);
         toast.error(error.message || 'Payment failed');
-      } else if (paymentIntent?.status === 'succeeded') {
-        console.log('[RentPaymentForm] Payment succeeded, verifying...');
-        const result = await verifyPayment(paymentIntent.id);
-        
-        if (result?.success) {
-          setPaymentSuccess(true);
-          toast.success('Payment successful!');
-          onSuccess?.();
+        setIsProcessing(false);
+        return;
+      }
+
+      // Handle all possible payment statuses explicitly
+      switch (paymentIntent?.status) {
+        case 'succeeded':
+          console.log('[RentPaymentForm] Payment succeeded, verifying...');
+          const result = await verifyPayment(paymentIntent.id);
           
-          setTimeout(() => {
-            onClose();
-          }, 2000);
-        } else {
-          console.error('[RentPaymentForm] Verification failed:', result);
-          toast.error('Payment processed but verification failed. Please contact support.');
-        }
+          if (result?.success) {
+            setPaymentSuccess(true);
+            toast.success('Payment successful!');
+            onSuccess?.();
+            
+            setTimeout(() => {
+              onClose();
+            }, 2000);
+          } else {
+            console.error('[RentPaymentForm] Verification failed:', result);
+            toast.error('Payment processed but verification failed. Please contact support.');
+          }
+          break;
+          
+        case 'requires_action':
+          // 3DS authentication still in progress or needs manual handling
+          console.log('[RentPaymentForm] Payment requires action - 3DS not completed');
+          toast.error('Payment authentication was not completed. Please try again.');
+          break;
+          
+        case 'requires_payment_method':
+          // Payment method failed (declined, etc.)
+          console.log('[RentPaymentForm] Payment requires new payment method');
+          toast.error('Your payment method was declined. Please try a different card.');
+          break;
+          
+        case 'processing':
+          // Payment is still processing
+          console.log('[RentPaymentForm] Payment is processing');
+          toast.info('Payment is processing. Please wait...');
+          break;
+          
+        case 'canceled':
+          console.log('[RentPaymentForm] Payment was canceled');
+          toast.error('Payment was canceled.');
+          break;
+          
+        default:
+          console.error('[RentPaymentForm] Unexpected status:', paymentIntent?.status);
+          toast.error('Payment could not be completed. Please try again.');
       }
     } catch (err) {
       console.error('[RentPaymentForm] Unexpected error:', err);
