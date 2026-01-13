@@ -702,11 +702,23 @@ export default function TenantPortal() {
                 {/* My Properties - Show all assigned properties with individual pay buttons */}
                 {tenantProperties && tenantProperties.length > 0 && (
                   <Card>
-                    <div className="p-4 md:p-5 border-b border-border flex items-center justify-between">
-                      <h3 className="font-serif text-lg">My Properties</h3>
-                      <Badge variant="outline" className="text-xs">
-                        Due {nextRentDueDate}
-                      </Badge>
+                    <div className="p-4 md:p-5 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h3 className="font-serif text-lg">My Properties</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {tenantProperties.length} {tenantProperties.length === 1 ? 'property' : 'properties'} · Due {nextRentDueDate}
+                        </p>
+                      </div>
+                      {/* Pay All Button - shows total across all properties */}
+                      {currentBalance > 0 && tenantProperties.length > 1 && (
+                        <Button 
+                          onClick={() => setShowPaymentDialog(true)}
+                          className="gap-2"
+                        >
+                          <Wallet className="h-4 w-4" />
+                          Pay All (${currentBalance.toLocaleString()})
+                        </Button>
+                      )}
                     </div>
                     <div className="divide-y divide-border">
                       {tenantProperties.map((tp) => {
