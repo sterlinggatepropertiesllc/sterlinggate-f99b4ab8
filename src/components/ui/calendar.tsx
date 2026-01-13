@@ -1,11 +1,80 @@
 import * as React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { DayPicker } from "react-day-picker";
+import { DayPicker, CaptionProps, useNavigation } from "react-day-picker";
+import { format, setMonth, setYear } from "date-fns";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
+
+const months = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
+function CustomCaption(props: CaptionProps) {
+  const { goToMonth, currentMonth } = useNavigation();
+  const currentYear = currentMonth.getFullYear();
+  
+  // Generate year range: 10 years before and 10 years after current year
+  const startYear = currentYear - 10;
+  const endYear = currentYear + 10;
+  const years = Array.from({ length: endYear - startYear + 1 }, (_, i) => startYear + i);
+
+  const handleMonthChange = (monthValue: string) => {
+    const newMonth = parseInt(monthValue, 10);
+    goToMonth(setMonth(currentMonth, newMonth));
+  };
+
+  const handleYearChange = (yearValue: string) => {
+    const newYear = parseInt(yearValue, 10);
+    goToMonth(setYear(currentMonth, newYear));
+  };
+
+  return (
+    <div className="flex items-center justify-between px-2 py-2">
+      <Select
+        value={currentMonth.getMonth().toString()}
+        onValueChange={handleMonthChange}
+      >
+        <SelectTrigger className="h-8 w-[110px] text-sm font-serif border-border/50 hover:border-primary/50 focus:ring-primary/30">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="max-h-60">
+          {months.map((month, index) => (
+            <SelectItem key={month} value={index.toString()} className="text-sm">
+              {month}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select
+        value={currentMonth.getFullYear().toString()}
+        onValueChange={handleYearChange}
+      >
+        <SelectTrigger className="h-8 w-[85px] text-sm font-serif border-border/50 hover:border-primary/50 focus:ring-primary/30">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="max-h-60">
+          {years.map((year) => (
+            <SelectItem key={year} value={year.toString()} className="text-sm">
+              {year}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
 
 function Calendar({ className, classNames, showOutsideDays = true, ...props }: CalendarProps) {
   return (
@@ -16,7 +85,7 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }: C
         months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
         month: "space-y-4",
         caption: "flex justify-center pt-1 relative items-center mb-2",
-        caption_label: "text-sm font-serif font-medium tracking-wide",
+        caption_label: "hidden",
         nav: "space-x-1 flex items-center",
         nav_button: cn(
           "h-8 w-8 bg-transparent p-0 border border-border/50 rounded-lg",
@@ -68,6 +137,7 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }: C
         ...classNames,
       }}
       components={{
+        Caption: CustomCaption,
         IconLeft: ({ ..._props }) => <ChevronLeft className="h-4 w-4" />,
         IconRight: ({ ..._props }) => <ChevronRight className="h-4 w-4" />,
       }}
