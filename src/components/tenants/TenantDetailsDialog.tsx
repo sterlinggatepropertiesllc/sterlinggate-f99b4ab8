@@ -2,22 +2,17 @@ import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useUpdateTenant, useDeleteTenant, useRevokeTenantAccess } from '@/hooks/useTenants';
 import { useAuth } from '@/contexts/AuthContext';
 import { BalanceSection } from './BalanceSection';
 import { AutomationSettings } from './AutomationSettings';
 import { RentChargeHistory } from './RentChargeHistory';
 import { QuickRentActions } from './QuickRentActions';
-import { cn } from '@/lib/utils';
-import { format, parseISO } from 'date-fns';
-import { Users, Mail, Phone, MapPin, DollarSign, CalendarIcon, FileText, Shield, Trash2, Save, X } from 'lucide-react';
+import { TenantPropertiesSection } from './TenantPropertiesSection';
+import { Users, Mail, Phone, FileText, Shield, Trash2, Save, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import type { Database } from '@/integrations/supabase/types';
@@ -67,16 +62,8 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
     autoApplyLateFees: tenant?.auto_apply_late_fees ?? true,
   });
   const [editedTenant, setEditedTenant] = useState<{
-    property_id: string | null;
-    rent_amount: number | null;
-    lease_start_date: string | null;
-    lease_end_date: string | null;
     notes: string | null;
   }>({
-    property_id: tenant?.property_id || null,
-    rent_amount: tenant?.rent_amount || null,
-    lease_start_date: tenant?.lease_start_date || null,
-    lease_end_date: tenant?.lease_end_date || null,
     notes: (tenant as any)?.notes || null,
   });
 
@@ -134,10 +121,6 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
   const handleOpenChange = (isOpen: boolean) => {
     if (isOpen && tenant) {
       setEditedTenant({
-        property_id: tenant.property_id,
-        rent_amount: tenant.rent_amount,
-        lease_start_date: tenant.lease_start_date,
-        lease_end_date: tenant.lease_end_date,
         notes: (tenant as any)?.notes || null,
       });
       setAutomationSettings({
@@ -153,10 +136,6 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
     
     await updateTenant.mutateAsync({
       id: tenant.id,
-      property_id: editedTenant.property_id,
-      rent_amount: editedTenant.rent_amount,
-      lease_start_date: editedTenant.lease_start_date,
-      lease_end_date: editedTenant.lease_end_date,
       notes: editedTenant.notes,
     });
     
@@ -175,9 +154,6 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
   };
 
   if (!tenant) return null;
-
-  // Show all properties - managers should be able to assign any of their properties to a tenant
-  const availableProperties = properties || [];
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -210,141 +186,23 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
 
         <Separator />
 
-        {/* Editable Fields */}
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Property Assignment */}
-            <div className="col-span-2">
-              <Label htmlFor="property" className="flex items-center gap-2">
-                <MapPin className="h-4 w-4" /> Assigned Property
-              </Label>
-              <Select
-                value={editedTenant.property_id || 'none'}
-                onValueChange={(value) => setEditedTenant(prev => ({ 
-                  ...prev, 
-                  property_id: value === 'none' ? null : value 
-                }))}
-              >
-                <SelectTrigger className="mt-1.5">
-                  <SelectValue placeholder="Select a property" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No Property Assigned</SelectItem>
-                  {availableProperties.map((property) => (
-                    <SelectItem key={property.id} value={property.id}>
-                      {property.address}, {property.city}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        {/* Multi-Property Assignment Section */}
+        <TenantPropertiesSection tenantId={tenant.id} properties={properties} />
 
-            {/* Rent Amount */}
-            <div>
-              <Label htmlFor="rent_amount" className="flex items-center gap-2">
-                <DollarSign className="h-4 w-4" /> Monthly Rent
-              </Label>
-              <Input
-                id="rent_amount"
-                type="number"
-                value={editedTenant.rent_amount || ''}
-                onChange={(e) => setEditedTenant(prev => ({ 
-                  ...prev, 
-                  rent_amount: e.target.value ? parseFloat(e.target.value) : null 
-                }))}
-                placeholder="0"
-                className="mt-1.5"
-              />
-            </div>
+        <Separator />
 
-            {/* Placeholder for spacing */}
-            <div />
-
-            {/* Lease Start Date */}
-            <div>
-              <Label className="flex items-center gap-2">
-                <CalendarIcon className="h-4 w-4 text-primary" /> Lease Start
-              </Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal h-10 mt-1.5 bg-background hover:bg-muted/50 border-input",
-                      !editedTenant.lease_start_date && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
-                    {editedTenant.lease_start_date 
-                      ? format(parseISO(editedTenant.lease_start_date), "MMMM d, yyyy") 
-                      : "Select start date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={editedTenant.lease_start_date ? parseISO(editedTenant.lease_start_date) : undefined}
-                    onSelect={(date) => setEditedTenant(prev => ({ 
-                      ...prev, 
-                      lease_start_date: date ? format(date, 'yyyy-MM-dd') : null 
-                    }))}
-                    initialFocus
-                    className="p-3 pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* Lease End Date */}
-            <div>
-              <Label className="flex items-center gap-2">
-                <CalendarIcon className="h-4 w-4 text-primary" /> Lease End
-              </Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal h-10 mt-1.5 bg-background hover:bg-muted/50 border-input",
-                      !editedTenant.lease_end_date && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
-                    {editedTenant.lease_end_date 
-                      ? format(parseISO(editedTenant.lease_end_date), "MMMM d, yyyy") 
-                      : "Select end date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={editedTenant.lease_end_date ? parseISO(editedTenant.lease_end_date) : undefined}
-                    onSelect={(date) => setEditedTenant(prev => ({ 
-                      ...prev, 
-                      lease_end_date: date ? format(date, 'yyyy-MM-dd') : null 
-                    }))}
-                    disabled={(date) => editedTenant.lease_start_date ? date < parseISO(editedTenant.lease_start_date) : false}
-                    initialFocus
-                    className="p-3 pointer-events-auto"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <Label htmlFor="notes" className="flex items-center gap-2">
-              <FileText className="h-4 w-4" /> Notes
-            </Label>
-            <Textarea
-              id="notes"
-              value={editedTenant.notes || ''}
-              onChange={(e) => setEditedTenant(prev => ({ ...prev, notes: e.target.value || null }))}
-              placeholder="Add notes about this tenant..."
-              className="mt-1.5 min-h-[100px]"
-            />
-          </div>
+        {/* Notes */}
+        <div>
+          <Label htmlFor="notes" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" /> Notes
+          </Label>
+          <Textarea
+            id="notes"
+            value={editedTenant.notes || ''}
+            onChange={(e) => setEditedTenant(prev => ({ ...prev, notes: e.target.value || null }))}
+            placeholder="Add notes about this tenant..."
+            className="mt-1.5 min-h-[100px]"
+          />
         </div>
 
         <Separator />
@@ -366,7 +224,7 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
           <QuickRentActions
             tenantId={tenant.id}
             managerId={user.id}
-            rentAmount={editedTenant.rent_amount || tenant.rent_amount}
+            rentAmount={tenant.rent_amount}
           />
         )}
 

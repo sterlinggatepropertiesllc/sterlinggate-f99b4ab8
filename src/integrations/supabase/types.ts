@@ -789,6 +789,60 @@ export type Database = {
           },
         ]
       }
+      tenant_properties: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_primary: boolean | null
+          lease_end_date: string | null
+          lease_start_date: string | null
+          notes: string | null
+          property_id: string
+          rent_amount: number | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_primary?: boolean | null
+          lease_end_date?: string | null
+          lease_start_date?: string | null
+          notes?: string | null
+          property_id: string
+          rent_amount?: number | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_primary?: boolean | null
+          lease_end_date?: string | null
+          lease_start_date?: string | null
+          notes?: string | null
+          property_id?: string
+          rent_amount?: number | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_properties_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_properties_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           auto_apply_late_fees: boolean | null
