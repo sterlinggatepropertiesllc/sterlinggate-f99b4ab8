@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { differenceInDays } from 'date-fns';
 import { Navigate, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
@@ -275,6 +276,35 @@ export default function Dashboard() {
     activeTenants: tenants?.length || 0,
     pendingLeases: leases?.filter(l => l.status !== 'completed').length || 0,
   };
+
+  // Calculate expiring leases for warnings
+  const expiringLeases = useMemo(() => {
+    if (!leases) return { all: [], expired: [], critical: [], warning: [] };
+    
+    const today = new Date();
+    const completedLeases = leases.filter((l: any) => l.status === 'completed');
+    
+    const all = completedLeases.filter((l: any) => {
+      const daysUntilEnd = differenceInDays(new Date(l.end_date), today);
+      return daysUntilEnd <= 30;
+    });
+    
+    const expired = all.filter((l: any) => 
+      differenceInDays(new Date(l.end_date), today) < 0
+    );
+    
+    const critical = all.filter((l: any) => {
+      const days = differenceInDays(new Date(l.end_date), today);
+      return days >= 0 && days <= 7;
+    });
+    
+    const warning = all.filter((l: any) => {
+      const days = differenceInDays(new Date(l.end_date), today);
+      return days > 7 && days <= 30;
+    });
+    
+    return { all, expired, critical, warning };
+  }, [leases]);
 
   const handleAddProperty = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -565,6 +595,62 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Lease Expiration Warnings */}
+              {expiringLeases.all.length > 0 && (
+                <Card className="border-warning/50 bg-warning/5 mb-6">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="font-serif text-lg flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-warning" />
+                      Lease Attention Required
+                    </CardTitle>
+                    <CardDescription>
+                      {expiringLeases.expired.length > 0 && `${expiringLeases.expired.length} expired · `}
+                      {expiringLeases.critical.length > 0 && `${expiringLeases.critical.length} expiring within 7 days · `}
+                      {expiringLeases.warning.length > 0 && `${expiringLeases.warning.length} expiring within 30 days`}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {expiringLeases.all.slice(0, 5).map((lease: any) => {
+                        const daysUntilEnd = differenceInDays(new Date(lease.end_date), new Date());
+                        const isExpired = daysUntilEnd < 0;
+                        const isCritical = daysUntilEnd >= 0 && daysUntilEnd <= 7;
+                        
+                        return (
+                          <div 
+                            key={lease.id} 
+                            className="flex items-center justify-between p-3 bg-background rounded-lg border cursor-pointer hover:border-primary/50 transition-colors"
+                            onClick={() => navigate(`/sign-lease/${lease.id}`)}
+                          >
+                            <div>
+                              <p className="font-medium">{lease.properties?.address}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {lease.tenant?.full_name || lease.tenant?.email} · Ends {new Date(lease.end_date).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <Badge 
+                              variant="outline" 
+                              className={
+                                isExpired ? 'bg-destructive/10 text-destructive border-destructive' :
+                                isCritical ? 'bg-destructive/10 text-destructive border-destructive' :
+                                'bg-warning/10 text-warning border-warning'
+                              }
+                            >
+                              {isExpired ? 'Expired' : `${daysUntilEnd} days left`}
+                            </Badge>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {expiringLeases.all.length > 5 && (
+                      <Button variant="link" className="mt-2 p-0 h-auto" onClick={() => setActiveTab('leases')}>
+                        View all {expiringLeases.all.length} leases →
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Quick Actions */}
               <div className="grid md:grid-cols-2 gap-6">
@@ -962,6 +1048,31 @@ export default function Dashboard() {
                               >
                                 {config.label}
                               </Badge>
+                              
+                              {/* Lease expiration warning badge */}
+                              {lease.status === 'completed' && (() => {
+                                const daysUntilEnd = differenceInDays(new Date(lease.end_date), new Date());
+                                if (daysUntilEnd < 0) {
+                                  return (
+                                    <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive">
+                                      Expired
+                                    </Badge>
+                                  );
+                                } else if (daysUntilEnd <= 7) {
+                                  return (
+                                    <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive">
+                                      {daysUntilEnd} days left
+                                    </Badge>
+                                  );
+                                } else if (daysUntilEnd <= 30) {
+                                  return (
+                                    <Badge variant="outline" className="bg-warning/10 text-warning border-warning">
+                                      {daysUntilEnd} days left
+                                    </Badge>
+                                  );
+                                }
+                                return null;
+                              })()}
                               
                               {lease.status === 'pending_tenant_signature' && (
                                 <Link to={`/sign-lease/${lease.id}`}>
