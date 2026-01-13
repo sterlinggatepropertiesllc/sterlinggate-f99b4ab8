@@ -96,6 +96,7 @@ export function useMyApplications(userId: string | undefined) {
           )
         `)
         .eq('applicant_id', userId)
+        .not('payment_id', 'is', null) // Only show applications with completed payments
         .order('created_at', { ascending: false });
 
       if (error) throw error;

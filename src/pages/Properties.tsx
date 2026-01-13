@@ -72,7 +72,7 @@ export default function Properties() {
     }
   };
 
-  const handleSaveApplication = async (formData: ApplicationFormData): Promise<boolean> => {
+  const handleSaveApplication = async (formData: ApplicationFormData, paymentId: string): Promise<boolean> => {
     if (!applyingProperty || !user) return false;
     
     try {
@@ -112,6 +112,7 @@ export default function Properties() {
         employment_info: financialInfo, // Now stores financial info
         background_check_consent: formData.backgroundCheckConsent,
         status: 'pending',
+        payment_id: paymentId, // Link the application to the payment
       });
 
       return true;
