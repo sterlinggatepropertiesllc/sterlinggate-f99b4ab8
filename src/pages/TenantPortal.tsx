@@ -471,7 +471,7 @@ export default function TenantPortal() {
                               ${Math.abs(currentBalance).toLocaleString()}
                             </p>
                             {currentBalance < 0 && (
-                              <Badge variant="secondary" className="mt-1 text-xs bg-primary/10 text-primary">
+                              <Badge variant="secondary" className="mt-1 text-xs bg-emerald-500/10 text-emerald-500">
                                 Credit
                               </Badge>
                             )}
@@ -543,7 +543,7 @@ export default function TenantPortal() {
                               ${Math.abs(currentBalance).toLocaleString()}
                             </p>
                             {currentBalance < 0 && (
-                              <Badge variant="secondary" className="mt-1 text-xs bg-primary/10 text-primary">
+                              <Badge variant="secondary" className="mt-1 text-xs bg-emerald-500/10 text-emerald-500">
                                 Credit
                               </Badge>
                             )}
