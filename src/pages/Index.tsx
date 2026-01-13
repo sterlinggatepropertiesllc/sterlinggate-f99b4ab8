@@ -374,18 +374,6 @@ export default function Index() {
             <p className="text-lg text-muted-foreground mb-10 leading-relaxed">
               Find your perfect commercial space with Sterling Gate's streamlined application process.
             </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link to="/auth">
-                <Button size="lg" className="h-14 px-12 text-base btn-platinum">
-                  Get Started <ArrowRight className="ml-2 h-5 w-5" />
-                </Button>
-              </Link>
-              <Link to="/auth">
-                <Button size="lg" variant="outline" className="h-14 px-12 text-base btn-outline-silver">
-                  Schedule Demo
-                </Button>
-              </Link>
-            </div>
           </div>
         </div>
       </section>
