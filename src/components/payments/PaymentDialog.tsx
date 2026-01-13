@@ -378,24 +378,24 @@ export function PaymentDialog({
                   <div className="grid grid-cols-2 gap-3">
                     <Button
                       variant="outline"
-                      className="h-auto py-3 flex flex-col items-start"
+                      className="h-auto py-3 flex flex-col items-start group"
                       onClick={() => handleAmountSelect(currentBalance)}
                       disabled={isCreating}
                     >
                       <span className="font-medium">Pay Full Balance</span>
-                      <span className="text-sm text-muted-foreground">
+                      <span className="text-sm text-muted-foreground group-hover:text-accent-foreground transition-colors">
                         ${currentBalance.toFixed(2)}
                       </span>
                     </Button>
                     {rentAmount && rentAmount > 0 && (
                       <Button
                         variant="outline"
-                        className="h-auto py-3 flex flex-col items-start"
+                        className="h-auto py-3 flex flex-col items-start group"
                         onClick={() => handleAmountSelect(rentAmount)}
                         disabled={isCreating}
                       >
                         <span className="font-medium">Pay Rent Amount</span>
-                        <span className="text-sm text-muted-foreground">
+                        <span className="text-sm text-muted-foreground group-hover:text-accent-foreground transition-colors">
                           ${rentAmount.toFixed(2)}
                         </span>
                       </Button>
