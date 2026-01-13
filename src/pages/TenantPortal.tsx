@@ -90,7 +90,7 @@ export default function TenantPortal() {
       if (!user?.id) return null;
       const { data, error } = await supabase
         .from('tenants')
-        .select('id, current_balance, rent_amount, lease_start_date')
+        .select('id, current_balance, rent_amount, lease_start_date, property_id')
         .eq('user_id', user.id)
         .eq('is_active', true)
         .maybeSingle();
@@ -100,6 +100,9 @@ export default function TenantPortal() {
     },
     enabled: !!user?.id,
   });
+
+  // Check if tenant has a property assigned
+  const hasPropertyAssigned = tenantRecord?.property_id !== null && tenantRecord?.property_id !== undefined;
 
   // Fetch tenant's payment history using tenant record ID (not user ID)
   const { data: payments, isLoading: paymentsLoading } = usePayments(undefined, tenantRecord?.id);
@@ -406,15 +409,40 @@ export default function TenantPortal() {
             {/* Dashboard Tab */}
             {activeTab === 'dashboard' && (
               <div className="animate-fade-in space-y-6">
-                {/* Welcome Header */}
-                <div className="mb-2">
-                  <h1 className="text-2xl md:text-3xl font-serif">
-                    Welcome back, {tenantProfile?.full_name?.split(' ')[0] || 'Tenant'}
-                  </h1>
-                  <p className="text-muted-foreground">
-                    {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-                  </p>
-                </div>
+                {/* No Property Assigned State */}
+                {!hasPropertyAssigned ? (
+                  <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+                    <div className="w-20 h-20 bg-muted rounded-full flex items-center justify-center mb-6">
+                      <Building2 className="h-10 w-10 text-muted-foreground" />
+                    </div>
+                    <h2 className="text-2xl md:text-3xl font-serif mb-3">No Property Assigned</h2>
+                    <p className="text-muted-foreground max-w-md mb-6">
+                      You haven't been assigned to a property yet. Once your property manager assigns you to a property, your dashboard will be available here.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Link to="/properties">
+                        <Button variant="outline" className="gap-2">
+                          <Home className="h-4 w-4" />
+                          Browse Properties
+                        </Button>
+                      </Link>
+                      <Button variant="ghost" onClick={() => setActiveTab('applications')} className="gap-2">
+                        <FileText className="h-4 w-4" />
+                        View Applications
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Welcome Header */}
+                    <div className="mb-2">
+                      <h1 className="text-2xl md:text-3xl font-serif">
+                        Welcome back, {tenantProfile?.full_name?.split(' ')[0] || 'Tenant'}
+                      </h1>
+                      <p className="text-muted-foreground">
+                        {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                      </p>
+                    </div>
 
                 {/* Summary Cards */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
@@ -633,6 +661,8 @@ export default function TenantPortal() {
                     </button>
                   </div>
                 </div>
+                  </>
+                )}
               </div>
             )}
 
