@@ -1,6 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { Building2 } from 'lucide-react';
+import { Building2, Home, TrendingUp } from 'lucide-react';
 
 interface PropertyPerformanceChartProps {
   data: {
@@ -21,45 +20,46 @@ export function PropertyPerformanceChart({ data }: PropertyPerformanceChartProps
     }).format(value);
   };
 
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const item = payload[0].payload;
-      const statusColor = getBarColor(item.status);
-      return (
-        <div className="bg-popover/95 backdrop-blur-sm border border-border/50 rounded-xl shadow-xl p-4">
-          <p className="text-sm font-medium text-foreground truncate max-w-[200px] mb-1">{item.name}</p>
-          <p className="text-2xl font-bold text-foreground">{formatCurrency(item.revenue)}</p>
-          <div className="flex items-center gap-2 mt-2">
-            <div 
-              className="w-2 h-2 rounded-full" 
-              style={{ backgroundColor: statusColor }}
-            />
-            <p className="text-xs text-muted-foreground capitalize">{item.status.replace('_', ' ')}</p>
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  // Truncate long property names
-  const chartData = data.map(item => ({
-    ...item,
-    shortName: item.name.length > 25 ? item.name.substring(0, 25) + '...' : item.name,
-  }));
-
-  const getBarColor = (status: string) => {
+  const getStatusConfig = (status: string) => {
     switch (status) {
       case 'occupied':
-        return 'hsl(160 45% 45%)'; // Teal
+        return {
+          color: 'hsl(160 60% 45%)',
+          colorLight: 'hsl(160 60% 55%)',
+          glow: 'hsl(160 60% 45% / 0.3)',
+          label: 'Occupied',
+          bg: 'from-emerald-500/5 to-transparent',
+        };
       case 'available':
-        return 'hsl(35 80% 55%)'; // Amber
+        return {
+          color: 'hsl(38 92% 50%)',
+          colorLight: 'hsl(38 92% 60%)',
+          glow: 'hsl(38 92% 50% / 0.3)',
+          label: 'Available',
+          bg: 'from-amber-500/5 to-transparent',
+        };
       case 'off_market':
-        return 'hsl(0 60% 55%)'; // Rose
+        return {
+          color: 'hsl(215 16% 47%)',
+          colorLight: 'hsl(215 16% 57%)',
+          glow: 'hsl(215 16% 47% / 0.3)',
+          label: 'Off Market',
+          bg: 'from-slate-500/5 to-transparent',
+        };
       default:
-        return 'hsl(var(--muted-foreground))';
+        return {
+          color: 'hsl(var(--muted-foreground))',
+          colorLight: 'hsl(var(--muted-foreground))',
+          glow: 'hsl(var(--muted-foreground) / 0.3)',
+          label: status,
+          bg: 'from-muted/5 to-transparent',
+        };
     }
   };
+
+  // Limit to top 6 properties and calculate max revenue for relative widths
+  const topProperties = data.slice(0, 6);
+  const maxRevenue = Math.max(...topProperties.map(p => p.revenue), 1);
 
   if (data.length === 0) {
     return (
@@ -72,10 +72,10 @@ export function PropertyPerformanceChart({ data }: PropertyPerformanceChartProps
           <p className="text-sm text-muted-foreground">Revenue by property</p>
         </CardHeader>
         <CardContent>
-          <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+          <div className="h-[200px] flex items-center justify-center text-muted-foreground">
             <div className="text-center">
               <Building2 className="h-12 w-12 mx-auto mb-3 opacity-20" />
-              <p>No payment data available</p>
+              <p>No properties available</p>
             </div>
           </div>
         </CardContent>
@@ -84,76 +84,89 @@ export function PropertyPerformanceChart({ data }: PropertyPerformanceChartProps
   }
 
   return (
-    <Card className="group relative overflow-hidden border-teal-500/10 bg-gradient-to-br from-card via-card to-teal-500/5 hover:border-teal-500/20 transition-all duration-300">
-      <div className="absolute top-0 right-0 w-64 h-64 bg-teal-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-      <CardHeader className="relative z-10">
+    <Card className="group relative overflow-hidden border-border/30 bg-gradient-to-br from-card via-card to-primary/5 hover:border-primary/20 transition-all duration-300">
+      <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
+      <CardHeader className="relative z-10 pb-4">
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="text-xl font-serif flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-teal-500" />
+              <TrendingUp className="h-5 w-5 text-primary" />
               Property Performance
             </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">Revenue by property (top 8)</p>
-          </div>
-          <div className="flex items-center gap-4 text-xs">
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-[hsl(160_45%_45%)]" />
-              <span className="text-muted-foreground">Occupied</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-[hsl(35_80%_55%)]" />
-              <span className="text-muted-foreground">Available</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-[hsl(0_60%_55%)]" />
-              <span className="text-muted-foreground">Off Market</span>
-            </div>
+            <p className="text-sm text-muted-foreground mt-1">Revenue by property (top 6)</p>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="relative z-10">
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
-              <CartesianGrid 
-                strokeDasharray="3 3" 
-                stroke="hsl(var(--border))" 
-                strokeOpacity={0.3}
-                horizontal={false} 
-              />
-              <XAxis 
-                type="number"
-                tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
-                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                tickLine={false}
-                axisLine={false}
-              />
-              <YAxis 
-                dataKey="shortName"
-                type="category"
-                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
-                tickLine={false}
-                axisLine={false}
-                width={120}
-              />
-              <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--muted))', opacity: 0.3 }} />
-              <Bar 
-                dataKey="revenue" 
-                radius={[0, 6, 6, 0]}
-                animationDuration={1200}
-                animationEasing="ease-out"
-              >
-                {chartData.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={getBarColor(entry.status)}
-                    className="transition-all duration-300 hover:opacity-80"
+      <CardContent className="relative z-10 space-y-3">
+        {topProperties.map((property, index) => {
+          const config = getStatusConfig(property.status);
+          const percentage = maxRevenue > 0 ? (property.revenue / maxRevenue) * 100 : 0;
+          const hasRevenue = property.revenue > 0;
+
+          return (
+            <div
+              key={property.id}
+              className={`group/item p-4 rounded-xl bg-gradient-to-r ${config.bg} hover:bg-muted/30 transition-all duration-300 border border-border/20 hover:border-border/40 hover:shadow-lg`}
+              style={{
+                animationDelay: `${index * 100}ms`,
+              }}
+            >
+              {/* Row 1: Property name and status */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <div className="p-1.5 rounded-lg bg-muted/50">
+                    <Home className="h-3.5 w-3.5 text-muted-foreground" />
+                  </div>
+                  <span className="font-medium text-sm truncate text-foreground/90">
+                    {property.name}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 ml-3 shrink-0">
+                  <span className="text-xs text-muted-foreground">
+                    {config.label}
+                  </span>
+                  <div
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{
+                      backgroundColor: config.color,
+                      boxShadow: `0 0 8px ${config.glow}, 0 0 0 2px ${config.color}30`,
+                    }}
                   />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+                </div>
+              </div>
+
+              {/* Row 2: Progress bar + Amount */}
+              <div className="flex items-center gap-4">
+                <div className="flex-1 h-2 rounded-full bg-muted/40 overflow-hidden">
+                  {hasRevenue ? (
+                    <div
+                      className="h-full rounded-full transition-all duration-700 ease-out"
+                      style={{
+                        width: `${Math.max(percentage, 3)}%`,
+                        background: `linear-gradient(90deg, ${config.color}, ${config.colorLight})`,
+                        boxShadow: `0 0 12px ${config.glow}`,
+                      }}
+                    />
+                  ) : (
+                    <div
+                      className="h-full w-full rounded-full opacity-30"
+                      style={{
+                        background: `repeating-linear-gradient(90deg, ${config.color} 0px, ${config.color} 4px, transparent 4px, transparent 8px)`,
+                      }}
+                    />
+                  )}
+                </div>
+                <span
+                  className={`text-base font-bold tabular-nums min-w-[90px] text-right ${
+                    hasRevenue ? 'text-foreground' : 'text-muted-foreground text-sm font-medium'
+                  }`}
+                >
+                  {hasRevenue ? formatCurrency(property.revenue) : 'No revenue'}
+                </span>
+              </div>
+            </div>
+          );
+        })}
       </CardContent>
     </Card>
   );
