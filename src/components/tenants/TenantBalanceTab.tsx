@@ -31,6 +31,7 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
   const currentBalance = tenant.current_balance ?? 0;
   const isOverdue = currentBalance > 0;
   const rentAmount = tenant.rent_amount ?? 0;
+  const hasPropertyAssigned = tenant.property_id !== null && tenant.property_id !== undefined;
 
   // Calculate next rent due date (1st of next month)
   const today = new Date();
@@ -122,25 +123,46 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-primary/5 to-transparent border-primary/20">
-          <CardContent className="pt-6">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground uppercase tracking-wider">Monthly Rent</p>
-                <p className="text-4xl font-serif mt-1 text-foreground">
-                  ${rentAmount.toLocaleString()}
-                </p>
-                <p className="text-sm text-muted-foreground mt-2 flex items-center gap-1.5">
-                  <Clock className="h-3.5 w-3.5 text-amber-400" />
-                  Next due: {nextRentDueDate}
-                </p>
+        {hasPropertyAssigned ? (
+          <Card className="bg-gradient-to-br from-primary/5 to-transparent border-primary/20">
+            <CardContent className="pt-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground uppercase tracking-wider">Monthly Rent</p>
+                  <p className="text-4xl font-serif mt-1 text-foreground">
+                    ${rentAmount.toLocaleString()}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-2 flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-amber-400" />
+                    Next due: {nextRentDueDate}
+                  </p>
+                </div>
+                <div className="w-14 h-14 bg-gradient-to-br from-primary/20 to-primary/5 rounded-xl flex items-center justify-center ring-2 ring-primary/20 shadow-lg shadow-primary/10">
+                  <CreditCard className="h-7 w-7 text-primary" />
+                </div>
               </div>
-              <div className="w-14 h-14 bg-gradient-to-br from-primary/20 to-primary/5 rounded-xl flex items-center justify-center ring-2 ring-primary/20 shadow-lg shadow-primary/10">
-                <CreditCard className="h-7 w-7 text-primary" />
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="bg-gradient-to-br from-muted/20 to-transparent border-dashed">
+            <CardContent className="pt-6">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground uppercase tracking-wider">Monthly Rent</p>
+                  <p className="text-2xl font-serif mt-1 text-muted-foreground">
+                    No property assigned
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Assign a property to set rent
+                  </p>
+                </div>
+                <div className="w-14 h-14 bg-muted/30 rounded-xl flex items-center justify-center ring-2 ring-muted/20">
+                  <CreditCard className="h-7 w-7 text-muted-foreground/50" />
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Quick Actions */}
@@ -154,11 +176,17 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
             <Button 
               variant="outline" 
               onClick={handleChargeRent}
-              disabled={chargeRent.isPending || !rentAmount}
+              disabled={chargeRent.isPending || !rentAmount || !hasPropertyAssigned}
+              title={!hasPropertyAssigned ? 'Assign a property first' : undefined}
             >
               <Plus className="mr-2 h-4 w-4" />
               {chargeRent.isPending ? 'Charging...' : 'Charge Monthly Rent'}
             </Button>
+            {!hasPropertyAssigned && (
+              <p className="text-sm text-muted-foreground w-full mt-1">
+                Assign a property to enable rent charging
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>
