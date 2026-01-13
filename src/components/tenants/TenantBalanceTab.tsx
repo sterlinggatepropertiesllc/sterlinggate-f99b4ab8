@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,9 +7,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { DollarSign, ArrowUp, ArrowDown, Clock, Plus, Minus, AlertTriangle, CreditCard } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { DollarSign, ArrowUp, ArrowDown, Clock, Plus, Minus, AlertTriangle, CreditCard, ChevronDown, Building2 } from 'lucide-react';
 import { useBalanceAdjustments, useApplyBalanceAdjustment } from '@/hooks/useBalanceAdjustments';
 import { useChargeRent } from '@/hooks/useRentCharges';
+import { useTenantProperties } from '@/hooks/useTenantProperties';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 
@@ -23,15 +25,23 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
   const [adjustmentType, setAdjustmentType] = useState<string>('');
   const [amount, setAmount] = useState<string>('');
   const [description, setDescription] = useState<string>('');
+  const [showRentBreakdown, setShowRentBreakdown] = useState(false);
 
   const { data: adjustments, isLoading: adjustmentsLoading } = useBalanceAdjustments(tenant.id);
+  const { data: tenantProperties } = useTenantProperties(tenant.id);
   const applyAdjustment = useApplyBalanceAdjustment();
   const chargeRent = useChargeRent();
 
   const currentBalance = tenant.current_balance ?? 0;
   const isOverdue = currentBalance > 0;
-  const rentAmount = tenant.rent_amount ?? 0;
-  const hasPropertyAssigned = tenant.property_id !== null && tenant.property_id !== undefined;
+  
+  // Calculate total monthly rent from all assigned properties
+  const totalMonthlyRent = useMemo(() => {
+    if (!tenantProperties || tenantProperties.length === 0) return 0;
+    return tenantProperties.reduce((sum, tp) => sum + (tp.rent_amount || 0), 0);
+  }, [tenantProperties]);
+  
+  const hasPropertiesAssigned = tenantProperties && tenantProperties.length > 0;
 
   // Calculate next rent due date (1st of next month)
   const today = new Date();
@@ -66,7 +76,7 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
   };
 
   const handleChargeRent = async () => {
-    if (!rentAmount || rentAmount <= 0) return;
+    if (!totalMonthlyRent || totalMonthlyRent <= 0) return;
     
     try {
       await chargeRent.mutateAsync({
@@ -123,25 +133,63 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
           </CardContent>
         </Card>
 
-        {hasPropertyAssigned ? (
+        {hasPropertiesAssigned ? (
           <Card className="bg-gradient-to-br from-primary/5 to-transparent border-primary/20">
-            <CardContent className="pt-6">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground uppercase tracking-wider">Monthly Rent</p>
-                  <p className="text-4xl font-serif mt-1 text-foreground">
-                    ${rentAmount.toLocaleString()}
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-2 flex items-center gap-1.5">
-                    <Clock className="h-3.5 w-3.5 text-amber-400" />
-                    Next due: {nextRentDueDate}
-                  </p>
-                </div>
-                <div className="w-14 h-14 bg-gradient-to-br from-primary/20 to-primary/5 rounded-xl flex items-center justify-center ring-2 ring-primary/20 shadow-lg shadow-primary/10">
-                  <CreditCard className="h-7 w-7 text-primary" />
-                </div>
-              </div>
-            </CardContent>
+            <Collapsible open={showRentBreakdown} onOpenChange={setShowRentBreakdown}>
+              <CardContent className="pt-6">
+                <CollapsibleTrigger asChild>
+                  <button className="w-full text-left cursor-pointer group">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-sm text-muted-foreground uppercase tracking-wider">Monthly Rent</p>
+                        <p className="text-4xl font-serif mt-1 text-foreground">
+                          ${totalMonthlyRent.toLocaleString()}
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-2 flex items-center gap-1.5">
+                          <Clock className="h-3.5 w-3.5 text-amber-400" />
+                          Next due: {nextRentDueDate}
+                        </p>
+                        <p className="text-xs text-primary mt-2 flex items-center gap-1 group-hover:underline">
+                          <ChevronDown className={`h-3 w-3 transition-transform ${showRentBreakdown ? 'rotate-180' : ''}`} />
+                          {tenantProperties.length} {tenantProperties.length === 1 ? 'property' : 'properties'} - Click to {showRentBreakdown ? 'hide' : 'view'} breakdown
+                        </p>
+                      </div>
+                      <div className="w-14 h-14 bg-gradient-to-br from-primary/20 to-primary/5 rounded-xl flex items-center justify-center ring-2 ring-primary/20 shadow-lg shadow-primary/10">
+                        <CreditCard className="h-7 w-7 text-primary" />
+                      </div>
+                    </div>
+                  </button>
+                </CollapsibleTrigger>
+                
+                <CollapsibleContent>
+                  <Separator className="my-4" />
+                  <div className="space-y-3">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Rent Breakdown by Property</p>
+                    {tenantProperties.map((tp) => (
+                      <div 
+                        key={tp.id} 
+                        className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border/50"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                            <Building2 className="h-4 w-4 text-primary" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-sm">{tp.property?.address}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {tp.property?.city}, {tp.property?.state}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="font-semibold text-foreground">
+                          ${(tp.rent_amount || 0).toLocaleString()}/mo
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </CardContent>
+            </Collapsible>
           </Card>
         ) : (
           <Card className="bg-gradient-to-br from-muted/20 to-transparent border-dashed">
@@ -176,13 +224,13 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
             <Button 
               variant="outline" 
               onClick={handleChargeRent}
-              disabled={chargeRent.isPending || !rentAmount || !hasPropertyAssigned}
-              title={!hasPropertyAssigned ? 'Assign a property first' : undefined}
+              disabled={chargeRent.isPending || !totalMonthlyRent || !hasPropertiesAssigned}
+              title={!hasPropertiesAssigned ? 'Assign a property first' : undefined}
             >
               <Plus className="mr-2 h-4 w-4" />
-              {chargeRent.isPending ? 'Charging...' : 'Charge Monthly Rent'}
+              {chargeRent.isPending ? 'Charging...' : `Charge Monthly Rent ($${totalMonthlyRent.toLocaleString()})`}
             </Button>
-            {!hasPropertyAssigned && (
+            {!hasPropertiesAssigned && (
               <p className="text-sm text-muted-foreground w-full mt-1">
                 Assign a property to enable rent charging
               </p>
