@@ -29,41 +29,25 @@ export default function Index() {
   const { data: properties, isLoading: propertiesLoading } = useAvailableProperties();
   const navigate = useNavigate();
 
+  // Auto-redirect property managers to dashboard
+  useEffect(() => {
+    if (!loading && user && role === 'property_manager') {
+      navigate('/dashboard');
+    }
+  }, [user, role, loading, navigate]);
 
-  if (loading) {
+  // Show loading state while checking auth or redirecting property managers
+  if (loading || (user && role === 'property_manager')) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center animate-fade-in">
           <div className="w-16 h-16 border border-primary/30 rounded-lg flex items-center justify-center mx-auto mb-6">
             <Building2 className="h-8 w-8 text-primary" />
           </div>
-          <p className="text-muted-foreground">Loading...</p>
+          <p className="text-muted-foreground">
+            {user && role === 'property_manager' ? 'Redirecting to dashboard...' : 'Loading...'}
+          </p>
         </div>
-      </div>
-    );
-  }
-
-  // Redirect based on role if logged in
-  if (user && role === 'property_manager') {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="p-10 text-center max-w-md w-full animate-scale-in silver-border bg-card">
-          <div className="w-16 h-16 border border-primary/30 rounded-lg flex items-center justify-center mx-auto mb-8">
-            <Building2 className="h-8 w-8 text-primary" />
-          </div>
-          <h2 className="text-3xl font-serif mb-3">Welcome back</h2>
-          <p className="text-muted-foreground mb-10">Access your property management dashboard</p>
-          <div className="space-y-4">
-            <Link to="/dashboard" className="block">
-              <Button size="lg" className="w-full h-14 btn-platinum">
-                Go to Dashboard <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-            </Link>
-            <Button variant="ghost" onClick={() => signOut()} className="w-full h-12 text-muted-foreground hover:text-foreground">
-              <LogOut className="mr-2 h-4 w-4" /> Sign Out
-            </Button>
-          </div>
-        </Card>
       </div>
     );
   }
