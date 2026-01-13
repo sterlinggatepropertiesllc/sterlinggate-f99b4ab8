@@ -295,7 +295,7 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
                         )}
                         {tp.lease_start_date && tp.lease_end_date && (
                           <span className="flex items-center gap-1.5 text-amber-400">
-                            <Calendar className="h-3.5 w-3.5" />
+                            <CalendarIcon className="h-3.5 w-3.5" />
                             <span className="text-muted-foreground">{new Date(tp.lease_start_date).toLocaleDateString()} — {new Date(tp.lease_end_date).toLocaleDateString()}</span>
                           </span>
                         )}
