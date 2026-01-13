@@ -28,6 +28,8 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
   const [rentAmount, setRentAmount] = useState<string>('');
   const [leaseStartDate, setLeaseStartDate] = useState<Date | undefined>();
   const [leaseEndDate, setLeaseEndDate] = useState<Date | undefined>();
+  const [startDateOpen, setStartDateOpen] = useState(false);
+  const [endDateOpen, setEndDateOpen] = useState(false);
 
   const queryClient = useQueryClient();
   const { data: tenantProperties, isLoading } = useTenantProperties(tenantId);
@@ -180,7 +182,7 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
               </div>
               <div>
                 <Label>Lease Start</Label>
-                <Popover>
+                <Popover open={startDateOpen} onOpenChange={setStartDateOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
@@ -197,7 +199,10 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
                     <Calendar
                       mode="single"
                       selected={leaseStartDate}
-                      onSelect={setLeaseStartDate}
+                      onSelect={(date) => {
+                        setLeaseStartDate(date);
+                        setStartDateOpen(false);
+                      }}
                       initialFocus
                     />
                   </PopoverContent>
@@ -205,7 +210,7 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
               </div>
               <div>
                 <Label>Lease End</Label>
-                <Popover>
+                <Popover open={endDateOpen} onOpenChange={setEndDateOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
@@ -222,7 +227,10 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
                     <Calendar
                       mode="single"
                       selected={leaseEndDate}
-                      onSelect={setLeaseEndDate}
+                      onSelect={(date) => {
+                        setLeaseEndDate(date);
+                        setEndDateOpen(false);
+                      }}
                       initialFocus
                       disabled={(date) => leaseStartDate ? date < leaseStartDate : false}
                     />

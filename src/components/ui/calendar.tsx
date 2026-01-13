@@ -76,7 +76,10 @@ function CustomCaption(props: CaptionProps) {
   );
 }
 
-function Calendar({ className, classNames, showOutsideDays = true, ...props }: CalendarProps) {
+const Calendar = React.forwardRef<
+  React.ElementRef<typeof DayPicker>,
+  CalendarProps
+>(({ className, classNames, showOutsideDays = true, ...props }, ref) => {
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
@@ -144,7 +147,7 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }: C
       {...props}
     />
   );
-}
+});
 Calendar.displayName = "Calendar";
 
 export { Calendar };
