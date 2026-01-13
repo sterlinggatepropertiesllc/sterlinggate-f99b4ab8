@@ -19,7 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Building2, MapPin, Layers, MoreVertical, Edit, Trash2, Eye, EyeOff, CheckCircle } from 'lucide-react';
+import { Building2, MapPin, Layers, MoreVertical, Edit, Trash2, Eye, EyeOff, CheckCircle, Camera } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
 
 type Property = Database['public']['Tables']['properties']['Row'];
@@ -57,7 +57,20 @@ export function PropertyCard({ property, onEdit, onDelete, onStatusChange }: Pro
               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
           ) : (
-            <Building2 className="h-12 w-12 text-muted-foreground/30" />
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-primary/10 flex flex-col items-center justify-center">
+              <div className="relative mb-3">
+                <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-pulse" />
+                <div className="relative bg-gradient-to-br from-muted-foreground/10 to-muted-foreground/5 p-4 rounded-full border border-border/50">
+                  <Camera className="h-8 w-8 text-muted-foreground/50" />
+                </div>
+              </div>
+              <p className="text-sm font-medium text-muted-foreground/70 tracking-wide">Photos Coming Soon</p>
+              <div className="flex gap-1 mt-2">
+                <div className="w-1 h-1 rounded-full bg-primary/40" />
+                <div className="w-1 h-1 rounded-full bg-primary/30" />
+                <div className="w-1 h-1 rounded-full bg-primary/20" />
+              </div>
+            </div>
           )}
           <Badge className={`absolute top-3 right-3 ${getStatusColor(property.status)}`}>
             {property.status}
