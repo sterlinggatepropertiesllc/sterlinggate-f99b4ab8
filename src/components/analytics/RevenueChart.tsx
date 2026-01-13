@@ -47,7 +47,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
         </div>
       </CardHeader>
       <CardContent className="relative z-10">
-        <div className="h-[350px]">
+        <div className="h-[220px]">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
               <defs>

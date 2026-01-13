@@ -1,6 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import { PieChart as PieChartIcon } from 'lucide-react';
+import { BarChart3 } from 'lucide-react';
 
 interface DistributionChartProps {
   title: string;
@@ -11,49 +10,26 @@ interface DistributionChartProps {
   }[];
 }
 
+// High-contrast color mapping for better visibility
+const getStatusColor = (name: string, originalColor: string): string => {
+  const colorMap: Record<string, string> = {
+    // Property statuses
+    'Occupied': '#10b981', // Emerald
+    'Available': '#f59e0b', // Amber
+    'Off Market': '#64748b', // Slate
+    // Lease statuses
+    'Active': '#10b981', // Emerald
+    'Completed': '#10b981', // Emerald
+    'Pending Tenant': '#f59e0b', // Amber
+    'Pending Manager': '#f59e0b', // Amber
+    'Draft': '#64748b', // Slate
+    'Expired': '#f43f5e', // Rose
+  };
+  
+  return colorMap[name] || originalColor;
+};
+
 export function DistributionChart({ title, data }: DistributionChartProps) {
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-popover/95 backdrop-blur-sm border border-border/50 rounded-xl shadow-xl p-3">
-          <div className="flex items-center gap-2 mb-1">
-            <div 
-              className="w-3 h-3 rounded-full" 
-              style={{ backgroundColor: payload[0].payload.color }}
-            />
-            <p className="text-sm font-medium text-foreground">{payload[0].name}</p>
-          </div>
-          <p className="text-2xl font-bold" style={{ color: payload[0].payload.color }}>
-            {payload[0].value}
-          </p>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  const renderCustomizedLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
-    if (percent < 0.05) return null;
-    
-    const RADIAN = Math.PI / 180;
-    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-    const x = cx + radius * Math.cos(-midAngle * RADIAN);
-    const y = cy + radius * Math.sin(-midAngle * RADIAN);
-
-    return (
-      <text 
-        x={x} 
-        y={y} 
-        fill="white" 
-        textAnchor="middle" 
-        dominantBaseline="central"
-        className="text-xs font-semibold drop-shadow-md"
-      >
-        {`${(percent * 100).toFixed(0)}%`}
-      </text>
-    );
-  };
-
   const total = data.reduce((sum, item) => sum + item.value, 0);
 
   if (data.length === 0 || total === 0) {
@@ -61,14 +37,14 @@ export function DistributionChart({ title, data }: DistributionChartProps) {
       <Card className="border-border/50 bg-gradient-to-br from-card to-muted/20">
         <CardHeader className="pb-2">
           <CardTitle className="text-lg font-serif flex items-center gap-2">
-            <PieChartIcon className="h-4 w-4 text-primary" />
+            <BarChart3 className="h-4 w-4 text-primary" />
             {title}
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-[220px] flex items-center justify-center text-muted-foreground">
+          <div className="h-[180px] flex items-center justify-center text-muted-foreground">
             <div className="text-center">
-              <PieChartIcon className="h-10 w-10 mx-auto mb-2 opacity-20" />
+              <BarChart3 className="h-10 w-10 mx-auto mb-2 opacity-20" />
               <p className="text-sm">No data available</p>
             </div>
           </div>
@@ -77,64 +53,68 @@ export function DistributionChart({ title, data }: DistributionChartProps) {
     );
   }
 
+  // Enhanced data with high-contrast colors
+  const enhancedData = data.map(item => ({
+    ...item,
+    color: getStatusColor(item.name, item.color),
+    percentage: total > 0 ? (item.value / total) * 100 : 0,
+  }));
+
   return (
     <Card className="group relative overflow-hidden border-primary/10 bg-gradient-to-br from-card via-card to-primary/5 hover:border-primary/20 transition-all duration-300">
       <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-      <CardHeader className="pb-2 relative z-10">
+      <CardHeader className="pb-3 relative z-10">
         <CardTitle className="text-lg font-serif flex items-center gap-2">
-          <PieChartIcon className="h-4 w-4 text-primary" />
+          <BarChart3 className="h-4 w-4 text-primary" />
           {title}
         </CardTitle>
       </CardHeader>
-      <CardContent className="relative z-10">
-        <div className="h-[180px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <defs>
-                {data.map((entry, index) => (
-                  <filter key={`shadow-${index}`} id={`shadow-${index}`}>
-                    <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor={entry.color} floodOpacity="0.3"/>
-                  </filter>
-                ))}
-              </defs>
-              <Pie
-                data={data}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={renderCustomizedLabel}
-                outerRadius={75}
-                innerRadius={40}
-                dataKey="value"
-                strokeWidth={3}
-                stroke="hsl(var(--background))"
-                animationDuration={1000}
-                animationEasing="ease-out"
-              >
-                {data.map((entry, index) => (
-                  <Cell 
-                    key={`cell-${index}`} 
-                    fill={entry.color}
-                    className="transition-all duration-300 hover:opacity-80"
-                    style={{ filter: `url(#shadow-${index})` }}
-                  />
-                ))}
-              </Pie>
-              <Tooltip content={<CustomTooltip />} />
-            </PieChart>
-          </ResponsiveContainer>
+      <CardContent className="relative z-10 space-y-4">
+        {/* Stacked horizontal bar */}
+        <div className="h-4 rounded-full overflow-hidden bg-muted/50 flex">
+          {enhancedData.map((item, index) => (
+            <div
+              key={index}
+              className="h-full transition-all duration-500 first:rounded-l-full last:rounded-r-full"
+              style={{ 
+                width: `${item.percentage}%`,
+                backgroundColor: item.color,
+              }}
+              title={`${item.name}: ${item.value} (${item.percentage.toFixed(0)}%)`}
+            />
+          ))}
         </div>
-        
-        {/* Custom Legend */}
-        <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-2">
-          {data.map((entry, index) => (
-            <div key={index} className="flex items-center gap-1.5 text-xs">
+
+        {/* Legend with progress bars */}
+        <div className="space-y-3">
+          {enhancedData.map((item, index) => (
+            <div key={index} className="flex items-center gap-3">
+              {/* Color dot */}
               <div 
-                className="w-2.5 h-2.5 rounded-full shadow-sm" 
-                style={{ backgroundColor: entry.color }}
+                className="w-3 h-3 rounded-full shrink-0 shadow-sm ring-2 ring-background"
+                style={{ backgroundColor: item.color }}
               />
-              <span className="text-muted-foreground">{entry.name}</span>
-              <span className="font-medium text-foreground">({entry.value})</span>
+              
+              {/* Name and progress bar */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-medium text-foreground truncate">
+                    {item.name}
+                  </span>
+                  <span className="text-sm text-muted-foreground ml-2 shrink-0">
+                    {item.value} <span className="text-xs">({item.percentage.toFixed(0)}%)</span>
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-muted/50 overflow-hidden">
+                  <div 
+                    className="h-full rounded-full transition-all duration-700 ease-out"
+                    style={{ 
+                      width: `${item.percentage}%`,
+                      backgroundColor: item.color,
+                    }}
+                  />
+                </div>
+              </div>
             </div>
           ))}
         </div>

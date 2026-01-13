@@ -154,8 +154,48 @@ export function AnalyticsDashboard() {
         <PropertyPerformanceChart data={analytics.revenueByProperty.slice(0, 8)} />
       </div>
 
-      {/* Distribution Charts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in" style={{ animationDelay: '700ms' }}>
+      {/* Quick Stats Summary Bar */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-fade-in" style={{ animationDelay: '700ms' }}>
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-br from-card to-primary/5 border border-primary/10">
+          <div className="p-2.5 rounded-lg bg-primary/10">
+            <Building2 className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold">{analytics.totalProperties}</p>
+            <p className="text-xs text-muted-foreground">Properties</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-br from-card to-teal-500/5 border border-teal-500/10">
+          <div className="p-2.5 rounded-lg bg-teal-500/10">
+            <Users className="h-5 w-5 text-teal-500" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold">{analytics.activeTenants}</p>
+            <p className="text-xs text-muted-foreground">Active Tenants</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-br from-card to-amber-500/5 border border-amber-500/10">
+          <div className="p-2.5 rounded-lg bg-amber-500/10">
+            <FileText className="h-5 w-5 text-amber-500" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold">{analytics.activeLeases}</p>
+            <p className="text-xs text-muted-foreground">Active Leases</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-br from-card to-emerald-500/5 border border-emerald-500/10">
+          <div className="p-2.5 rounded-lg bg-emerald-500/10">
+            <Home className="h-5 w-5 text-emerald-500" />
+          </div>
+          <div>
+            <p className="text-2xl font-bold">{analytics.availableProperties}</p>
+            <p className="text-xs text-muted-foreground">Available Units</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Distribution Charts - 2 columns */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in" style={{ animationDelay: '800ms' }}>
         <DistributionChart 
           title="Property Status" 
           data={analytics.propertyStatusDistribution} 
@@ -164,55 +204,6 @@ export function AnalyticsDashboard() {
           title="Lease Status" 
           data={analytics.leaseStatusDistribution} 
         />
-        
-        {/* Quick Stats Card - Premium Version */}
-        <Card className="group relative overflow-hidden border-primary/10 bg-gradient-to-br from-card via-card to-primary/5 hover:border-primary/20 transition-all duration-300">
-          <div className="absolute top-0 right-0 w-40 h-40 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-          <CardHeader>
-            <CardTitle className="text-lg font-serif flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              Quick Stats
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 relative z-10">
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/10">
-                  <Building2 className="h-4 w-4 text-primary" />
-                </div>
-                <span className="text-sm font-medium">Total Properties</span>
-              </div>
-              <span className="text-xl font-bold">{analytics.totalProperties}</span>
-            </div>
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-teal-500/10">
-                  <Users className="h-4 w-4 text-teal-500" />
-                </div>
-                <span className="text-sm font-medium">Active Tenants</span>
-              </div>
-              <span className="text-xl font-bold">{analytics.activeTenants}</span>
-            </div>
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-amber-500/10">
-                  <FileText className="h-4 w-4 text-amber-500" />
-                </div>
-                <span className="text-sm font-medium">Active Leases</span>
-              </div>
-              <span className="text-xl font-bold">{analytics.activeLeases}</span>
-            </div>
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-emerald-500/10">
-                  <Home className="h-4 w-4 text-emerald-500" />
-                </div>
-                <span className="text-sm font-medium">Available Units</span>
-              </div>
-              <span className="text-xl font-bold">{analytics.availableProperties}</span>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
