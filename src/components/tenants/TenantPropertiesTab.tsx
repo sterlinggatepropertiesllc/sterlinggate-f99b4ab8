@@ -73,6 +73,10 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
     }
 
     try {
+      // Ensure any open date pickers are closed before we mutate UI state
+      setStartDateOpen(false);
+      setEndDateOpen(false);
+
       await addProperty.mutateAsync({
         tenant_id: tenantId,
         property_id: selectedPropertyId,
@@ -240,7 +244,14 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
             </div>
 
             <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setIsAddingProperty(false)}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setStartDateOpen(false);
+                  setEndDateOpen(false);
+                  setIsAddingProperty(false);
+                }}
+              >
                 Cancel
               </Button>
               <Button onClick={handleAddProperty} disabled={addProperty.isPending || !selectedPropertyId}>
