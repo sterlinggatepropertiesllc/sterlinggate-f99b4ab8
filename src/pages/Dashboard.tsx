@@ -25,6 +25,7 @@ import { useUnreadCount } from '@/hooks/useMessages';
 import { usePropertyImages } from '@/hooks/usePropertyImages';
 import { useProfile } from '@/hooks/useProfiles';
 import { useUnreadPaymentNotifications } from '@/hooks/useUnreadPaymentNotifications';
+import { useUnreadInquiriesCount } from '@/hooks/useInquiries';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -48,6 +49,7 @@ import { EditPropertyDialog } from '@/components/properties/EditPropertyDialog';
 import { CreateLeaseWizard } from '@/components/leases/CreateLeaseWizard';
 import { MessagingCenter } from '@/components/messages/MessagingCenter';
 import { AuditCertificate } from '@/components/leases/AuditCertificate';
+import { InquiriesTab } from '@/components/inquiries/InquiriesTab';
 import type { Database } from '@/integrations/supabase/types';
 import { 
   LayoutDashboard, 
@@ -72,11 +74,12 @@ import {
   Download,
   PenTool,
   Shield,
-  Menu
+  Menu,
+  HelpCircle
 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
-type DashboardTab = 'overview' | 'properties' | 'applications' | 'tenants' | 'leases' | 'messages' | 'analytics' | 'audit';
+type DashboardTab = 'overview' | 'properties' | 'applications' | 'tenants' | 'leases' | 'messages' | 'inquiries' | 'analytics' | 'audit';
 type Property = Database['public']['Tables']['properties']['Row'];
 
 export default function Dashboard() {
@@ -108,6 +111,7 @@ export default function Dashboard() {
   const { data: unreadCount } = useUnreadCount(user?.id);
   const { data: managerProfile } = useProfile(user?.id);
   const { unreadPaymentCount, markAllPaymentNotificationsRead } = useUnreadPaymentNotifications();
+  const { data: unreadInquiriesCount } = useUnreadInquiriesCount(user?.id);
 
   const createProperty = useCreateProperty();
   const updateProperty = useUpdateProperty();
@@ -130,7 +134,7 @@ export default function Dashboard() {
   // Handle tab navigation from URL query params (for notification clicks)
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['overview', 'properties', 'applications', 'tenants', 'leases', 'messages', 'analytics', 'audit'].includes(tabParam)) {
+    if (tabParam && ['overview', 'properties', 'applications', 'tenants', 'leases', 'messages', 'inquiries', 'analytics', 'audit'].includes(tabParam)) {
       setActiveTab(tabParam as DashboardTab);
       // Clear the query param after setting the tab
       setSearchParams({}, { replace: true });
@@ -361,6 +365,7 @@ export default function Dashboard() {
     { id: 'tenants', label: 'Tenants', icon: Users },
     { id: 'leases', label: 'Leases', icon: FileText },
     { id: 'messages', label: 'Messages', icon: MessageSquare, badge: unreadCount },
+    { id: 'inquiries', label: 'Inquiries', icon: HelpCircle, badge: unreadInquiriesCount },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'audit', label: 'Payments', icon: Receipt, badge: unreadPaymentCount },
   ];
@@ -1057,6 +1062,9 @@ export default function Dashboard() {
 
           {/* Analytics Tab */}
           {activeTab === 'analytics' && <AnalyticsDashboard />}
+
+          {/* Inquiries Tab */}
+          {activeTab === 'inquiries' && <InquiriesTab managerId={user.id} />}
 
           {/* Audit Tab */}
           {activeTab === 'audit' && <AuditDashboard />}
