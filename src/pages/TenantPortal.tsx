@@ -104,6 +104,53 @@ export default function TenantPortal() {
   // Check if tenant has a property assigned
   const hasPropertyAssigned = tenantRecord?.property_id !== null && tenantRecord?.property_id !== undefined;
 
+  // Fetch assigned property details with manager info
+  type PropertyWithManager = {
+    address: string;
+    amenities: string[] | null;
+    bathrooms: number | null;
+    bedrooms: number | null;
+    city: string;
+    created_at: string;
+    description: string | null;
+    id: string;
+    manager_id: string;
+    photos: string[] | null;
+    property_type: string | null;
+    rent_amount: number;
+    square_feet: number | null;
+    state: string;
+    status: string;
+    updated_at: string;
+    zip_code: string;
+    manager?: { full_name: string | null; email: string; phone: string | null } | null;
+  };
+
+  const { data: assignedProperty } = useQuery<PropertyWithManager | null>({
+    queryKey: ['tenant-property', tenantRecord?.property_id],
+    queryFn: async () => {
+      if (!tenantRecord?.property_id) return null;
+      const { data, error } = await supabase
+        .from('properties')
+        .select('*')
+        .eq('id', tenantRecord.property_id)
+        .single();
+      if (error) throw error;
+      
+      // Fetch manager profile separately
+      if (data?.manager_id) {
+        const { data: managerData } = await supabase
+          .from('profiles')
+          .select('full_name, email, phone')
+          .eq('id', data.manager_id)
+          .single();
+        return { ...data, manager: managerData } as PropertyWithManager;
+      }
+      return data as PropertyWithManager;
+    },
+    enabled: !!tenantRecord?.property_id,
+  });
+
   // Fetch tenant's payment history using tenant record ID (not user ID)
   const { data: payments, isLoading: paymentsLoading } = usePayments(undefined, tenantRecord?.id);
 
@@ -444,110 +491,193 @@ export default function TenantPortal() {
                       </p>
                     </div>
 
-                {/* Summary Cards */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-                  <Card className={`p-4 md:p-5 hover:shadow-md transition-shadow ${isOverdue ? 'border-destructive/50 bg-destructive/5' : ''}`}>
-                    <div className="flex items-start justify-between mb-auto">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs md:text-sm text-muted-foreground">Current Balance</p>
-                        <p className={`text-xl md:text-2xl font-serif mt-1 truncate ${isOverdue ? 'text-destructive' : ''}`}>
-                          ${Math.abs(currentBalance).toLocaleString()}
-                        </p>
-                        {currentBalance < 0 && (
-                          <Badge variant="secondary" className="mt-1 text-xs bg-primary/10 text-primary">
-                            Credit
-                          </Badge>
-                        )}
-                        {currentBalance > 0 && !isOverdue && (
-                          <p className="text-xs text-muted-foreground mt-1">Due this cycle</p>
-                        )}
-                        {isOverdue && (
-                          <p className="text-xs text-destructive mt-1">Overdue</p>
-                        )}
-                      </div>
-                      <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${isOverdue ? 'bg-destructive/10' : 'bg-primary/10'}`}>
-                        <DollarSign className={`h-5 w-5 md:h-6 md:w-6 ${isOverdue ? 'text-destructive' : 'text-primary'}`} />
-                      </div>
-                    </div>
-                    {currentBalance > 0 && tenantRecord?.id && (
-                      <Button
-                        variant={isOverdue ? "destructive" : "default"}
-                        size="sm"
-                        className="w-full mt-3 card-action-btn"
-                        onClick={() => setShowPaymentDialog(true)}
-                      >
-                        Make Payment
-                        <ArrowRight className="h-4 w-4" />
-                      </Button>
+                    {/* My Property Card */}
+                    {assignedProperty && (
+                      <Card className="overflow-hidden bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+                        <div className="p-5 md:p-6">
+                          <div className="flex items-center gap-2 mb-4">
+                            <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center">
+                              <Home className="h-4 w-4 text-primary" />
+                            </div>
+                            <h3 className="font-serif text-lg text-primary">Your Property</h3>
+                          </div>
+                          
+                          <div className="flex flex-col md:flex-row gap-4 md:gap-6">
+                            {/* Property Image */}
+                            <div className="w-full md:w-48 h-32 md:h-36 bg-muted rounded-xl overflow-hidden flex-shrink-0">
+                              {assignedProperty.photos && assignedProperty.photos.length > 0 ? (
+                                <img 
+                                  src={assignedProperty.photos[0]} 
+                                  alt={assignedProperty.address}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-muted">
+                                  <Building2 className="h-12 w-12 text-muted-foreground/30" />
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Property Details */}
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-xl md:text-2xl font-serif truncate">{assignedProperty.address}</h4>
+                              <p className="text-muted-foreground mb-3">
+                                {assignedProperty.city}, {assignedProperty.state} {assignedProperty.zip_code}
+                              </p>
+                              
+                              {/* Property Specs */}
+                              <div className="flex flex-wrap gap-2 mb-4">
+                                {assignedProperty.bedrooms && (
+                                  <Badge variant="secondary" className="bg-background/80">
+                                    {assignedProperty.bedrooms} {assignedProperty.bedrooms === 1 ? 'Bed' : 'Beds'}
+                                  </Badge>
+                                )}
+                                {assignedProperty.bathrooms && (
+                                  <Badge variant="secondary" className="bg-background/80">
+                                    {assignedProperty.bathrooms} {assignedProperty.bathrooms === 1 ? 'Bath' : 'Baths'}
+                                  </Badge>
+                                )}
+                                {assignedProperty.square_feet && (
+                                  <Badge variant="secondary" className="bg-background/80">
+                                    {assignedProperty.square_feet.toLocaleString()} sqft
+                                  </Badge>
+                                )}
+                                <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
+                                  ${Number(tenantRecord?.rent_amount || assignedProperty.rent_amount).toLocaleString()}/mo
+                                </Badge>
+                              </div>
+                              
+                              {/* Property Manager */}
+                              {assignedProperty.manager && (
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 p-3 bg-background/60 rounded-lg">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 bg-muted rounded-full flex items-center justify-center flex-shrink-0">
+                                      <User className="h-4 w-4 text-muted-foreground" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-sm font-medium">Property Manager</p>
+                                      <p className="text-sm text-muted-foreground truncate">{assignedProperty.manager.full_name || 'Manager'}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex-1" />
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="w-full sm:w-auto"
+                                    onClick={() => setActiveTab('messages')}
+                                  >
+                                    <MessageSquare className="h-4 w-4 mr-2" />
+                                    Message
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
                     )}
-                  </Card>
 
-                  <Card 
-                    className="p-4 md:p-5 hover:shadow-md transition-shadow cursor-pointer"
-                    onClick={() => setActiveTab('leases')}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs md:text-sm text-muted-foreground">Next Rent Due</p>
-                        <p className="text-xl md:text-2xl font-serif mt-1 truncate">
-                          ${nextRent.toLocaleString()}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{nextRentDueDate}</p>
-                      </div>
-                      <div className="w-10 h-10 md:w-11 md:h-11 bg-accent/50 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <CalendarDays className="h-5 w-5 md:h-6 md:w-6 text-foreground/70" />
-                      </div>
-                    </div>
-                  </Card>
-
-                  <Card 
-                    className="p-4 md:p-5 hover:shadow-md transition-shadow cursor-pointer"
-                    onClick={() => setActiveTab('leases')}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs md:text-sm text-muted-foreground">Pending Actions</p>
-                        <p className="text-xl md:text-2xl font-serif mt-1">
-                          {pendingLeases.length}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {pendingLeases.length === 1 ? 'lease to sign' : 'leases to sign'}
-                        </p>
-                      </div>
-                      <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                        pendingLeases.length > 0 ? 'bg-warning/10' : 'bg-success/10'
-                      }`}>
-                        {pendingLeases.length > 0 ? (
-                          <AlertCircle className="h-5 w-5 md:h-6 md:w-6 text-warning" />
-                        ) : (
-                          <CheckCircle2 className="h-5 w-5 md:h-6 md:w-6 text-success" />
+                    {/* Summary Cards */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+                      <Card className={`p-4 md:p-5 hover:shadow-md transition-shadow ${isOverdue ? 'border-destructive/50 bg-destructive/5' : ''}`}>
+                        <div className="flex items-start justify-between mb-auto">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs md:text-sm text-muted-foreground">Current Balance</p>
+                            <p className={`text-xl md:text-2xl font-serif mt-1 truncate ${isOverdue ? 'text-destructive' : ''}`}>
+                              ${Math.abs(currentBalance).toLocaleString()}
+                            </p>
+                            {currentBalance < 0 && (
+                              <Badge variant="secondary" className="mt-1 text-xs bg-primary/10 text-primary">
+                                Credit
+                              </Badge>
+                            )}
+                            {currentBalance > 0 && !isOverdue && (
+                              <p className="text-xs text-muted-foreground mt-1">Due this cycle</p>
+                            )}
+                            {isOverdue && (
+                              <p className="text-xs text-destructive mt-1">Overdue</p>
+                            )}
+                          </div>
+                          <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${isOverdue ? 'bg-destructive/10' : 'bg-primary/10'}`}>
+                            <DollarSign className={`h-5 w-5 md:h-6 md:w-6 ${isOverdue ? 'text-destructive' : 'text-primary'}`} />
+                          </div>
+                        </div>
+                        {currentBalance > 0 && tenantRecord?.id && (
+                          <Button
+                            variant={isOverdue ? "destructive" : "default"}
+                            size="sm"
+                            className="w-full mt-3 card-action-btn"
+                            onClick={() => setShowPaymentDialog(true)}
+                          >
+                            Make Payment
+                            <ArrowRight className="h-4 w-4" />
+                          </Button>
                         )}
-                      </div>
-                    </div>
-                  </Card>
+                      </Card>
 
-                  <Card 
-                    className="p-4 md:p-5 hover:shadow-md transition-shadow cursor-pointer"
-                    onClick={() => setActiveTab('messages')}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs md:text-sm text-muted-foreground">Messages</p>
-                        <p className="text-xl md:text-2xl font-serif mt-1">
-                          {unreadCount || 0}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-0.5">unread</p>
-                      </div>
-                      <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                        (unreadCount || 0) > 0 ? 'bg-primary/10' : 'bg-muted'
-                      }`}>
-                        <MessageSquare className={`h-5 w-5 md:h-6 md:w-6 ${
-                          (unreadCount || 0) > 0 ? 'text-primary' : 'text-muted-foreground'
-                        }`} />
-                      </div>
+                      <Card className="p-4 md:p-5 hover:shadow-md transition-shadow">
+                        <div className="flex items-start justify-between">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs md:text-sm text-muted-foreground">Monthly Rent</p>
+                            <p className="text-xl md:text-2xl font-serif mt-1 truncate">
+                              ${Number(tenantRecord?.rent_amount || 0).toLocaleString()}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Due 1st of month</p>
+                          </div>
+                          <div className="w-10 h-10 md:w-11 md:h-11 bg-accent/50 rounded-xl flex items-center justify-center flex-shrink-0">
+                            <CalendarDays className="h-5 w-5 md:h-6 md:w-6 text-foreground/70" />
+                          </div>
+                        </div>
+                      </Card>
+
+                      <Card 
+                        className="p-4 md:p-5 hover:shadow-md transition-shadow cursor-pointer"
+                        onClick={() => setActiveTab('leases')}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs md:text-sm text-muted-foreground">Pending Actions</p>
+                            <p className="text-xl md:text-2xl font-serif mt-1">
+                              {pendingLeases.length}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {pendingLeases.length === 1 ? 'lease to sign' : 'leases to sign'}
+                            </p>
+                          </div>
+                          <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                            pendingLeases.length > 0 ? 'bg-warning/10' : 'bg-success/10'
+                          }`}>
+                            {pendingLeases.length > 0 ? (
+                              <AlertCircle className="h-5 w-5 md:h-6 md:w-6 text-warning" />
+                            ) : (
+                              <CheckCircle2 className="h-5 w-5 md:h-6 md:w-6 text-success" />
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+
+                      <Card 
+                        className="p-4 md:p-5 hover:shadow-md transition-shadow cursor-pointer"
+                        onClick={() => setActiveTab('messages')}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs md:text-sm text-muted-foreground">Messages</p>
+                            <p className="text-xl md:text-2xl font-serif mt-1">
+                              {unreadCount || 0}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">unread</p>
+                          </div>
+                          <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                            (unreadCount || 0) > 0 ? 'bg-primary/10' : 'bg-muted'
+                          }`}>
+                            <MessageSquare className={`h-5 w-5 md:h-6 md:w-6 ${
+                              (unreadCount || 0) > 0 ? 'text-primary' : 'text-muted-foreground'
+                            }`} />
+                          </div>
+                        </div>
+                      </Card>
                     </div>
-                  </Card>
-                </div>
 
                 {/* Action Required Section */}
                 {pendingLeases.length > 0 && (
