@@ -7,10 +7,10 @@ import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
-import { useTenantProperties, useAddTenantProperty, useUpdateTenantProperty, useRemoveTenantProperty, TenantProperty } from '@/hooks/useTenantProperties';
+import { useTenantProperties, useAddTenantProperty, useRemoveTenantProperty, TenantProperty } from '@/hooks/useTenantProperties';
 import { cn } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
-import { MapPin, DollarSign, CalendarIcon, Plus, Trash2, Star, Loader2, Edit2, Check, X as XIcon } from 'lucide-react';
+import { MapPin, DollarSign, CalendarIcon, Plus, Trash2, Loader2, Check, X as XIcon } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
 
 type Property = Database['public']['Tables']['properties']['Row'];
@@ -23,11 +23,9 @@ interface TenantPropertiesSectionProps {
 export function TenantPropertiesSection({ tenantId, properties }: TenantPropertiesSectionProps) {
   const { data: tenantProperties, isLoading } = useTenantProperties(tenantId);
   const addProperty = useAddTenantProperty();
-  const updateProperty = useUpdateTenantProperty();
   const removeProperty = useRemoveTenantProperty();
 
   const [isAdding, setIsAdding] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [newAssignment, setNewAssignment] = useState({
     property_id: '',
     rent_amount: '',
@@ -48,7 +46,7 @@ export function TenantPropertiesSection({ tenantId, properties }: TenantProperti
       rent_amount: newAssignment.rent_amount ? parseFloat(newAssignment.rent_amount) : null,
       lease_start_date: newAssignment.lease_start_date,
       lease_end_date: newAssignment.lease_end_date,
-      is_primary: tenantProperties?.length === 0, // First property is primary
+      is_primary: false,
     });
 
     setNewAssignment({
@@ -58,14 +56,6 @@ export function TenantPropertiesSection({ tenantId, properties }: TenantProperti
       lease_end_date: null,
     });
     setIsAdding(false);
-  };
-
-  const handleSetPrimary = async (tp: TenantProperty) => {
-    await updateProperty.mutateAsync({
-      id: tp.id,
-      tenant_id: tp.tenant_id,
-      is_primary: true,
-    });
   };
 
   const handleRemove = async (tp: TenantProperty) => {
@@ -250,12 +240,6 @@ export function TenantPropertiesSection({ tenantId, properties }: TenantProperti
                     <span className="font-medium truncate">
                       {tp.property?.address}
                     </span>
-                    {tp.is_primary && (
-                      <Badge variant="secondary" className="shrink-0">
-                        <Star className="h-3 w-3 mr-1 fill-current" />
-                        Primary
-                      </Badge>
-                    )}
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {tp.property?.city}, {tp.property?.state}
@@ -280,17 +264,6 @@ export function TenantPropertiesSection({ tenantId, properties }: TenantProperti
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
-                  {!tp.is_primary && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleSetPrimary(tp)}
-                      disabled={updateProperty.isPending}
-                      title="Set as primary"
-                    >
-                      <Star className="h-4 w-4" />
-                    </Button>
-                  )}
                   <Button
                     variant="ghost"
                     size="sm"

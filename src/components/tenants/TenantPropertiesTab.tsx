@@ -10,8 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Plus, Trash2, MapPin, DollarSign, Calendar as CalendarIcon, Star, Building2 } from 'lucide-react';
-import { useTenantProperties, useAddTenantProperty, useRemoveTenantProperty, useSetPrimaryProperty } from '@/hooks/useTenantProperties';
+import { Plus, Trash2, DollarSign, Calendar as CalendarIcon, Building2 } from 'lucide-react';
+import { useTenantProperties, useAddTenantProperty, useRemoveTenantProperty } from '@/hooks/useTenantProperties';
 import { useManagerProperties } from '@/hooks/useProperties';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -36,7 +36,7 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
   const { data: allProperties } = useManagerProperties(managerId);
   const addProperty = useAddTenantProperty();
   const removeProperty = useRemoveTenantProperty(tenantId);
-  const setPrimary = useSetPrimaryProperty();
+  
 
   // Realtime subscription for tenant property changes
   useEffect(() => {
@@ -83,7 +83,7 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
         rent_amount: rentAmount ? parseFloat(rentAmount) : null,
         lease_start_date: leaseStartDate ? format(leaseStartDate, 'yyyy-MM-dd') : null,
         lease_end_date: leaseEndDate ? format(leaseEndDate, 'yyyy-MM-dd') : null,
-        is_primary: tenantProperties?.length === 0, // First property is primary
+        is_primary: false,
       });
 
       // Reset form
@@ -105,13 +105,6 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
     }
   };
 
-  const handleSetPrimary = async (tenantPropertyId: string) => {
-    try {
-      await setPrimary.mutateAsync({ tenantId, tenantPropertyId });
-    } catch (error) {
-      // Error handled by hook
-    }
-  };
 
   if (isLoading) {
     return (
@@ -266,22 +259,16 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
       {tenantProperties && tenantProperties.length > 0 ? (
         <div className="space-y-4">
           {tenantProperties.map((tp: any) => (
-            <Card key={tp.id} className={`transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 ${tp.is_primary ? 'border-primary/50 bg-gradient-to-r from-primary/5 to-transparent' : 'hover:border-primary/30'}`}>
+            <Card key={tp.id} className="transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/30">
               <CardContent className="py-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-start gap-4">
-                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ring-1 ${tp.is_primary ? 'bg-gradient-to-br from-primary/20 to-primary/5 ring-primary/20' : 'bg-gradient-to-br from-muted/80 to-muted/30 ring-border'}`}>
-                      <Building2 className={`h-6 w-6 ${tp.is_primary ? 'text-primary' : 'text-muted-foreground'}`} />
+                    <div className="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ring-1 bg-gradient-to-br from-muted/80 to-muted/30 ring-border">
+                      <Building2 className="h-6 w-6 text-muted-foreground" />
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <h3 className="font-medium text-foreground">{tp.property?.address}</h3>
-                        {tp.is_primary && (
-                          <Badge variant="secondary" className="bg-primary/10 text-primary border border-primary/20 shadow-sm shadow-primary/10">
-                            <Star className="h-3 w-3 mr-1" />
-                            Primary
-                          </Badge>
-                        )}
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {tp.property?.city}, {tp.property?.state}
@@ -304,17 +291,6 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
                   </div>
 
                   <div className="flex items-center gap-2 ml-16 md:ml-0">
-                    {!tp.is_primary && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleSetPrimary(tp.id)}
-                        disabled={setPrimary.isPending}
-                      >
-                        <Star className="h-4 w-4 mr-1" />
-                        Set Primary
-                      </Button>
-                    )}
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">
