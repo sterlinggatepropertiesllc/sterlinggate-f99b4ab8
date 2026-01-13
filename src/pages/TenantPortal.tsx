@@ -774,9 +774,9 @@ export default function TenantPortal() {
                       </Card>
                     ))}
                   </div>
-                ) : leases && leases.length > 0 ? (
+                ) : leases && leases.filter((l: any) => l.status !== 'pending_manager_signature').length > 0 ? (
                   <div className="space-y-6">
-                    {leases.map((lease: any) => (
+                    {leases.filter((lease: any) => lease.status !== 'pending_manager_signature').map((lease: any) => (
                       <Card key={lease.id} className="overflow-hidden">
                         {/* Header with Property & Status */}
                         <div className="p-6 pb-4">
