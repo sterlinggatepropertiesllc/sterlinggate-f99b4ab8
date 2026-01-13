@@ -49,6 +49,7 @@ import { ImageUploader } from '@/components/properties/ImageUploader';
 import { PropertyCard } from '@/components/properties/PropertyCard';
 import { EditPropertyDialog } from '@/components/properties/EditPropertyDialog';
 import { CreateLeaseWizard } from '@/components/leases/CreateLeaseWizard';
+import { EditLeaseDialog } from '@/components/leases/EditLeaseDialog';
 import { MessagingCenter } from '@/components/messages/MessagingCenter';
 import { AuditCertificate } from '@/components/leases/AuditCertificate';
 import { InquiriesTab } from '@/components/inquiries/InquiriesTab';
@@ -99,6 +100,8 @@ export default function Dashboard() {
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedLeaseForCert, setSelectedLeaseForCert] = useState<any>(null);
+  const [selectedLeaseForEdit, setSelectedLeaseForEdit] = useState<any>(null);
+  const [isEditLeaseOpen, setIsEditLeaseOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<any>(null);
   const [isApplicationDetailsOpen, setIsApplicationDetailsOpen] = useState(false);
@@ -1110,6 +1113,19 @@ export default function Dashboard() {
                                 </>
                               )}
 
+                              {/* Edit Lease Button */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedLeaseForEdit(lease);
+                                  setIsEditLeaseOpen(true);
+                                }}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+
                               {/* Delete Lease Button with Confirmation */}
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
@@ -1332,6 +1348,13 @@ export default function Dashboard() {
         onOpenChange={setIsApplicationDetailsOpen}
         onApprove={handleApproveApplication}
         onReject={handleRejectApplication}
+      />
+
+      {/* Edit Lease Dialog */}
+      <EditLeaseDialog
+        open={isEditLeaseOpen}
+        onOpenChange={setIsEditLeaseOpen}
+        lease={selectedLeaseForEdit}
       />
     </div>
   );
