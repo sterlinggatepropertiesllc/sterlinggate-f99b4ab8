@@ -191,6 +191,16 @@ export default function Dashboard() {
     };
   }, [user?.id, queryClient]);
 
+  // Sync selectedTenant with fresh data after tenants refetch
+  useEffect(() => {
+    if (selectedTenant && tenants && Array.isArray(tenants)) {
+      const freshTenant = tenants.find((t: any) => t.id === selectedTenant.id);
+      if (freshTenant && JSON.stringify(freshTenant) !== JSON.stringify(selectedTenant)) {
+        setSelectedTenant(freshTenant);
+      }
+    }
+  }, [tenants, selectedTenant?.id]);
+
   // Realtime subscription for leases
   useEffect(() => {
     if (!user?.id) return;
