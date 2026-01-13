@@ -11,12 +11,14 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ImageGallery } from '@/components/properties/ImageGallery';
 import { ApplicationForm, ApplicationFormData } from '@/components/applications/ApplicationForm';
+import { InquiryFormDialog } from '@/components/inquiries/InquiryFormDialog';
 import { 
   Building2, 
   MapPin, 
   ArrowLeft, 
   Layers,
   ArrowRight,
+  MessageSquare,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import logo from '@/assets/logo.png';
@@ -32,6 +34,8 @@ export default function Properties() {
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [isApplyDialogOpen, setIsApplyDialogOpen] = useState(false);
   const [applyingProperty, setApplyingProperty] = useState<Property | null>(null);
+  const [isInquiryDialogOpen, setIsInquiryDialogOpen] = useState(false);
+  const [inquiryProperty, setInquiryProperty] = useState<Property | null>(null);
   
   // Application flow hooks
   const { data: applicationFee, isLoading: feeLoading } = useApplicationFee();
@@ -357,8 +361,8 @@ export default function Properties() {
                   </div>
                 )}
                 
-                {/* Apply Button */}
-                <div className="pt-4 border-t border-border">
+                {/* Action Buttons */}
+                <div className="pt-4 border-t border-border space-y-3">
                   <Button 
                     size="lg" 
                     className="w-full h-14 btn-platinum"
@@ -366,8 +370,20 @@ export default function Properties() {
                   >
                     Apply for this Property <ArrowRight className="ml-2 h-5 w-5" />
                   </Button>
+                  <Button 
+                    size="lg" 
+                    variant="outline"
+                    className="w-full h-12 btn-outline-silver"
+                    onClick={() => {
+                      setInquiryProperty(selectedProperty);
+                      setIsInquiryDialogOpen(true);
+                    }}
+                  >
+                    <MessageSquare className="mr-2 h-5 w-5" />
+                    Send Inquiry
+                  </Button>
                   {!user && (
-                    <p className="text-center text-sm text-muted-foreground mt-3">
+                    <p className="text-center text-sm text-muted-foreground">
                       You'll need to sign in or create an account to apply
                     </p>
                   )}
@@ -402,6 +418,17 @@ export default function Properties() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Inquiry Form Dialog */}
+      {inquiryProperty && (
+        <InquiryFormDialog
+          open={isInquiryDialogOpen}
+          onOpenChange={setIsInquiryDialogOpen}
+          propertyId={inquiryProperty.id}
+          propertyAddress={`${inquiryProperty.address}, ${inquiryProperty.city}`}
+          managerId={inquiryProperty.manager_id}
+        />
+      )}
     </div>
   );
 }

@@ -207,6 +207,56 @@ export type Database = {
           },
         ]
       }
+      inquiries: {
+        Row: {
+          created_at: string | null
+          email: string
+          id: string
+          manager_id: string
+          manager_notes: string | null
+          message: string
+          name: string
+          phone: string | null
+          property_id: string
+          responded_at: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          id?: string
+          manager_id: string
+          manager_notes?: string | null
+          message: string
+          name: string
+          phone?: string | null
+          property_id: string
+          responded_at?: string | null
+          status?: string
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          id?: string
+          manager_id?: string
+          manager_notes?: string | null
+          message?: string
+          name?: string
+          phone?: string | null
+          property_id?: string
+          responded_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inquiries_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leases: {
         Row: {
           additional_clauses: string | null
@@ -937,6 +987,7 @@ export type Database = {
         | "maintenance_request"
         | "lease_signed"
         | "message_received"
+        | "inquiry_received"
       property_status: "available" | "occupied" | "off_market"
     }
     CompositeTypes: {
@@ -1082,6 +1133,7 @@ export const Constants = {
         "maintenance_request",
         "lease_signed",
         "message_received",
+        "inquiry_received",
       ],
       property_status: ["available", "occupied", "off_market"],
     },
