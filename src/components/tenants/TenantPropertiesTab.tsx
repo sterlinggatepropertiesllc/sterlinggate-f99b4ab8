@@ -1,17 +1,21 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Plus, Trash2, MapPin, DollarSign, Calendar, Star, Building2 } from 'lucide-react';
+import { Plus, Trash2, MapPin, DollarSign, Calendar as CalendarIcon, Star, Building2 } from 'lucide-react';
 import { useTenantProperties, useAddTenantProperty, useRemoveTenantProperty, useSetPrimaryProperty } from '@/hooks/useTenantProperties';
 import { useManagerProperties } from '@/hooks/useProperties';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
 
 interface TenantPropertiesTabProps {
   tenantId: string;
@@ -22,8 +26,8 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
   const [isAddingProperty, setIsAddingProperty] = useState(false);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
   const [rentAmount, setRentAmount] = useState<string>('');
-  const [leaseStartDate, setLeaseStartDate] = useState<string>('');
-  const [leaseEndDate, setLeaseEndDate] = useState<string>('');
+  const [leaseStartDate, setLeaseStartDate] = useState<Date | undefined>();
+  const [leaseEndDate, setLeaseEndDate] = useState<Date | undefined>();
 
   const queryClient = useQueryClient();
   const { data: tenantProperties, isLoading } = useTenantProperties(tenantId);
@@ -71,16 +75,16 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
         tenant_id: tenantId,
         property_id: selectedPropertyId,
         rent_amount: rentAmount ? parseFloat(rentAmount) : null,
-        lease_start_date: leaseStartDate || null,
-        lease_end_date: leaseEndDate || null,
+        lease_start_date: leaseStartDate ? format(leaseStartDate, 'yyyy-MM-dd') : null,
+        lease_end_date: leaseEndDate ? format(leaseEndDate, 'yyyy-MM-dd') : null,
         is_primary: tenantProperties?.length === 0, // First property is primary
       });
 
       // Reset form
       setSelectedPropertyId('');
       setRentAmount('');
-      setLeaseStartDate('');
-      setLeaseEndDate('');
+      setLeaseStartDate(undefined);
+      setLeaseEndDate(undefined);
       setIsAddingProperty(false);
     } catch (error) {
       // Error handled by hook
@@ -176,19 +180,54 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
               </div>
               <div>
                 <Label>Lease Start</Label>
-                <Input
-                  type="date"
-                  value={leaseStartDate}
-                  onChange={(e) => setLeaseStartDate(e.target.value)}
-                />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal h-10",
+                        !leaseStartDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {leaseStartDate ? format(leaseStartDate, "PPP") : <span>Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={leaseStartDate}
+                      onSelect={setLeaseStartDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
               <div>
                 <Label>Lease End</Label>
-                <Input
-                  type="date"
-                  value={leaseEndDate}
-                  onChange={(e) => setLeaseEndDate(e.target.value)}
-                />
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal h-10",
+                        !leaseEndDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {leaseEndDate ? format(leaseEndDate, "PPP") : <span>Pick a date</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={leaseEndDate}
+                      onSelect={setLeaseEndDate}
+                      initialFocus
+                      disabled={(date) => leaseStartDate ? date < leaseStartDate : false}
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
 
