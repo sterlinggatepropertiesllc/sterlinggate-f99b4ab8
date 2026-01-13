@@ -75,15 +75,15 @@ export function TenantHistoryTab({ tenantId }: TenantHistoryTabProps) {
               {rentCharges.map((charge: any) => (
                 <div 
                   key={charge.id} 
-                  className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-lg border border-border gap-3"
+                  className="flex flex-col md:flex-row md:items-center justify-between p-4 rounded-lg border border-primary/20 bg-gradient-to-r from-primary/5 to-transparent hover:from-primary/10 transition-colors gap-3"
                 >
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center flex-shrink-0 ring-2 ring-primary/20 shadow-sm shadow-primary/10">
                       <CreditCard className="h-5 w-5 text-primary" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-medium">Rent - {charge.rent_period}</p>
+                        <p className="font-medium text-foreground">Rent - {charge.rent_period}</p>
                         {getStatusBadge(charge.status)}
                       </div>
                       <p className="text-sm text-muted-foreground">
@@ -104,7 +104,7 @@ export function TenantHistoryTab({ tenantId }: TenantHistoryTabProps) {
                     </div>
                   </div>
                   <div className="text-right ml-13 md:ml-0">
-                    <p className="text-lg font-semibold">
+                    <p className="text-lg font-semibold text-foreground">
                       ${Number(charge.rent_amount).toLocaleString()}
                     </p>
                     {charge.late_fee_applied && !charge.late_fee_waived && (
@@ -118,7 +118,9 @@ export function TenantHistoryTab({ tenantId }: TenantHistoryTabProps) {
             </div>
           ) : (
             <div className="text-center py-8">
-              <CreditCard className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center ring-2 ring-primary/20">
+                <CreditCard className="h-8 w-8 text-primary/50" />
+              </div>
               <p className="text-muted-foreground">No rent charges yet</p>
             </div>
           )}
@@ -134,84 +136,93 @@ export function TenantHistoryTab({ tenantId }: TenantHistoryTabProps) {
         <CardContent>
           {historyItems.length > 0 ? (
             <div className="relative">
-              {/* Timeline line */}
-              <div className="absolute left-5 top-0 bottom-0 w-px bg-border" />
+              {/* Timeline line - gradient */}
+              <div className="absolute left-5 top-0 bottom-0 w-px bg-gradient-to-b from-primary/50 via-border to-transparent" />
               
               <div className="space-y-4">
-                {historyItems.map((item, index) => (
-                  <div key={`${item.type}-${item.id}`} className="relative flex gap-4">
-                    {/* Timeline dot */}
-                    <div className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      item.type === 'rent_charge' 
-                        ? 'bg-primary/10' 
-                        : ['charge', 'late_fee'].includes(item.data.adjustment_type)
-                          ? 'bg-destructive/10'
-                          : 'bg-success/10'
-                    }`}>
-                      {item.type === 'rent_charge' ? (
-                        <CreditCard className="h-5 w-5 text-primary" />
-                      ) : ['charge', 'late_fee'].includes(item.data.adjustment_type) ? (
-                        <ArrowUp className="h-5 w-5 text-destructive" />
-                      ) : (
-                        <ArrowDown className="h-5 w-5 text-success" />
-                      )}
-                    </div>
+                {historyItems.map((item, index) => {
+                  const isDebit = item.type !== 'rent_charge' && ['charge', 'late_fee'].includes(item.data.adjustment_type);
+                  const isCredit = item.type !== 'rent_charge' && !isDebit;
+                  
+                  return (
+                    <div key={`${item.type}-${item.id}`} className="relative flex gap-4">
+                      {/* Timeline dot */}
+                      <div className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ring-2 shadow-md ${
+                        item.type === 'rent_charge' 
+                          ? 'bg-gradient-to-br from-primary/20 to-primary/5 ring-primary/20 shadow-primary/10' 
+                          : isDebit
+                            ? 'bg-gradient-to-br from-destructive/20 to-destructive/5 ring-destructive/20 shadow-destructive/10'
+                            : 'bg-gradient-to-br from-success/20 to-success/5 ring-success/20 shadow-success/10'
+                      }`}>
+                        {item.type === 'rent_charge' ? (
+                          <CreditCard className="h-5 w-5 text-primary" />
+                        ) : isDebit ? (
+                          <ArrowUp className="h-5 w-5 text-destructive" />
+                        ) : (
+                          <ArrowDown className="h-5 w-5 text-success" />
+                        )}
+                      </div>
 
-                    {/* Content */}
-                    <div className="flex-1 pb-4">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-                        <div>
-                          {item.type === 'rent_charge' ? (
-                            <>
-                              <p className="font-medium">
-                                Rent Charge - {item.data.rent_period}
-                              </p>
-                              <div className="flex items-center gap-2 mt-1">
-                                {getStatusBadge(item.data.status)}
-                                {item.data.late_fee_applied && (
-                                  <Badge variant="outline" className="border-warning text-warning">
-                                    Late Fee Applied
-                                  </Badge>
+                      {/* Content */}
+                      <div className={`flex-1 pb-4 p-4 -mt-1 rounded-lg transition-colors ${
+                        item.type === 'rent_charge'
+                          ? 'bg-gradient-to-r from-primary/5 to-transparent hover:from-primary/10'
+                          : isDebit
+                            ? 'bg-gradient-to-r from-destructive/5 to-transparent hover:from-destructive/10'
+                            : 'bg-gradient-to-r from-success/5 to-transparent hover:from-success/10'
+                      }`}>
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                          <div>
+                            {item.type === 'rent_charge' ? (
+                              <>
+                                <p className="font-medium text-foreground">
+                                  Rent Charge - {item.data.rent_period}
+                                </p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  {getStatusBadge(item.data.status)}
+                                  {item.data.late_fee_applied && (
+                                    <Badge variant="outline" className="border-warning text-warning bg-warning/5">
+                                      Late Fee Applied
+                                    </Badge>
+                                  )}
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <p className="font-medium capitalize text-foreground">
+                                  {item.data.adjustment_type.replace('_', ' ')}
+                                </p>
+                                {item.data.description && (
+                                  <p className="text-sm text-muted-foreground">{item.data.description}</p>
                                 )}
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <p className="font-medium capitalize">
-                                {item.data.adjustment_type.replace('_', ' ')}
-                              </p>
-                              {item.data.description && (
-                                <p className="text-sm text-muted-foreground">{item.data.description}</p>
-                              )}
-                            </>
-                          )}
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {format(item.date, 'MMM d, yyyy h:mm a')}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          {item.type === 'rent_charge' ? (
-                            <p className="font-semibold">${Number(item.data.rent_amount).toLocaleString()}</p>
-                          ) : (
-                            <p className={`font-semibold ${
-                              ['charge', 'late_fee'].includes(item.data.adjustment_type) 
-                                ? 'text-destructive' 
-                                : 'text-success'
-                            }`}>
-                              {['charge', 'late_fee'].includes(item.data.adjustment_type) ? '+' : '-'}
-                              ${Number(item.data.amount).toLocaleString()}
+                              </>
+                            )}
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {format(item.date, 'MMM d, yyyy h:mm a')}
                             </p>
-                          )}
+                          </div>
+                          <div className="text-right">
+                            {item.type === 'rent_charge' ? (
+                              <p className="font-semibold text-lg text-foreground">${Number(item.data.rent_amount).toLocaleString()}</p>
+                            ) : (
+                              <p className={`font-semibold text-lg ${isDebit ? 'text-destructive' : 'text-success'}`}>
+                                {isDebit ? '+' : '-'}
+                                ${Number(item.data.amount).toLocaleString()}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ) : (
             <div className="text-center py-8">
-              <Clock className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-muted/80 to-muted/30 flex items-center justify-center ring-2 ring-border">
+                <Clock className="h-8 w-8 text-muted-foreground/50" />
+              </div>
               <p className="text-muted-foreground">No activity history yet</p>
             </div>
           )}

@@ -158,24 +158,24 @@ export default function TenantDetail() {
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
+              <div className="w-16 h-16 bg-gradient-to-br from-primary/20 via-primary/10 to-transparent rounded-full flex items-center justify-center flex-shrink-0 ring-2 ring-primary/30 shadow-lg shadow-primary/10">
                 <User className="h-8 w-8 text-primary" />
               </div>
               <div>
                 <h1 className="text-2xl md:text-3xl font-serif">
                   {tenant.user?.full_name || 'Unnamed Tenant'}
                 </h1>
-                <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mt-1">
+                <div className="flex flex-wrap items-center gap-3 text-sm mt-1">
                   {tenant.user?.email && (
-                    <span className="flex items-center gap-1">
+                    <span className="flex items-center gap-1.5 text-blue-400">
                       <Mail className="h-3.5 w-3.5" />
-                      {tenant.user.email}
+                      <span className="text-muted-foreground">{tenant.user.email}</span>
                     </span>
                   )}
                   {tenant.user?.phone && (
-                    <span className="flex items-center gap-1">
+                    <span className="flex items-center gap-1.5 text-emerald-400">
                       <Phone className="h-3.5 w-3.5" />
-                      {tenant.user.phone}
+                      <span className="text-muted-foreground">{tenant.user.phone}</span>
                     </span>
                   )}
                 </div>
@@ -183,11 +183,11 @@ export default function TenantDetail() {
             </div>
             
             <div className="flex items-center gap-2">
-              <Badge variant="secondary" className="bg-success/10 text-success">
+              <Badge variant="secondary" className="bg-success/10 text-success border border-success/20 shadow-sm shadow-success/10">
                 Active
               </Badge>
               {isOverdue && (
-                <Badge variant="destructive">
+                <Badge variant="destructive" className="shadow-sm shadow-destructive/20 animate-pulse">
                   Balance Due: ${currentBalance.toLocaleString()}
                 </Badge>
               )}

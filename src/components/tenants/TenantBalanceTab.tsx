@@ -96,46 +96,47 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
     <div className="space-y-6">
       {/* Balance Overview - Mirrors Tenant Portal */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className={isOverdue ? 'border-destructive/50' : ''}>
+        <Card className={`transition-all duration-300 ${isOverdue ? 'border-destructive/50 bg-gradient-to-br from-destructive/10 to-transparent shadow-lg shadow-destructive/5' : 'border-success/30 bg-gradient-to-br from-success/10 to-transparent'}`}>
           <CardContent className="pt-6">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Current Balance</p>
+                <p className="text-sm text-muted-foreground uppercase tracking-wider">Current Balance</p>
                 <p className={`text-4xl font-serif mt-1 ${isOverdue ? 'text-destructive' : 'text-success'}`}>
                   ${Math.abs(currentBalance).toLocaleString()}
                 </p>
                 <Badge 
                   variant={isOverdue ? 'destructive' : 'secondary'} 
-                  className={!isOverdue ? 'bg-success/10 text-success mt-2' : 'mt-2'}
+                  className={`mt-2 ${!isOverdue ? 'bg-success/10 text-success border border-success/20' : 'shadow-sm shadow-destructive/20'}`}
                 >
                   {isOverdue ? 'Amount Owed' : currentBalance < 0 ? 'Credit' : 'Paid in Full'}
                 </Badge>
               </div>
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isOverdue ? 'bg-destructive/10' : 'bg-success/10'}`}>
+              <div className={`w-14 h-14 rounded-xl flex items-center justify-center ring-2 shadow-lg ${isOverdue ? 'bg-gradient-to-br from-destructive/20 to-destructive/5 ring-destructive/20 shadow-destructive/10' : 'bg-gradient-to-br from-success/20 to-success/5 ring-success/20 shadow-success/10'}`}>
                 {isOverdue ? (
-                  <AlertTriangle className="h-6 w-6 text-destructive" />
+                  <AlertTriangle className="h-7 w-7 text-destructive" />
                 ) : (
-                  <DollarSign className="h-6 w-6 text-success" />
+                  <DollarSign className="h-7 w-7 text-success" />
                 )}
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-gradient-to-br from-primary/5 to-transparent border-primary/20">
           <CardContent className="pt-6">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Monthly Rent</p>
-                <p className="text-4xl font-serif mt-1">
+                <p className="text-sm text-muted-foreground uppercase tracking-wider">Monthly Rent</p>
+                <p className="text-4xl font-serif mt-1 text-foreground">
                   ${rentAmount.toLocaleString()}
                 </p>
-                <p className="text-sm text-muted-foreground mt-2">
+                <p className="text-sm text-muted-foreground mt-2 flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-amber-400" />
                   Next due: {nextRentDueDate}
                 </p>
               </div>
-              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
-                <CreditCard className="h-6 w-6 text-primary" />
+              <div className="w-14 h-14 bg-gradient-to-br from-primary/20 to-primary/5 rounded-xl flex items-center justify-center ring-2 ring-primary/20 shadow-lg shadow-primary/10">
+                <CreditCard className="h-7 w-7 text-primary" />
               </div>
             </div>
           </CardContent>
@@ -262,40 +263,51 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
             </div>
           ) : adjustments && adjustments.length > 0 ? (
             <div className="space-y-3">
-              {adjustments.map((adjustment: any) => (
-                <div 
-                  key={adjustment.id} 
-                  className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
-                >
-                  <div className="flex items-center gap-3">
-                    {getAdjustmentIcon(adjustment.adjustment_type)}
-                    <div>
-                      <p className="font-medium capitalize">
-                        {adjustment.adjustment_type.replace('_', ' ')}
+              {adjustments.map((adjustment: any) => {
+                const isDebit = ['charge', 'late_fee'].includes(adjustment.adjustment_type);
+                return (
+                  <div 
+                    key={adjustment.id} 
+                    className={`flex items-center justify-between p-4 rounded-lg border transition-colors hover:bg-muted/30 ${
+                      isDebit 
+                        ? 'bg-gradient-to-r from-destructive/5 to-transparent border-l-4 border-l-destructive border-destructive/20' 
+                        : 'bg-gradient-to-r from-success/5 to-transparent border-l-4 border-l-success border-success/20'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg ${isDebit ? 'bg-destructive/10' : 'bg-success/10'}`}>
+                        {getAdjustmentIcon(adjustment.adjustment_type)}
+                      </div>
+                      <div>
+                        <p className="font-medium capitalize text-foreground">
+                          {adjustment.adjustment_type.replace('_', ' ')}
+                        </p>
+                        {adjustment.description && (
+                          <p className="text-sm text-muted-foreground">{adjustment.description}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          {format(new Date(adjustment.created_at), 'MMM d, yyyy h:mm a')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-semibold text-lg ${getAdjustmentColor(adjustment.adjustment_type)}`}>
+                        {isDebit ? '+' : '-'}
+                        ${Number(adjustment.amount).toLocaleString()}
                       </p>
-                      {adjustment.description && (
-                        <p className="text-sm text-muted-foreground">{adjustment.description}</p>
-                      )}
                       <p className="text-xs text-muted-foreground">
-                        {format(new Date(adjustment.created_at), 'MMM d, yyyy h:mm a')}
+                        Balance: ${Number(adjustment.new_balance).toLocaleString()}
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className={`font-medium ${getAdjustmentColor(adjustment.adjustment_type)}`}>
-                      {['charge', 'late_fee'].includes(adjustment.adjustment_type) ? '+' : '-'}
-                      ${Number(adjustment.amount).toLocaleString()}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Balance: ${Number(adjustment.new_balance).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-8">
-              <Clock className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-muted/80 to-muted/30 flex items-center justify-center ring-2 ring-border">
+                <Clock className="h-8 w-8 text-muted-foreground/50" />
+              </div>
               <p className="text-muted-foreground">No balance adjustments yet</p>
             </div>
           )}
