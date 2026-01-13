@@ -181,18 +181,18 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
       {tenantProperties && tenantProperties.length > 0 ? (
         <div className="space-y-4">
           {tenantProperties.map((tp: any) => (
-            <Card key={tp.id} className={tp.is_primary ? 'border-primary/50' : ''}>
+            <Card key={tp.id} className={`transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 ${tp.is_primary ? 'border-primary/50 bg-gradient-to-r from-primary/5 to-transparent' : 'hover:border-primary/30'}`}>
               <CardContent className="py-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 bg-muted rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Building2 className="h-6 w-6 text-muted-foreground" />
+                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ring-1 ${tp.is_primary ? 'bg-gradient-to-br from-primary/20 to-primary/5 ring-primary/20' : 'bg-gradient-to-br from-muted/80 to-muted/30 ring-border'}`}>
+                      <Building2 className={`h-6 w-6 ${tp.is_primary ? 'text-primary' : 'text-muted-foreground'}`} />
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <h3 className="font-medium">{tp.property?.address}</h3>
+                        <h3 className="font-medium text-foreground">{tp.property?.address}</h3>
                         {tp.is_primary && (
-                          <Badge variant="secondary" className="bg-primary/10 text-primary">
+                          <Badge variant="secondary" className="bg-primary/10 text-primary border border-primary/20 shadow-sm shadow-primary/10">
                             <Star className="h-3 w-3 mr-1" />
                             Primary
                           </Badge>
@@ -201,17 +201,17 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
                       <p className="text-sm text-muted-foreground">
                         {tp.property?.city}, {tp.property?.state}
                       </p>
-                      <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground mt-2">
+                      <div className="flex flex-wrap items-center gap-4 text-sm mt-2">
                         {tp.rent_amount && (
-                          <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-1.5 text-emerald-400">
                             <DollarSign className="h-3.5 w-3.5" />
-                            {Number(tp.rent_amount).toLocaleString()}/mo
+                            <span className="text-foreground font-medium">{Number(tp.rent_amount).toLocaleString()}/mo</span>
                           </span>
                         )}
                         {tp.lease_start_date && tp.lease_end_date && (
-                          <span className="flex items-center gap-1">
+                          <span className="flex items-center gap-1.5 text-amber-400">
                             <Calendar className="h-3.5 w-3.5" />
-                            {new Date(tp.lease_start_date).toLocaleDateString()} — {new Date(tp.lease_end_date).toLocaleDateString()}
+                            <span className="text-muted-foreground">{new Date(tp.lease_start_date).toLocaleDateString()} — {new Date(tp.lease_end_date).toLocaleDateString()}</span>
                           </span>
                         )}
                       </div>
@@ -261,10 +261,12 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
           ))}
         </div>
       ) : (
-        <Card className="border-dashed">
+        <Card className="border-dashed border-primary/30 bg-gradient-to-br from-primary/5 to-transparent">
           <CardContent className="py-12 text-center">
-            <Building2 className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-            <h3 className="text-lg font-medium mb-2">No Properties Assigned</h3>
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center ring-2 ring-primary/20">
+              <Building2 className="h-8 w-8 text-primary/50" />
+            </div>
+            <h3 className="text-lg font-medium mb-2 text-foreground">No Properties Assigned</h3>
             <p className="text-muted-foreground mb-4">
               Assign properties to this tenant to track their rent and lease details
             </p>

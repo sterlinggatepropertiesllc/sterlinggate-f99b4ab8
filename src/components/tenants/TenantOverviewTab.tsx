@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Save, Trash2, ShieldX, Calendar, Mail, Phone, User } from 'lucide-react';
+import { Save, Trash2, ShieldX, Calendar, Mail, Phone, User, AlertTriangle } from 'lucide-react';
 import { useUpdateTenant, useDeleteTenant, useRevokeTenantAccess } from '@/hooks/useTenants';
 import { AutomationSettings } from './AutomationSettings';
 import { toast } from 'sonner';
@@ -70,36 +70,44 @@ export function TenantOverviewTab({ tenant, onUpdate }: TenantOverviewTabProps) 
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-              <User className="h-5 w-5 text-muted-foreground" />
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-gradient-to-r from-primary/10 to-transparent border-l-4 border-l-primary hover:from-primary/15 transition-colors">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <User className="h-5 w-5 text-primary" />
+              </div>
               <div>
-                <p className="text-xs text-muted-foreground">Full Name</p>
-                <p className="font-medium">{tenant.user?.full_name || 'Not provided'}</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Full Name</p>
+                <p className="font-medium text-foreground">{tenant.user?.full_name || 'Not provided'}</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-              <Mail className="h-5 w-5 text-muted-foreground" />
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-gradient-to-r from-blue-500/10 to-transparent border-l-4 border-l-blue-500 hover:from-blue-500/15 transition-colors">
+              <div className="p-2 rounded-lg bg-blue-500/10">
+                <Mail className="h-5 w-5 text-blue-400" />
+              </div>
               <div>
-                <p className="text-xs text-muted-foreground">Email</p>
-                <p className="font-medium">{tenant.user?.email || 'Not provided'}</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Email</p>
+                <p className="font-medium text-foreground">{tenant.user?.email || 'Not provided'}</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-              <Phone className="h-5 w-5 text-muted-foreground" />
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-gradient-to-r from-emerald-500/10 to-transparent border-l-4 border-l-emerald-500 hover:from-emerald-500/15 transition-colors">
+              <div className="p-2 rounded-lg bg-emerald-500/10">
+                <Phone className="h-5 w-5 text-emerald-400" />
+              </div>
               <div>
-                <p className="text-xs text-muted-foreground">Phone</p>
-                <p className="font-medium">{tenant.user?.phone || 'Not provided'}</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Phone</p>
+                <p className="font-medium text-foreground">{tenant.user?.phone || 'Not provided'}</p>
               </div>
             </div>
           </div>
 
           {/* Lease Period from tenant record */}
           {tenant.lease_start_date && tenant.lease_end_date && (
-            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-              <Calendar className="h-5 w-5 text-muted-foreground" />
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-gradient-to-r from-amber-500/10 to-transparent border-l-4 border-l-amber-500 hover:from-amber-500/15 transition-colors">
+              <div className="p-2 rounded-lg bg-amber-500/10">
+                <Calendar className="h-5 w-5 text-amber-400" />
+              </div>
               <div>
-                <p className="text-xs text-muted-foreground">Lease Period (Primary)</p>
-                <p className="font-medium">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Lease Period (Primary)</p>
+                <p className="font-medium text-foreground">
                   {new Date(tenant.lease_start_date).toLocaleDateString()} — {new Date(tenant.lease_end_date).toLocaleDateString()}
                 </p>
               </div>
@@ -149,15 +157,18 @@ export function TenantOverviewTab({ tenant, onUpdate }: TenantOverviewTabProps) 
       </Card>
 
       {/* Danger Zone */}
-      <Card className="border-destructive/50">
+      <Card className="border-destructive/30 bg-gradient-to-br from-destructive/5 to-transparent">
         <CardHeader>
-          <CardTitle className="text-lg text-destructive">Danger Zone</CardTitle>
+          <CardTitle className="text-lg text-destructive flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5" />
+            Danger Zone
+          </CardTitle>
           <CardDescription>Irreversible actions that affect this tenant's access</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg border border-border">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-lg border border-warning/30 bg-gradient-to-r from-warning/5 to-transparent">
             <div>
-              <p className="font-medium">Revoke Portal Access</p>
+              <p className="font-medium text-foreground">Revoke Portal Access</p>
               <p className="text-sm text-muted-foreground">Remove tenant's ability to access the tenant portal</p>
             </div>
             <AlertDialog>
