@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +10,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Plus, Trash2, MapPin, DollarSign, Calendar, Star, Building2 } from 'lucide-react';
 import { useTenantProperties, useAddTenantProperty, useRemoveTenantProperty, useSetPrimaryProperty } from '@/hooks/useTenantProperties';
 import { useManagerProperties } from '@/hooks/useProperties';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 interface TenantPropertiesTabProps {
@@ -23,11 +25,36 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
   const [leaseStartDate, setLeaseStartDate] = useState<string>('');
   const [leaseEndDate, setLeaseEndDate] = useState<string>('');
 
+  const queryClient = useQueryClient();
   const { data: tenantProperties, isLoading } = useTenantProperties(tenantId);
   const { data: allProperties } = useManagerProperties(managerId);
   const addProperty = useAddTenantProperty();
   const removeProperty = useRemoveTenantProperty(tenantId);
   const setPrimary = useSetPrimaryProperty();
+
+  // Realtime subscription for tenant property changes
+  useEffect(() => {
+    const channel = supabase
+      .channel(`tenant-properties-manager-${tenantId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tenant_properties',
+          filter: `tenant_id=eq.${tenantId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['tenant-properties', tenantId] });
+          queryClient.invalidateQueries({ queryKey: ['tenants'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [tenantId, queryClient]);
 
   // Filter out already assigned properties
   const assignedPropertyIds = tenantProperties?.map(tp => tp.property_id) || [];
