@@ -176,7 +176,8 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
 
   if (!tenant) return null;
 
-  const availableProperties = properties?.filter(p => p.status === 'available' || p.id === tenant.property_id) || [];
+  // Show all properties - managers should be able to assign any of their properties to a tenant
+  const availableProperties = properties || [];
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
