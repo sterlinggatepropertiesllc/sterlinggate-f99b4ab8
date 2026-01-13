@@ -706,19 +706,9 @@ export default function TenantPortal() {
                       <div>
                         <h3 className="font-serif text-lg">My Properties</h3>
                         <p className="text-sm text-muted-foreground">
-                          {tenantProperties.length} {tenantProperties.length === 1 ? 'property' : 'properties'} · Due {nextRentDueDate}
+                          {tenantProperties.length} {tenantProperties.length === 1 ? 'property' : 'properties'} · {currentBalance > 0 ? `Outstanding: $${currentBalance.toLocaleString()}` : `Due ${nextRentDueDate}`}
                         </p>
                       </div>
-                      {/* Pay All Button - shows total across all properties */}
-                      {currentBalance > 0 && tenantProperties.length > 1 && (
-                        <Button 
-                          onClick={() => setShowPaymentDialog(true)}
-                          className="gap-2"
-                        >
-                          <Wallet className="h-4 w-4" />
-                          Pay All (${currentBalance.toLocaleString()})
-                        </Button>
-                      )}
                     </div>
                     <div className="divide-y divide-border">
                       {tenantProperties.map((tp) => {
@@ -752,14 +742,26 @@ export default function TenantPortal() {
                             <div className="text-right flex-shrink-0">
                               <p className="text-xl md:text-2xl font-serif">${rentAmount.toLocaleString()}</p>
                               {matchingLease && (
-                                <Button 
-                                  size="sm" 
-                                  className="mt-2"
-                                  onClick={() => handlePayRent(matchingLease.id, rentAmount)}
-                                >
-                                  <CreditCard className="h-4 w-4 mr-1" />
-                                  Pay Rent
-                                </Button>
+                                currentBalance > 0 ? (
+                                  <Button 
+                                    size="sm" 
+                                    className="mt-2"
+                                    onClick={() => handlePayRent(matchingLease.id, rentAmount)}
+                                  >
+                                    <CreditCard className="h-4 w-4 mr-1" />
+                                    Pay Rent
+                                  </Button>
+                                ) : (
+                                  <Button 
+                                    size="sm" 
+                                    className="mt-2"
+                                    variant="outline"
+                                    onClick={() => handlePayRent(matchingLease.id, rentAmount)}
+                                  >
+                                    <CreditCard className="h-4 w-4 mr-1" />
+                                    Prepay Rent
+                                  </Button>
+                                )
                               )}
                             </div>
                           </div>
