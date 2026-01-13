@@ -25,7 +25,9 @@ import {
 interface RentPaymentDialogProps {
   open: boolean;
   onClose: () => void;
-  leaseId: string;
+  leaseId?: string | null;
+  propertyId?: string;
+  tenantId?: string;
   amount: number; // In dollars
   paymentType: 'rent' | 'security_deposit';
   onSuccess?: () => void;
@@ -200,6 +202,8 @@ export function RentPaymentDialog({
   open,
   onClose,
   leaseId,
+  propertyId,
+  tenantId,
   amount,
   paymentType,
   onSuccess,
@@ -209,34 +213,61 @@ export function RentPaymentDialog({
   const [publishableKey, setPublishableKey] = useState<string | null>(null);
   const [keyLoading, setKeyLoading] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
 
   const label = paymentType === 'security_deposit' ? 'Security Deposit' : 'Rent';
 
   // Create payment intent when dialog opens
   useEffect(() => {
-    if (!open || !leaseId || amount <= 0) return;
+    if (!open || amount <= 0) return;
     if (clientSecret) return; // Already created
 
+    // Must have either leaseId or (tenantId + propertyId)
+    if (!leaseId && !tenantId) {
+      setInitError('Unable to process payment: missing payment context');
+      return;
+    }
+
     const initPayment = async () => {
-      console.log('[RentPaymentDialog] Creating payment intent for:', { leaseId, amount, paymentType });
+      setInitError(null);
       const amountInCents = Math.round(amount * 100);
       
-      const result = await createPaymentIntent({
-        payment_type: paymentType,
-        lease_id: leaseId,
-        amount: amountInCents,
-      });
+      // If we have a lease, use the rent/deposit payment type
+      if (leaseId) {
+        console.log('[RentPaymentDialog] Creating payment intent with lease:', { leaseId, amount, paymentType });
+        const result = await createPaymentIntent({
+          payment_type: paymentType,
+          lease_id: leaseId,
+          amount: amountInCents,
+        });
 
-      if (result) {
-        console.log('[RentPaymentDialog] Payment intent created successfully');
-        setClientSecret(result.clientSecret);
-      } else {
-        console.error('[RentPaymentDialog] Failed to create payment intent');
+        if (result) {
+          console.log('[RentPaymentDialog] Payment intent created successfully');
+          setClientSecret(result.clientSecret);
+        } else {
+          console.error('[RentPaymentDialog] Failed to create payment intent');
+        }
+      } else if (tenantId) {
+        // No lease - use balance payment type with tenant_id
+        console.log('[RentPaymentDialog] Creating payment intent without lease:', { tenantId, propertyId, amount });
+        const result = await createPaymentIntent({
+          payment_type: 'balance',
+          tenant_id: tenantId,
+          property_id: propertyId,
+          amount: amountInCents,
+        });
+
+        if (result) {
+          console.log('[RentPaymentDialog] Payment intent created successfully (no lease)');
+          setClientSecret(result.clientSecret);
+        } else {
+          console.error('[RentPaymentDialog] Failed to create payment intent (no lease)');
+        }
       }
     };
 
     initPayment();
-  }, [open, leaseId, amount, paymentType, clientSecret, createPaymentIntent]);
+  }, [open, leaseId, tenantId, propertyId, amount, paymentType, clientSecret, createPaymentIntent]);
 
   // Fetch publishable key when clientSecret is available
   useEffect(() => {
@@ -280,6 +311,7 @@ export function RentPaymentDialog({
       setClientSecret(null);
       setPublishableKey(null);
       setKeyError(null);
+      setInitError(null);
     }
   }, [open]);
 
@@ -296,6 +328,26 @@ export function RentPaymentDialog({
             <p className="text-sm text-muted-foreground">
               Please wait while we set up your payment
             </p>
+          </div>
+        </div>
+      );
+    }
+
+    // Show init error state
+    if (initError) {
+      return (
+        <div className="py-8 text-center space-y-4">
+          <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto">
+            <AlertCircle className="h-8 w-8 text-destructive" />
+          </div>
+          <div>
+            <h3 className="text-lg font-medium mb-1">Payment Error</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              {initError}
+            </p>
+            <Button variant="outline" onClick={onClose}>
+              Close
+            </Button>
           </div>
         </div>
       );

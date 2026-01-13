@@ -79,9 +79,10 @@ export default function TenantPortal() {
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [rentPaymentDialog, setRentPaymentDialog] = useState<{
     open: boolean;
-    leaseId: string;
+    leaseId: string | null;
     amount: number;
     type: 'rent' | 'security_deposit';
+    propertyId?: string;
   } | null>(null);
 
   // Fetch tenant's actual balance from tenants table
@@ -295,8 +296,8 @@ export default function TenantPortal() {
     setRentPaymentDialog({ open: true, leaseId, amount, type: 'security_deposit' });
   };
 
-  const handlePayRent = (leaseId: string, amount: number) => {
-    setRentPaymentDialog({ open: true, leaseId, amount, type: 'rent' });
+  const handlePayRent = (leaseId: string | null, amount: number, propertyId?: string) => {
+    setRentPaymentDialog({ open: true, leaseId, amount, type: 'rent', propertyId });
   };
 
 
@@ -741,12 +742,12 @@ export default function TenantPortal() {
                             </div>
                             <div className="text-right flex-shrink-0">
                               <p className="text-xl md:text-2xl font-serif">${rentAmount.toLocaleString()}</p>
-                              {matchingLease && (
+                              {rentAmount > 0 && (
                                 currentBalance > 0 ? (
                                   <Button 
                                     size="sm" 
                                     className="mt-2"
-                                    onClick={() => handlePayRent(matchingLease.id, rentAmount)}
+                                    onClick={() => handlePayRent(matchingLease?.id || null, rentAmount, tp.property_id)}
                                   >
                                     <CreditCard className="h-4 w-4 mr-1" />
                                     Pay Rent
@@ -756,7 +757,7 @@ export default function TenantPortal() {
                                     size="sm" 
                                     className="mt-2"
                                     variant="outline"
-                                    onClick={() => handlePayRent(matchingLease.id, rentAmount)}
+                                    onClick={() => handlePayRent(matchingLease?.id || null, rentAmount, tp.property_id)}
                                   >
                                     <CreditCard className="h-4 w-4 mr-1" />
                                     Prepay Rent
@@ -1268,7 +1269,9 @@ export default function TenantPortal() {
       <RentPaymentDialog
         open={rentPaymentDialog?.open ?? false}
         onClose={() => setRentPaymentDialog(null)}
-        leaseId={rentPaymentDialog?.leaseId ?? ''}
+        leaseId={rentPaymentDialog?.leaseId ?? null}
+        propertyId={rentPaymentDialog?.propertyId}
+        tenantId={tenantRecord?.id}
         amount={rentPaymentDialog?.amount ?? 0}
         paymentType={rentPaymentDialog?.type ?? 'rent'}
         onSuccess={() => {
