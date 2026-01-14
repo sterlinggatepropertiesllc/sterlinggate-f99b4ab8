@@ -522,12 +522,14 @@ export type Database = {
       payments: {
         Row: {
           amount: number
+          convenience_fee: number | null
           created_at: string
           id: string
           lease_id: string | null
           notes: string | null
           payment_date: string
           payment_method: string | null
+          payment_method_type: string | null
           payment_type: string | null
           property_id: string
           status: string
@@ -536,12 +538,14 @@ export type Database = {
         }
         Insert: {
           amount: number
+          convenience_fee?: number | null
           created_at?: string
           id?: string
           lease_id?: string | null
           notes?: string | null
           payment_date: string
           payment_method?: string | null
+          payment_method_type?: string | null
           payment_type?: string | null
           property_id: string
           status?: string
@@ -550,12 +554,14 @@ export type Database = {
         }
         Update: {
           amount?: number
+          convenience_fee?: number | null
           created_at?: string
           id?: string
           lease_id?: string | null
           notes?: string | null
           payment_date?: string
           payment_method?: string | null
+          payment_method_type?: string | null
           payment_type?: string | null
           property_id?: string
           status?: string
