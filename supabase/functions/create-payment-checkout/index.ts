@@ -73,8 +73,13 @@ serve(async (req) => {
       throw new Error("property_id is required for application fee");
     }
 
-    if ((payment_type === 'security_deposit' || payment_type === 'rent') && !lease_id) {
-      throw new Error("lease_id is required for deposit/rent payments");
+    if (payment_type === 'security_deposit' && !lease_id) {
+      throw new Error("lease_id is required for deposit payments");
+    }
+
+    // Rent can be paid via lease_id OR tenant_id (for prepay without active lease)
+    if (payment_type === 'rent' && !lease_id && !body.tenant_id) {
+      throw new Error("lease_id or tenant_id is required for rent payments");
     }
 
     if ((payment_type === 'security_deposit' || payment_type === 'rent') && !amount) {
@@ -140,8 +145,8 @@ serve(async (req) => {
       console.log("[CREATE-CHECKOUT] Balance payment validated for tenant:", body.tenant_id);
     }
 
-    if (payment_type === 'rent' || payment_type === 'security_deposit') {
-      // For lease-based payments, verify lease belongs to user
+    if (payment_type === 'security_deposit') {
+      // Security deposit always requires a lease
       const { data: leaseData, error: leaseError } = await supabaseAdmin
         .from('leases')
         .select('id, tenant_id, property_id')
@@ -174,7 +179,87 @@ serve(async (req) => {
         metadata.tenant_id = tenantRecord.id;
       }
 
-      console.log("[CREATE-CHECKOUT] Lease payment validated for lease:", lease_id);
+      console.log("[CREATE-CHECKOUT] Deposit payment validated for lease:", lease_id);
+    }
+
+    if (payment_type === 'rent') {
+      // Rent can be paid via lease OR tenant_id
+      if (lease_id) {
+        // Lease-based rent payment
+        const { data: leaseData, error: leaseError } = await supabaseAdmin
+          .from('leases')
+          .select('id, tenant_id, property_id')
+          .eq('id', lease_id)
+          .single();
+
+        if (leaseError || !leaseData) {
+          console.error("[CREATE-CHECKOUT] Lease lookup error:", leaseError);
+          throw new Error("Lease not found");
+        }
+
+        if (leaseData.tenant_id !== user.id) {
+          console.error("[CREATE-CHECKOUT] Lease ownership mismatch:", { leaseTenantId: leaseData.tenant_id, userId: user.id });
+          throw new Error("Unauthorized: You can only pay for your own lease");
+        }
+
+        metadata.lease_id = lease_id;
+        resolvedPropertyId = leaseData.property_id;
+
+        // Get tenant record ID
+        const { data: tenantRecord } = await supabaseAdmin
+          .from('tenants')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .limit(1)
+          .single();
+
+        if (tenantRecord) {
+          metadata.tenant_id = tenantRecord.id;
+        }
+
+        console.log("[CREATE-CHECKOUT] Rent payment validated for lease:", lease_id);
+      } else if (body.tenant_id) {
+        // Tenant-based rent payment (no lease required - prepay scenario)
+        const { data: tenantData, error: tenantError } = await supabaseAdmin
+          .from('tenants')
+          .select('id, user_id, property_id')
+          .eq('id', body.tenant_id)
+          .eq('is_active', true)
+          .single();
+
+        if (tenantError || !tenantData) {
+          console.error("[CREATE-CHECKOUT] Tenant lookup error:", tenantError);
+          throw new Error("Tenant record not found");
+        }
+
+        if (tenantData.user_id !== user.id) {
+          console.error("[CREATE-CHECKOUT] Ownership mismatch:", { tenantUserId: tenantData.user_id, userId: user.id });
+          throw new Error("Unauthorized: You can only pay your own rent");
+        }
+
+        metadata.tenant_id = body.tenant_id;
+        resolvedPropertyId = tenantData.property_id;
+
+        // Fallback: If tenant has no property_id, look up from user's active lease
+        if (!resolvedPropertyId) {
+          console.log("[CREATE-CHECKOUT] Tenant has no property_id, looking up from lease");
+          const { data: leaseData } = await supabaseAdmin
+            .from('leases')
+            .select('property_id')
+            .eq('tenant_id', user.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+            
+          if (leaseData?.property_id) {
+            resolvedPropertyId = leaseData.property_id;
+            console.log("[CREATE-CHECKOUT] Found property from lease:", resolvedPropertyId);
+          }
+        }
+
+        console.log("[CREATE-CHECKOUT] Rent payment validated for tenant:", body.tenant_id);
+      }
     }
 
     // Always include property_id in metadata
