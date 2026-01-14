@@ -3,9 +3,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 type PaymentType = 'application_fee' | 'security_deposit' | 'rent' | 'balance';
+type PaymentMethodType = 'ach' | 'card';
 
 interface CreateCheckoutOptions {
   payment_type: PaymentType;
+  payment_method?: PaymentMethodType;
   property_id?: string;
   lease_id?: string;
   tenant_id?: string;
@@ -54,25 +56,28 @@ export function useStripeCheckout() {
     });
   };
 
-  const paySecurityDeposit = async (leaseId: string, amountInDollars: number) => {
+  const paySecurityDeposit = async (leaseId: string, amountInDollars: number, paymentMethod?: PaymentMethodType) => {
     return createCheckout({
       payment_type: 'security_deposit',
+      payment_method: paymentMethod,
       lease_id: leaseId,
       amount: Math.round(amountInDollars * 100), // Convert to cents
     });
   };
 
-  const payRent = async (leaseId: string, amountInDollars: number) => {
+  const payRent = async (leaseId: string, amountInDollars: number, paymentMethod?: PaymentMethodType) => {
     return createCheckout({
       payment_type: 'rent',
+      payment_method: paymentMethod,
       lease_id: leaseId,
       amount: Math.round(amountInDollars * 100), // Convert to cents
     });
   };
 
-  const payBalance = async (tenantId: string, amountInDollars: number) => {
+  const payBalance = async (tenantId: string, amountInDollars: number, paymentMethod?: PaymentMethodType) => {
     return createCheckout({
       payment_type: 'balance',
+      payment_method: paymentMethod,
       tenant_id: tenantId,
       amount: Math.round(amountInDollars * 100), // Convert to cents
     });

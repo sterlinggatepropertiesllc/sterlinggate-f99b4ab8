@@ -9,10 +9,17 @@ const corsHeaders = {
 
 interface CheckoutRequest {
   payment_type: 'application_fee' | 'security_deposit' | 'rent' | 'balance';
+  payment_method?: 'ach' | 'card'; // Payment method type
   property_id?: string;
   lease_id?: string;
   tenant_id?: string;
   amount?: number; // In cents, for dynamic amounts (deposit/rent/balance)
+}
+
+interface PaymentMethodSettings {
+  ach_enabled: boolean;
+  card_enabled: boolean;
+  card_fee_percentage: number;
 }
 
 serve(async (req) => {
@@ -54,8 +61,8 @@ serve(async (req) => {
 
     // Parse request body
     const body: CheckoutRequest = await req.json();
-    const { payment_type, property_id, lease_id, amount } = body;
-    console.log("[CREATE-CHECKOUT] Request:", { payment_type, property_id, lease_id, tenant_id: body.tenant_id, amount });
+    const { payment_type, payment_method, property_id, lease_id, amount } = body;
+    console.log("[CREATE-CHECKOUT] Request:", { payment_type, payment_method, property_id, lease_id, tenant_id: body.tenant_id, amount });
 
     if (!payment_type) {
       throw new Error("payment_type is required");
@@ -195,6 +202,24 @@ serve(async (req) => {
       console.log("[CREATE-CHECKOUT] Application fee amount:", applicationFeeAmount);
     }
 
+    // Fetch payment method settings for card fee percentage
+    let cardFeePercentage = 3.0; // Default 3%
+    if (payment_method === 'card') {
+      const { data: paymentSettingsData } = await supabaseClient
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'payment_methods')
+        .single();
+      
+      if (paymentSettingsData?.value) {
+        const pmSettings = paymentSettingsData.value as PaymentMethodSettings;
+        if (pmSettings.card_fee_percentage) {
+          cardFeePercentage = pmSettings.card_fee_percentage;
+        }
+      }
+      console.log("[CREATE-CHECKOUT] Card fee percentage:", cardFeePercentage);
+    }
+
     // Initialize Stripe
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
       apiVersion: "2025-08-27.basil",
@@ -207,6 +232,30 @@ serve(async (req) => {
       customerId = customers.data[0].id;
       console.log("[CREATE-CHECKOUT] Found existing customer:", customerId);
     }
+
+    // Calculate convenience fee for card payments
+    let baseAmount = amount || 0;
+    let convenienceFee = 0;
+    let totalAmount = baseAmount;
+
+    if (payment_method === 'card' && payment_type !== 'application_fee') {
+      convenienceFee = Math.round(baseAmount * (cardFeePercentage / 100));
+      totalAmount = baseAmount + convenienceFee;
+      console.log("[CREATE-CHECKOUT] Card payment fee calculation:", { baseAmount, convenienceFee, totalAmount });
+    }
+
+    // Add payment method and fee info to metadata
+    if (payment_method) {
+      metadata.payment_method_type = payment_method;
+    }
+    if (convenienceFee > 0) {
+      metadata.convenience_fee = String(convenienceFee);
+      metadata.base_amount = String(baseAmount);
+    }
+
+    // Determine payment method types for Stripe
+    const paymentMethodTypes: Stripe.Checkout.SessionCreateParams.PaymentMethodType[] = 
+      payment_method === 'ach' ? ['us_bank_account'] : ['card'];
 
     // Build line items based on payment type
     let lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
@@ -225,30 +274,83 @@ serve(async (req) => {
       }];
       paymentDescription = "Application Fee";
     } else if (payment_type === 'balance') {
-      lineItems = [{
-        price_data: {
-          currency: 'usd',
-          product_data: {
-            name: 'Balance Payment',
+      if (payment_method === 'card' && convenienceFee > 0) {
+        // Show base amount + fee as separate items for transparency
+        lineItems = [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: 'Balance Payment',
+              },
+              unit_amount: baseAmount,
+            },
+            quantity: 1,
           },
-          unit_amount: amount,
-        },
-        quantity: 1,
-      }];
-      paymentDescription = "Balance Payment";
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: `Processing Fee (${cardFeePercentage}%)`,
+              },
+              unit_amount: convenienceFee,
+            },
+            quantity: 1,
+          },
+        ];
+        paymentDescription = `Balance Payment + ${cardFeePercentage}% processing fee`;
+      } else {
+        lineItems = [{
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: 'Balance Payment',
+            },
+            unit_amount: baseAmount,
+          },
+          quantity: 1,
+        }];
+        paymentDescription = "Balance Payment";
+      }
     } else {
       const productName = payment_type === 'security_deposit' ? 'Security Deposit' : 'Rent Payment';
-      lineItems = [{
-        price_data: {
-          currency: 'usd',
-          product_data: {
-            name: productName,
+      if (payment_method === 'card' && convenienceFee > 0) {
+        lineItems = [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: productName,
+              },
+              unit_amount: baseAmount,
+            },
+            quantity: 1,
           },
-          unit_amount: amount,
-        },
-        quantity: 1,
-      }];
-      paymentDescription = productName;
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: `Processing Fee (${cardFeePercentage}%)`,
+              },
+              unit_amount: convenienceFee,
+            },
+            quantity: 1,
+          },
+        ];
+        paymentDescription = `${productName} + ${cardFeePercentage}% processing fee`;
+      } else {
+        lineItems = [{
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: productName,
+            },
+            unit_amount: baseAmount,
+          },
+          quantity: 1,
+        }];
+        paymentDescription = productName;
+      }
     }
 
     console.log("[CREATE-CHECKOUT] Creating session with metadata:", metadata);
@@ -258,6 +360,7 @@ serve(async (req) => {
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       customer_email: customerId ? undefined : user.email,
+      payment_method_types: paymentMethodTypes,
       line_items: lineItems,
       mode: "payment",
       success_url: `${origin}/payment-success?session_id={CHECKOUT_SESSION_ID}&type=${payment_type}`,

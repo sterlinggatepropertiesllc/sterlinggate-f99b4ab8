@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { useApplicationFee, useUpdateApplicationFee } from '@/hooks/useAppSettings';
+import { PaymentMethodSettings } from './PaymentMethodSettings';
 import { Loader2 } from 'lucide-react';
 
 export function FeesSettings() {
@@ -38,7 +40,7 @@ export function FeesSettings() {
       <div>
         <h3 className="text-lg font-medium">Payment Settings</h3>
         <p className="text-sm text-muted-foreground">
-          Configure fees and payment amounts for your properties.
+          Configure fees and payment methods for your properties.
         </p>
       </div>
 
@@ -68,9 +70,14 @@ export function FeesSettings() {
           disabled={updateFee.isPending}
         >
           {updateFee.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Save Changes
+          Save Application Fee
         </Button>
       </div>
+
+      <Separator />
+
+      {/* Payment Method Settings */}
+      <PaymentMethodSettings />
     </div>
   );
 }
