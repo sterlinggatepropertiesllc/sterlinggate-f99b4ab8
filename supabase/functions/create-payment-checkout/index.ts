@@ -339,8 +339,13 @@ serve(async (req) => {
     }
 
     // Determine payment method types for Stripe
-    const paymentMethodTypes: Stripe.Checkout.SessionCreateParams.PaymentMethodType[] = 
-      payment_method === 'ach' ? ['us_bank_account'] : ['card'];
+    // Application fees default to card only, other payments use selected method
+    let paymentMethodTypes: Stripe.Checkout.SessionCreateParams.PaymentMethodType[];
+    if (payment_type === 'application_fee') {
+      paymentMethodTypes = ['card'];
+    } else {
+      paymentMethodTypes = payment_method === 'ach' ? ['us_bank_account'] : ['card'];
+    }
 
     // Build line items based on payment type
     let lineItems: Stripe.Checkout.SessionCreateParams.LineItem[];
