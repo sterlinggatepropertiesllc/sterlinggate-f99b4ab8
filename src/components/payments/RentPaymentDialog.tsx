@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useStripe, useElements, PaymentElement } from '@stripe/react-stripe-js';
 import {
   Dialog,
   DialogContent,
@@ -9,17 +8,15 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useEmbeddedPayment } from '@/hooks/useEmbeddedPayment';
-import { StripeProvider } from './StripeProvider';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
+import { PaymentMethodSelector, PaymentMethodType } from './PaymentMethodSelector';
+import { useStripeCheckout } from '@/hooks/useStripePayments';
 import { 
   Loader2, 
   DollarSign, 
-  CheckCircle2, 
-  CreditCard,
   Home,
-  AlertCircle
+  AlertCircle,
+  ArrowRight,
+  ArrowLeft
 } from 'lucide-react';
 
 interface RentPaymentDialogProps {
@@ -33,170 +30,7 @@ interface RentPaymentDialogProps {
   onSuccess?: () => void;
 }
 
-function PaymentForm({
-  amount,
-  paymentType,
-  onSuccess,
-  onClose,
-}: {
-  amount: number;
-  paymentType: 'rent' | 'security_deposit';
-  onSuccess?: () => void;
-  onClose: () => void;
-}) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const { verifyPayment, isVerifying } = useEmbeddedPayment();
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!stripe || !elements) {
-      return;
-    }
-
-    setIsProcessing(true);
-
-    try {
-      const { error, paymentIntent } = await stripe.confirmPayment({
-        elements,
-        confirmParams: {
-          return_url: window.location.href,
-        },
-        redirect: 'if_required',
-      });
-
-      if (error) {
-        console.error('[RentPaymentForm] confirmPayment error:', error);
-        toast.error(error.message || 'Payment failed');
-        setIsProcessing(false);
-        return;
-      }
-
-      // Handle all possible payment statuses explicitly
-      switch (paymentIntent?.status) {
-        case 'succeeded':
-          console.log('[RentPaymentForm] Payment succeeded, verifying...');
-          const result = await verifyPayment(paymentIntent.id);
-          
-          if (result?.success) {
-            setPaymentSuccess(true);
-            toast.success('Payment successful!');
-            onSuccess?.();
-            
-            setTimeout(() => {
-              onClose();
-            }, 2000);
-          } else {
-            console.error('[RentPaymentForm] Verification failed:', result);
-            toast.error('Payment processed but verification failed. Please contact support.');
-          }
-          break;
-          
-        case 'requires_action':
-          // 3DS authentication still in progress or needs manual handling
-          console.log('[RentPaymentForm] Payment requires action - 3DS not completed');
-          toast.error('Payment authentication was not completed. Please try again.');
-          break;
-          
-        case 'requires_payment_method':
-          // Payment method failed (declined, etc.)
-          console.log('[RentPaymentForm] Payment requires new payment method');
-          toast.error('Your payment method was declined. Please try a different card.');
-          break;
-          
-        case 'processing':
-          // Payment is still processing
-          console.log('[RentPaymentForm] Payment is processing');
-          toast.info('Payment is processing. Please wait...');
-          break;
-          
-        case 'canceled':
-          console.log('[RentPaymentForm] Payment was canceled');
-          toast.error('Payment was canceled.');
-          break;
-          
-        default:
-          console.error('[RentPaymentForm] Unexpected status:', paymentIntent?.status);
-          toast.error('Payment could not be completed. Please try again.');
-      }
-    } catch (err) {
-      console.error('[RentPaymentForm] Unexpected error:', err);
-      toast.error('An unexpected error occurred');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const label = paymentType === 'security_deposit' ? 'Security Deposit' : 'Rent';
-
-  if (paymentSuccess) {
-    return (
-      <div className="py-8 text-center">
-        <div className="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
-          <CheckCircle2 className="h-8 w-8 text-success" />
-        </div>
-        <h3 className="text-xl font-semibold mb-2">Payment Successful!</h3>
-        <p className="text-muted-foreground">
-          Your {label.toLowerCase()} payment of ${amount.toLocaleString()} has been processed
-        </p>
-      </div>
-    );
-  }
-
-  if (!stripe || !elements) {
-    return (
-      <div className="py-8 text-center space-y-4">
-        <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-        <div>
-          <h3 className="text-lg font-medium mb-1">Loading payment form...</h3>
-          <p className="text-sm text-muted-foreground">
-            Please wait while we initialize the secure payment form
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <div className="p-4 bg-muted/50 rounded-lg">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-sm text-muted-foreground">{label}</span>
-          <Badge variant="secondary" className="bg-primary/10 text-primary">
-            <DollarSign className="h-3 w-3 mr-1" />
-            {amount.toLocaleString()}
-          </Badge>
-        </div>
-      </div>
-
-      <PaymentElement />
-
-      <Button
-        type="submit"
-        className="w-full"
-        size="lg"
-        disabled={isProcessing || isVerifying}
-      >
-        {isProcessing || isVerifying ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-            Processing...
-          </>
-        ) : (
-          <>
-            <CreditCard className="h-4 w-4 mr-2" />
-            Pay ${amount.toLocaleString()}
-          </>
-        )}
-      </Button>
-    </form>
-  );
-}
+type PaymentStep = 'method' | 'processing';
 
 export function RentPaymentDialog({
   open,
@@ -208,235 +42,132 @@ export function RentPaymentDialog({
   paymentType,
   onSuccess,
 }: RentPaymentDialogProps) {
-  const { createPaymentIntent, isCreating, error } = useEmbeddedPayment();
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [publishableKey, setPublishableKey] = useState<string | null>(null);
-  const [keyLoading, setKeyLoading] = useState(false);
-  const [keyError, setKeyError] = useState<string | null>(null);
-  const [initError, setInitError] = useState<string | null>(null);
+  const [step, setStep] = useState<PaymentStep>('method');
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethodType | null>(null);
+  const { isLoading, payRent, paySecurityDeposit, payBalance } = useStripeCheckout();
+  const [error, setError] = useState<string | null>(null);
 
   const label = paymentType === 'security_deposit' ? 'Security Deposit' : 'Rent';
 
-  // Create payment intent when dialog opens
+  // Reset state when dialog opens/closes
   useEffect(() => {
-    if (!open || amount <= 0) return;
-    if (clientSecret) return; // Already created
-
-    // Must have either leaseId or (tenantId + propertyId)
-    if (!leaseId && !tenantId) {
-      setInitError('Unable to process payment: missing payment context');
-      return;
-    }
-
-    const initPayment = async () => {
-      setInitError(null);
-      const amountInCents = Math.round(amount * 100);
-      
-      // If we have a lease, use the rent/deposit payment type
-      if (leaseId) {
-        console.log('[RentPaymentDialog] Creating payment intent with lease:', { leaseId, amount, paymentType });
-        const result = await createPaymentIntent({
-          payment_type: paymentType,
-          lease_id: leaseId,
-          amount: amountInCents,
-        });
-
-        if (result) {
-          console.log('[RentPaymentDialog] Payment intent created successfully');
-          setClientSecret(result.clientSecret);
-        } else {
-          console.error('[RentPaymentDialog] Failed to create payment intent');
-        }
-      } else if (tenantId) {
-        // No lease - use balance payment type with tenant_id
-        console.log('[RentPaymentDialog] Creating payment intent without lease:', { tenantId, propertyId, amount });
-        const result = await createPaymentIntent({
-          payment_type: 'balance',
-          tenant_id: tenantId,
-          property_id: propertyId,
-          amount: amountInCents,
-        });
-
-        if (result) {
-          console.log('[RentPaymentDialog] Payment intent created successfully (no lease)');
-          setClientSecret(result.clientSecret);
-        } else {
-          console.error('[RentPaymentDialog] Failed to create payment intent (no lease)');
-        }
-      }
-    };
-
-    initPayment();
-  }, [open, leaseId, tenantId, propertyId, amount, paymentType, clientSecret, createPaymentIntent]);
-
-  // Fetch publishable key when clientSecret is available
-  useEffect(() => {
-    if (!clientSecret || publishableKey) return;
-
-    const fetchPublishableKey = async () => {
-      setKeyLoading(true);
-      setKeyError(null);
-      
-      try {
-        console.log('[RentPaymentDialog] Fetching publishable key...');
-        const { data, error } = await supabase.functions.invoke('get-stripe-publishable-key');
-        
-        if (error) {
-          console.error('[RentPaymentDialog] Error fetching key:', error);
-          throw new Error(error.message || 'Failed to fetch payment configuration');
-        }
-        
-        if (!data?.publishableKey) {
-          throw new Error('Payment system not configured');
-        }
-        
-        console.log('[RentPaymentDialog] Publishable key fetched successfully');
-        setPublishableKey(data.publishableKey);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to initialize payments';
-        console.error('[RentPaymentDialog] Key fetch error:', message);
-        setKeyError(message);
-        toast.error(message);
-      } finally {
-        setKeyLoading(false);
-      }
-    };
-
-    fetchPublishableKey();
-  }, [clientSecret, publishableKey]);
-
-  // Reset state when dialog closes
-  useEffect(() => {
-    if (!open) {
-      setClientSecret(null);
-      setPublishableKey(null);
-      setKeyError(null);
-      setInitError(null);
+    if (open) {
+      setStep('method');
+      setSelectedMethod(null);
+      setError(null);
     }
   }, [open]);
 
+  const handleProceedToCheckout = async () => {
+    if (!selectedMethod) return;
+
+    setStep('processing');
+    setError(null);
+
+    try {
+      let result;
+
+      if (leaseId) {
+        // Lease-based payment
+        if (paymentType === 'security_deposit') {
+          result = await paySecurityDeposit(leaseId, amount, selectedMethod);
+        } else {
+          result = await payRent(leaseId, amount, selectedMethod);
+        }
+      } else if (tenantId) {
+        // Balance-based payment (no lease)
+        result = await payBalance(tenantId, amount, selectedMethod);
+      } else {
+        throw new Error('Unable to process payment: missing payment context');
+      }
+
+      if (result?.success) {
+        // Checkout URL opened - close dialog
+        onSuccess?.();
+        onClose();
+      } else if (result?.error) {
+        setError(result.error);
+        setStep('method');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to create checkout';
+      setError(message);
+      setStep('method');
+    }
+  };
+
   const renderContent = () => {
-    // Show creating state
-    if (isCreating) {
+    // Processing state
+    if (step === 'processing' || isLoading) {
       return (
         <div className="py-8 text-center space-y-4">
           <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
           <div>
-            <h3 className="text-lg font-medium mb-1">Preparing payment...</h3>
+            <h3 className="text-lg font-medium mb-1">Preparing checkout...</h3>
             <p className="text-sm text-muted-foreground">
-              Please wait while we set up your payment
+              You'll be redirected to complete your payment securely
             </p>
           </div>
         </div>
       );
     }
 
-    // Show init error state
-    if (initError) {
-      return (
-        <div className="py-8 text-center space-y-4">
-          <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto">
-            <AlertCircle className="h-8 w-8 text-destructive" />
-          </div>
-          <div>
-            <h3 className="text-lg font-medium mb-1">Payment Error</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              {initError}
-            </p>
-            <Button variant="outline" onClick={onClose}>
-              Close
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    // Show error state
-    if (error) {
-      return (
-        <div className="py-8 text-center space-y-4">
-          <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto">
-            <AlertCircle className="h-8 w-8 text-destructive" />
-          </div>
-          <div>
-            <h3 className="text-lg font-medium mb-1">Payment Error</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              {error}
-            </p>
-            <Button variant="outline" onClick={onClose}>
-              Close
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    // Show key loading state
-    if (keyLoading || !clientSecret) {
-      return (
-        <div className="py-8 text-center space-y-4">
-          <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-          <div>
-            <h3 className="text-lg font-medium mb-1">Initializing payment...</h3>
-            <p className="text-sm text-muted-foreground">
-              Please wait while we set up the secure payment form
-            </p>
-          </div>
-        </div>
-      );
-    }
-
-    // Show key error state
-    if (keyError) {
-      return (
-        <div className="py-8 text-center space-y-4">
-          <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto">
-            <AlertCircle className="h-8 w-8 text-destructive" />
-          </div>
-          <div>
-            <h3 className="text-lg font-medium mb-1">Payment Setup Error</h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              {keyError}
-            </p>
-            <Button variant="outline" onClick={onClose}>
-              Close
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    // Wait for publishable key
-    if (!publishableKey) {
-      return (
-        <div className="py-8 text-center space-y-4">
-          <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-          <div>
-            <h3 className="text-lg font-medium mb-1">Loading payment form...</h3>
-            <p className="text-sm text-muted-foreground">
-              Please wait while we initialize the secure payment form
-            </p>
-          </div>
-        </div>
-      );
-    }
-
-    // Render Stripe form
+    // Method selection step
     return (
-      <StripeProvider clientSecret={clientSecret} publishableKey={publishableKey}>
-        <PaymentForm
-          amount={amount}
-          paymentType={paymentType}
-          onSuccess={onSuccess}
-          onClose={onClose}
+      <div className="space-y-6">
+        {/* Payment Summary */}
+        <div className="p-4 bg-muted/50 rounded-lg">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm text-muted-foreground">{label}</span>
+            <Badge variant="secondary" className="bg-primary/10 text-primary">
+              <DollarSign className="h-3 w-3 mr-1" />
+              {amount.toLocaleString()}
+            </Badge>
+          </div>
+        </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/5">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+              <div>
+                <p className="font-medium text-destructive">Payment Error</p>
+                <p className="text-sm text-muted-foreground mt-1">{error}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Payment Method Selection */}
+        <PaymentMethodSelector
+          selectedMethod={selectedMethod}
+          onMethodSelect={setSelectedMethod}
+          baseAmount={amount}
         />
-      </StripeProvider>
+
+        {/* Action Buttons */}
+        <div className="flex gap-3">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="flex-1"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Cancel
+          </Button>
+          <Button
+            onClick={handleProceedToCheckout}
+            disabled={!selectedMethod || isLoading}
+            className="flex-1"
+          >
+            Continue to Payment
+            <ArrowRight className="h-4 w-4 ml-2" />
+          </Button>
+        </div>
+      </div>
     );
   };
 
@@ -449,7 +180,7 @@ export function RentPaymentDialog({
             Pay {label}
           </DialogTitle>
           <DialogDescription>
-            Complete your {label.toLowerCase()} payment securely
+            Choose how you'd like to pay your {label.toLowerCase()}
           </DialogDescription>
         </DialogHeader>
 
