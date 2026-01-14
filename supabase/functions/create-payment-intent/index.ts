@@ -12,7 +12,8 @@ interface PaymentIntentRequest {
   property_id?: string;
   lease_id?: string;
   tenant_id?: string;
-  amount: number; // In cents
+  amount: number; // In cents (base amount, before any fees)
+  payment_method?: 'ach' | 'card'; // New: which payment method to use
 }
 
 serve(async (req) => {
@@ -54,8 +55,8 @@ serve(async (req) => {
 
     // Parse request body
     const body: PaymentIntentRequest = await req.json();
-    const { payment_type, property_id, lease_id, amount } = body;
-    console.log("[CREATE-PAYMENT-INTENT] Request:", { payment_type, property_id, lease_id, tenant_id: body.tenant_id, amount });
+    const { payment_type, property_id, lease_id, amount, payment_method } = body;
+    console.log("[CREATE-PAYMENT-INTENT] Request:", { payment_type, property_id, lease_id, tenant_id: body.tenant_id, amount, payment_method });
 
     if (!payment_type) {
       throw new Error("payment_type is required");
@@ -213,23 +214,80 @@ serve(async (req) => {
       balance: 'Balance Payment',
     };
 
-    // Create PaymentIntent
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount,
+    // Calculate final amount and set payment method types based on selection
+    let finalAmount = amount;
+    let convenienceFee = 0;
+    let paymentMethodTypes: string[] | undefined;
+
+    if (payment_method === 'ach') {
+      // ACH - no fee, use us_bank_account
+      paymentMethodTypes = ['us_bank_account'];
+      metadata.payment_method_type = 'ach';
+      console.log("[CREATE-PAYMENT-INTENT] Using ACH payment method (no fee)");
+    } else if (payment_method === 'card') {
+      // Card - add convenience fee
+      paymentMethodTypes = ['card'];
+      
+      // Fetch card fee percentage from app_settings
+      let cardFeePercentage = 3; // Default 3%
+      try {
+        const { data: settingsData } = await supabaseAdmin
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'payment_methods')
+          .single();
+        
+        if (settingsData?.value && typeof settingsData.value === 'object') {
+          const settings = settingsData.value as { card_fee_percentage?: number };
+          if (settings.card_fee_percentage !== undefined) {
+            cardFeePercentage = settings.card_fee_percentage;
+          }
+        }
+      } catch (err) {
+        console.log("[CREATE-PAYMENT-INTENT] Could not fetch fee settings, using default 3%");
+      }
+
+      convenienceFee = Math.round(amount * (cardFeePercentage / 100));
+      finalAmount = amount + convenienceFee;
+      metadata.payment_method_type = 'card';
+      metadata.convenience_fee = String(convenienceFee);
+      console.log("[CREATE-PAYMENT-INTENT] Using Card payment method with fee:", { 
+        baseAmount: amount, 
+        feePercentage: cardFeePercentage, 
+        convenienceFee, 
+        finalAmount 
+      });
+    } else {
+      // No specific method selected - use automatic payment methods (legacy behavior)
+      console.log("[CREATE-PAYMENT-INTENT] No payment method specified, using automatic");
+    }
+
+    // Create PaymentIntent with appropriate settings
+    const paymentIntentConfig: Stripe.PaymentIntentCreateParams = {
+      amount: finalAmount,
       currency: 'usd',
       customer: customerId,
       metadata,
       description: descriptions[payment_type] || 'Payment',
-      automatic_payment_methods: {
-        enabled: true,
-      },
-    });
+    };
 
-    console.log("[CREATE-PAYMENT-INTENT] PaymentIntent created:", paymentIntent.id);
+    if (paymentMethodTypes) {
+      // Specific payment method types selected
+      paymentIntentConfig.payment_method_types = paymentMethodTypes as Stripe.PaymentIntentCreateParams.PaymentMethodType[];
+    } else {
+      // Use automatic payment methods
+      paymentIntentConfig.automatic_payment_methods = { enabled: true };
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create(paymentIntentConfig);
+
+    console.log("[CREATE-PAYMENT-INTENT] PaymentIntent created:", paymentIntent.id, { finalAmount, convenienceFee });
 
     return new Response(JSON.stringify({ 
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
+      amount: finalAmount,
+      convenienceFee,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

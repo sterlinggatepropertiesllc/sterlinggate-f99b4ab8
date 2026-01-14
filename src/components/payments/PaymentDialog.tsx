@@ -11,15 +11,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { useStripeCheckout } from '@/hooks/useStripePayments';
 import { PaymentMethodSelector, PaymentMethodType, usePaymentMethodSettings } from './PaymentMethodSelector';
+import { StripeProvider } from './StripeProvider';
+import { EmbeddedPaymentForm } from './EmbeddedPaymentForm';
+import { useEmbeddedPayment } from '@/hooks/useEmbeddedPayment';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   Loader2, 
   DollarSign, 
   CheckCircle2, 
   Wallet,
   AlertCircle,
-  ArrowRight
+  ArrowRight,
+  ArrowLeft
 } from 'lucide-react';
 
 interface PaymentDialogProps {
@@ -31,7 +35,7 @@ interface PaymentDialogProps {
   onSuccess?: () => void;
 }
 
-type PaymentStep = 'amount' | 'method' | 'processing' | 'success';
+type PaymentStep = 'amount' | 'method' | 'payment' | 'processing' | 'success';
 
 export function PaymentDialog({
   open,
@@ -41,13 +45,17 @@ export function PaymentDialog({
   rentAmount,
   onSuccess,
 }: PaymentDialogProps) {
-  const { payBalance, isLoading } = useStripeCheckout();
+  const { createPaymentIntent, isCreating } = useEmbeddedPayment();
   const { settings: paymentMethodSettings, loading: settingsLoading } = usePaymentMethodSettings();
   const [customAmount, setCustomAmount] = useState('');
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethodType | null>(null);
   const [step, setStep] = useState<PaymentStep>('amount');
   const [error, setError] = useState<string | null>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [publishableKey, setPublishableKey] = useState<string | null>(null);
+  const [finalAmount, setFinalAmount] = useState<number>(0);
+  const [convenienceFee, setConvenienceFee] = useState<number>(0);
 
   // Reset state when dialog opens/closes
   useEffect(() => {
@@ -57,8 +65,28 @@ export function PaymentDialog({
       setSelectedMethod(null);
       setStep('amount');
       setError(null);
+      setClientSecret(null);
+      setFinalAmount(0);
+      setConvenienceFee(0);
     }
   }, [open]);
+
+  // Fetch publishable key on mount
+  useEffect(() => {
+    const fetchPublishableKey = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('get-stripe-publishable-key');
+        if (error) throw error;
+        setPublishableKey(data.publishableKey);
+      } catch (err) {
+        console.error('Failed to get Stripe publishable key:', err);
+      }
+    };
+    
+    if (open && !publishableKey) {
+      fetchPublishableKey();
+    }
+  }, [open, publishableKey]);
 
   // Auto-select method if only one is available
   useEffect(() => {
@@ -103,15 +131,40 @@ export function PaymentDialog({
     setStep('processing');
     setError(null);
 
-    const result = await payBalance(tenantId, selectedAmount, selectedMethod);
-    
-    if (result.success) {
-      setStep('success');
-      onSuccess?.();
-    } else {
-      setError(result.error || 'Failed to create checkout session');
+    try {
+      const amountInCents = Math.round(selectedAmount * 100);
+      
+      const result = await createPaymentIntent({
+        payment_type: 'balance',
+        tenant_id: tenantId,
+        amount: amountInCents,
+        payment_method: selectedMethod,
+      });
+
+      if (result) {
+        setClientSecret(result.clientSecret);
+        setFinalAmount(result.amount / 100);
+        setConvenienceFee(result.convenienceFee / 100);
+        setStep('payment');
+      } else {
+        throw new Error('Failed to create payment intent');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to initialize payment';
+      setError(message);
       setStep('method');
     }
+  };
+
+  const handlePaymentSuccess = () => {
+    setStep('success');
+    onSuccess?.();
+  };
+
+  const handlePaymentError = (message: string) => {
+    setError(message);
+    setStep('method');
+    setClientSecret(null);
   };
 
   const handleBack = () => {
@@ -119,8 +172,13 @@ export function PaymentDialog({
       setStep('amount');
       setSelectedAmount(null);
       setSelectedMethod(null);
+    } else if (step === 'payment') {
+      setStep('method');
+      setClientSecret(null);
     }
   };
+
+  const returnUrl = `${window.location.origin}/payment-success`;
 
   // Calculate card fee for display
   const cardFeePercentage = paymentMethodSettings?.card_fee_percentage || 3;
@@ -138,8 +196,9 @@ export function PaymentDialog({
           <DialogDescription>
             {step === 'amount' && 'Choose an amount to pay'}
             {step === 'method' && 'Select your payment method'}
-            {step === 'processing' && 'Redirecting to secure checkout...'}
-            {step === 'success' && 'Payment initiated successfully'}
+            {step === 'payment' && 'Enter your payment details'}
+            {step === 'processing' && 'Setting up your payment...'}
+            {step === 'success' && 'Payment complete!'}
           </DialogDescription>
         </DialogHeader>
 
@@ -174,7 +233,7 @@ export function PaymentDialog({
                       variant="outline"
                       className="h-auto py-3 flex flex-col items-start group"
                       onClick={() => handleAmountSelect(currentBalance)}
-                      disabled={isLoading || settingsLoading}
+                      disabled={isCreating || settingsLoading}
                     >
                       <span className="font-medium">Pay Full Balance</span>
                       <span className="text-sm text-muted-foreground group-hover:text-accent-foreground transition-colors">
@@ -186,7 +245,7 @@ export function PaymentDialog({
                         variant="outline"
                         className="h-auto py-3 flex flex-col items-start group"
                         onClick={() => handleAmountSelect(rentAmount)}
-                        disabled={isLoading || settingsLoading}
+                        disabled={isCreating || settingsLoading}
                       >
                         <span className="font-medium">Pay Rent Amount</span>
                         <span className="text-sm text-muted-foreground group-hover:text-accent-foreground transition-colors">
@@ -224,7 +283,7 @@ export function PaymentDialog({
                 </div>
                 <Button
                   onClick={handleCustomAmountSubmit}
-                  disabled={isLoading || settingsLoading || !customAmount}
+                  disabled={isCreating || settingsLoading || !customAmount}
                 >
                   {settingsLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -249,7 +308,8 @@ export function PaymentDialog({
               onClick={handleBack}
               className="mb-2"
             >
-              ← Change amount
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Change amount
             </Button>
 
             {/* Amount Summary */}
@@ -275,16 +335,16 @@ export function PaymentDialog({
               onClick={handleProceedToPayment}
               className="w-full"
               size="lg"
-              disabled={!selectedMethod || isLoading}
+              disabled={!selectedMethod || isCreating || !publishableKey}
             >
-              {isLoading ? (
+              {isCreating ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   Processing...
                 </>
               ) : (
                 <>
-                  Continue to Checkout
+                  Continue to Payment
                   <ArrowRight className="h-4 w-4 ml-2" />
                 </>
               )}
@@ -298,33 +358,56 @@ export function PaymentDialog({
           </div>
         )}
 
-        {/* Step 3: Processing */}
+        {/* Step 3: Embedded Payment Form */}
+        {step === 'payment' && clientSecret && publishableKey && (
+          <div className="space-y-4">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleBack}
+              className="mb-2"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+
+            <StripeProvider clientSecret={clientSecret} publishableKey={publishableKey}>
+              <EmbeddedPaymentForm
+                amount={finalAmount}
+                convenienceFee={convenienceFee}
+                onSuccess={handlePaymentSuccess}
+                onError={handlePaymentError}
+                returnUrl={returnUrl}
+              />
+            </StripeProvider>
+          </div>
+        )}
+
+        {/* Step 4: Processing */}
         {step === 'processing' && (
           <div className="py-8 text-center space-y-4">
             <div className="w-16 h-16 bg-muted/50 rounded-full flex items-center justify-center mx-auto">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
             <div>
-              <h3 className="text-lg font-medium mb-1">Redirecting to checkout...</h3>
+              <h3 className="text-lg font-medium mb-1">Preparing payment...</h3>
               <p className="text-sm text-muted-foreground">
-                You'll be redirected to complete your payment securely
+                Please wait while we set up your secure payment
               </p>
             </div>
           </div>
         )}
 
-        {/* Step 4: Success */}
+        {/* Step 5: Success */}
         {step === 'success' && (
           <div className="py-8 text-center space-y-4">
             <div className="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto">
               <CheckCircle2 className="h-8 w-8 text-success" />
             </div>
             <div>
-              <h3 className="text-lg font-medium mb-1">Checkout Started!</h3>
+              <h3 className="text-lg font-medium mb-1">Payment Successful!</h3>
               <p className="text-sm text-muted-foreground">
-                A new tab has opened for you to complete your payment.
-                <br />
-                You can close this dialog.
+                Your payment has been processed successfully.
               </p>
             </div>
             <Button variant="outline" onClick={onClose}>
