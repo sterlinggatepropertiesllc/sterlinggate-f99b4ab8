@@ -254,7 +254,36 @@ export default function Dashboard() {
       supabase.removeChannel(channel);
     };
   }, [user?.id, queryClient]);
+
+  // Calculate expiring leases for warnings (must be declared before any early returns)
+  const expiringLeases = useMemo(() => {
+    if (!leases) return { all: [], expired: [], critical: [], warning: [] };
+
+    const today = new Date();
+    const completedLeases = leases.filter((l: any) => l.status === 'completed');
+
+    const all = completedLeases.filter((l: any) => {
+      const daysUntilEnd = differenceInDays(new Date(l.end_date), today);
+      return daysUntilEnd <= 30;
+    });
+
+    const expired = all.filter((l: any) => differenceInDays(new Date(l.end_date), today) < 0);
+
+    const critical = all.filter((l: any) => {
+      const days = differenceInDays(new Date(l.end_date), today);
+      return days >= 0 && days <= 7;
+    });
+
+    const warning = all.filter((l: any) => {
+      const days = differenceInDays(new Date(l.end_date), today);
+      return days > 7 && days <= 30;
+    });
+
+    return { all, expired, critical, warning };
+  }, [leases]);
+
   // Wait for both auth and role to be fully loaded before redirecting
+
   if (loading || (user && role === null)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -280,34 +309,6 @@ export default function Dashboard() {
     pendingLeases: leases?.filter(l => l.status !== 'completed').length || 0,
   };
 
-  // Calculate expiring leases for warnings
-  const expiringLeases = useMemo(() => {
-    if (!leases) return { all: [], expired: [], critical: [], warning: [] };
-    
-    const today = new Date();
-    const completedLeases = leases.filter((l: any) => l.status === 'completed');
-    
-    const all = completedLeases.filter((l: any) => {
-      const daysUntilEnd = differenceInDays(new Date(l.end_date), today);
-      return daysUntilEnd <= 30;
-    });
-    
-    const expired = all.filter((l: any) => 
-      differenceInDays(new Date(l.end_date), today) < 0
-    );
-    
-    const critical = all.filter((l: any) => {
-      const days = differenceInDays(new Date(l.end_date), today);
-      return days >= 0 && days <= 7;
-    });
-    
-    const warning = all.filter((l: any) => {
-      const days = differenceInDays(new Date(l.end_date), today);
-      return days > 7 && days <= 30;
-    });
-    
-    return { all, expired, critical, warning };
-  }, [leases]);
 
   const handleAddProperty = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
