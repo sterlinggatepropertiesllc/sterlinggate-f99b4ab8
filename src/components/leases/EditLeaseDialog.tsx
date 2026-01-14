@@ -83,16 +83,16 @@ export function EditLeaseDialog({ open, onOpenChange, lease }: EditLeaseDialogPr
     }
   };
 
-  if (!lease) return null;
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="font-serif text-xl">Edit Lease</DialogTitle>
-          <p className="text-sm text-muted-foreground">
-            {lease.properties?.address} • {lease.tenant?.full_name || lease.tenant?.email}
-          </p>
+          {lease && (
+            <p className="text-sm text-muted-foreground">
+              {lease.properties?.address} • {lease.tenant?.full_name || lease.tenant?.email}
+            </p>
+          )}
         </DialogHeader>
 
         <div className="space-y-6 py-4">
@@ -180,7 +180,7 @@ export function EditLeaseDialog({ open, onOpenChange, lease }: EditLeaseDialogPr
           </Button>
           <Button 
             onClick={handleSave} 
-            disabled={updateLease.isPending}
+            disabled={updateLease.isPending || !lease}
             className="btn-platinum"
           >
             {updateLease.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
