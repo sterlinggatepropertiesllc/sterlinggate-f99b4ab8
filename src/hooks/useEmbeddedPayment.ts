@@ -2,18 +2,22 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 type PaymentType = 'application_fee' | 'security_deposit' | 'rent' | 'balance';
+type PaymentMethodType = 'ach' | 'card';
 
 interface CreatePaymentIntentOptions {
   payment_type: PaymentType;
   property_id?: string;
   lease_id?: string;
   tenant_id?: string;
-  amount: number; // In cents
+  amount: number; // In cents (base amount)
+  payment_method?: PaymentMethodType; // ACH or Card
 }
 
 interface PaymentIntentResult {
   clientSecret: string;
   paymentIntentId: string;
+  amount: number; // Final amount including fees
+  convenienceFee: number;
 }
 
 export function useEmbeddedPayment() {
@@ -41,6 +45,8 @@ export function useEmbeddedPayment() {
       return {
         clientSecret: data.clientSecret,
         paymentIntentId: data.paymentIntentId,
+        amount: data.amount || options.amount,
+        convenienceFee: data.convenienceFee || 0,
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create payment intent';
