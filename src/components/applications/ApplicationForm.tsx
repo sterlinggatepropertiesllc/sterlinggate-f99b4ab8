@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -11,7 +11,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SecureDocumentUpload } from './SecureDocumentUpload';
 import { EncryptionBadge } from '@/components/ui/encryption-badge';
-import { useStripeCheckout } from '@/hooks/useStripePayments';
+import { useEmbeddedPayment } from '@/hooks/useEmbeddedPayment';
+import { StripeProvider } from '@/components/payments/StripeProvider';
+import { EmbeddedPaymentForm } from '@/components/payments/EmbeddedPaymentForm';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { 
@@ -86,7 +88,8 @@ const steps = [
   { id: 2, name: 'Financials', icon: DollarSign },
   { id: 3, name: 'Documents', icon: FileCheck },
   { id: 4, name: 'Consent', icon: Shield },
-  { id: 5, name: 'Review', icon: CreditCard },
+  { id: 5, name: 'Review', icon: CheckCircle2 },
+  { id: 6, name: 'Payment', icon: CreditCard },
 ];
 
 export function ApplicationForm({
@@ -103,15 +106,34 @@ export function ApplicationForm({
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Store application data for payment-first flow
+  // Store application data for payment step
   const [pendingApplicationData, setPendingApplicationData] = useState<ApplicationFormData | null>(null);
   
   // Currency display state for formatted inputs
   const [monthlyIncomeDisplay, setMonthlyIncomeDisplay] = useState('');
   const [cashOnHandDisplay, setCashOnHandDisplay] = useState('');
   
-  // Stripe checkout
-  const { createCheckout, isLoading: isCheckoutLoading } = useStripeCheckout();
+  // Embedded payment state
+  const { createPaymentIntent, isCreating: isPaymentLoading } = useEmbeddedPayment();
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [publishableKey, setPublishableKey] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  // Fetch Stripe publishable key on mount
+  useEffect(() => {
+    const fetchPublishableKey = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('get-stripe-publishable-key');
+        if (error) throw error;
+        if (data?.publishableKey) {
+          setPublishableKey(data.publishableKey);
+        }
+      } catch (err) {
+        console.error('[ApplicationForm] Failed to fetch publishable key:', err);
+      }
+    };
+    fetchPublishableKey();
+  }, []);
   
   const form = useForm<ApplicationFormData>({
     resolver: zodResolver(applicationSchema),
@@ -178,7 +200,7 @@ export function ApplicationForm({
   const handleNext = async () => {
     const isValid = await validateStep(currentStep);
     if (isValid) {
-      setCurrentStep(prev => Math.min(prev + 1, 5));
+      setCurrentStep(prev => Math.min(prev + 1, 6));
     }
   };
 
@@ -186,36 +208,66 @@ export function ApplicationForm({
     setCurrentStep(prev => Math.max(prev - 1, 1));
   };
 
-  const handleFormSubmit = async (data: ApplicationFormData) => {
+  // Handle moving from Review (step 5) to Payment (step 6)
+  const handleProceedToPayment = async (data: ApplicationFormData) => {
+    // Validate the non-refundable acknowledgment
+    if (!data.nonRefundableAcknowledged) {
+      toast.error('Please acknowledge that the application fee is non-refundable');
+      return;
+    }
+    
+    setPendingApplicationData(data);
+    setPaymentError(null);
     setIsSubmitting(true);
     
-    // Store application data in localStorage for after payment redirect
-    // The verify-payment flow will handle the application creation
-    localStorage.setItem('pendingApplication', JSON.stringify({
-      data,
-      propertyId,
-      timestamp: Date.now(),
-    }));
-    
     try {
-      console.log('[ApplicationForm] Creating checkout for application fee');
-      const result = await createCheckout({
+      console.log('[ApplicationForm] Creating payment intent for application fee');
+      const result = await createPaymentIntent({
         payment_type: 'application_fee',
         property_id: propertyId,
+        amount: applicationFeeAmount,
+        payment_method: 'card', // Application fees are card-only
       });
 
-      if (!result.success) {
-        toast.error('Failed to initialize payment. Please try again.');
-        localStorage.removeItem('pendingApplication');
+      if (result?.clientSecret) {
+        setClientSecret(result.clientSecret);
+        setCurrentStep(6);
+      } else {
+        throw new Error('Failed to initialize payment');
       }
-      // If successful, user is redirected to Stripe Checkout
     } catch (error) {
       console.error('[ApplicationForm] Error:', error);
-      toast.error('Failed to process application');
-      localStorage.removeItem('pendingApplication');
+      toast.error('Failed to initialize payment. Please try again.');
+      setPaymentError(error instanceof Error ? error.message : 'Payment initialization failed');
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handlePaymentSuccess = async () => {
+    if (!pendingApplicationData) {
+      toast.error('Application data not found');
+      return;
+    }
+    
+    try {
+      // Save the application after successful payment
+      const success = await onSaveApplication(pendingApplicationData, '');
+      if (success) {
+        toast.success('Application submitted successfully!');
+        onPaymentSuccess();
+      } else {
+        toast.error('Failed to save application. Please contact support.');
+      }
+    } catch (error) {
+      console.error('[ApplicationForm] Failed to save application:', error);
+      toast.error('Failed to save application. Please contact support.');
+    }
+  };
+
+  const handlePaymentError = (message: string) => {
+    setPaymentError(message);
+    toast.error(message);
   };
   
   // Currency input handlers
@@ -269,7 +321,7 @@ export function ApplicationForm({
         ))}
       </div>
 
-      <form onSubmit={handleSubmit(handleFormSubmit)}>
+      <form onSubmit={(e) => e.preventDefault()}>
           {/* Step 1: Personal Information */}
           {currentStep === 1 && (
             <div className="space-y-4">
@@ -552,7 +604,7 @@ export function ApplicationForm({
             </div>
           )}
 
-          {/* Step 5: Review & Payment */}
+          {/* Step 5: Review */}
           {currentStep === 5 && (
             <div className="space-y-6">
               <h3 className="text-lg font-serif mb-4">Review Your Application</h3>
@@ -669,36 +721,87 @@ export function ApplicationForm({
             </div>
           )}
 
+          {/* Step 6: Payment */}
+          {currentStep === 6 && (
+            <div className="space-y-6">
+              <h3 className="text-lg font-serif mb-4">Complete Payment</h3>
+              
+              <Card className="bg-muted/30">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">Application Fee</h4>
+                      <p className="text-sm text-muted-foreground">
+                        For property: {propertyAddress}
+                      </p>
+                    </div>
+                    <div className="text-xl font-bold">{applicationFee}</div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {paymentError && (
+                <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 text-destructive" />
+                  <p className="text-sm text-destructive">{paymentError}</p>
+                </div>
+              )}
+
+              {clientSecret && publishableKey ? (
+                <StripeProvider clientSecret={clientSecret} publishableKey={publishableKey}>
+                  <EmbeddedPaymentForm
+                    amount={applicationFeeAmount / 100}
+                    convenienceFee={0}
+                    onSuccess={handlePaymentSuccess}
+                    onError={handlePaymentError}
+                    returnUrl={`${window.location.origin}/payment-success?type=application`}
+                  />
+                </StripeProvider>
+              ) : (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Navigation Buttons */}
-          <div className="flex justify-between mt-8 pt-4 border-t border-border">
-            {currentStep > 1 ? (
-              <Button type="button" variant="outline" onClick={handleBack}>
-                <ArrowLeft className="mr-2 h-4 w-4" /> Back
-              </Button>
-            ) : (
-              <Button type="button" variant="outline" onClick={onCancel}>
-                Cancel
-              </Button>
-            )}
-            
-            {currentStep < 5 ? (
-              <Button type="button" onClick={handleNext} className="btn-platinum">
-                Next <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            ) : (
-              <Button type="submit" disabled={isSubmitting || isCheckoutLoading} className="btn-platinum">
-                {isSubmitting || isCheckoutLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
-                  </>
-                ) : (
-                  <>
-                    Pay {applicationFee} & Submit <CreditCard className="ml-2 h-4 w-4" />
-                  </>
-                )}
-              </Button>
-            )}
-          </div>
+          {currentStep !== 6 && (
+            <div className="flex justify-between mt-8 pt-4 border-t border-border">
+              {currentStep > 1 ? (
+                <Button type="button" variant="outline" onClick={handleBack}>
+                  <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+              ) : (
+                <Button type="button" variant="outline" onClick={onCancel}>
+                  Cancel
+                </Button>
+              )}
+              
+              {currentStep < 5 ? (
+                <Button type="button" onClick={handleNext} className="btn-platinum">
+                  Next <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              ) : (
+                <Button 
+                  type="button" 
+                  onClick={handleSubmit(handleProceedToPayment)} 
+                  disabled={isSubmitting || isPaymentLoading} 
+                  className="btn-platinum"
+                >
+                  {isSubmitting || isPaymentLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
+                    </>
+                  ) : (
+                    <>
+                      Continue to Payment <ArrowRight className="ml-2 h-4 w-4" />
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          )}
         </form>
     </div>
   );
