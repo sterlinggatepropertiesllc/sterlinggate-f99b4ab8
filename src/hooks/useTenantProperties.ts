@@ -13,6 +13,14 @@ export interface TenantProperty {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  // Late fee configuration
+  late_fee_type: string | null;
+  late_fee_percentage: number | null;
+  late_fee_flat_amount: number | null;
+  late_fee_daily_amount: number | null;
+  late_fee_max_amount: number | null;
+  grace_period_days: number | null;
+  rent_due_day: number | null;
   property?: {
     id: string;
     address: string;
@@ -59,6 +67,14 @@ interface AddTenantPropertyInput {
   lease_end_date?: string | null;
   is_primary?: boolean;
   notes?: string | null;
+  // Late fee configuration
+  late_fee_type?: string | null;
+  late_fee_percentage?: number | null;
+  late_fee_flat_amount?: number | null;
+  late_fee_daily_amount?: number | null;
+  late_fee_max_amount?: number | null;
+  grace_period_days?: number | null;
+  rent_due_day?: number | null;
 }
 
 export function useAddTenantProperty() {
@@ -84,6 +100,13 @@ export function useAddTenantProperty() {
           lease_end_date: input.lease_end_date,
           is_primary: input.is_primary ?? false,
           notes: input.notes,
+          late_fee_type: input.late_fee_type ?? 'percentage',
+          late_fee_percentage: input.late_fee_percentage ?? 5,
+          late_fee_flat_amount: input.late_fee_flat_amount ?? 0,
+          late_fee_daily_amount: input.late_fee_daily_amount ?? 0,
+          late_fee_max_amount: input.late_fee_max_amount,
+          grace_period_days: input.grace_period_days ?? 5,
+          rent_due_day: input.rent_due_day ?? 1,
         })
         .select(`
           *,
