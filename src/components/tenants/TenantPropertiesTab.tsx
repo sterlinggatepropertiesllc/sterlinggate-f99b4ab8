@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,19 +10,53 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Separator } from '@/components/ui/separator';
 import { Plus, Trash2, DollarSign, Calendar as CalendarIcon, Building2, Pencil, Check, X } from 'lucide-react';
 import { useTenantProperties, useAddTenantProperty, useRemoveTenantProperty, useUpdateTenantProperty } from '@/hooks/useTenantProperties';
 import { useManagerProperties } from '@/hooks/useProperties';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { BalanceSection } from './BalanceSection';
+import { QuickRentActions } from './QuickRentActions';
+import { RentChargeHistory } from './RentChargeHistory';
+import { AutomationSettings } from './AutomationSettings';
 
-interface TenantPropertiesTabProps {
-  tenantId: string;
-  managerId: string | undefined;
+interface TenantWithRelations {
+  id: string;
+  user_id: string;
+  property_id: string | null;
+  rent_amount: number | null;
+  lease_start_date: string | null;
+  lease_end_date: string | null;
+  notes: string | null;
+  is_active: boolean;
+  manager_id: string | null;
+  current_balance: number | null;
+  auto_charge_rent?: boolean;
+  auto_apply_late_fees?: boolean;
+  user: {
+    id: string;
+    email: string;
+    full_name: string | null;
+    phone: string | null;
+  } | null;
+  property: {
+    id: string;
+    address: string;
+    city: string;
+    state: string;
+  } | null;
 }
 
-export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTabProps) {
+interface TenantPropertiesTabProps {
+  tenant: TenantWithRelations;
+  managerId: string | undefined;
+  onUpdate: () => void;
+}
+
+export function TenantPropertiesTab({ tenant, managerId, onUpdate }: TenantPropertiesTabProps) {
+  const tenantId = tenant.id;
   const [isAddingProperty, setIsAddingProperty] = useState(false);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
   const [rentAmount, setRentAmount] = useState<string>('');
@@ -39,13 +73,62 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
   const [editStartDateOpen, setEditStartDateOpen] = useState(false);
   const [editEndDateOpen, setEditEndDateOpen] = useState(false);
 
+  // Balance state
+  const [currentBalance, setCurrentBalance] = useState(tenant.current_balance || 0);
+  const [automationSettings, setAutomationSettings] = useState({
+    autoChargeRent: tenant.auto_charge_rent ?? true,
+    autoApplyLateFees: tenant.auto_apply_late_fees ?? true,
+  });
+
   const queryClient = useQueryClient();
   const { data: tenantProperties, isLoading } = useTenantProperties(tenantId);
   const { data: allProperties } = useManagerProperties(managerId);
   const addProperty = useAddTenantProperty();
   const removeProperty = useRemoveTenantProperty(tenantId);
   const updateProperty = useUpdateTenantProperty();
-  
+
+  // Fetch active lease for this tenant's user to get late fee config
+  const { data: activeLease } = useQuery({
+    queryKey: ['tenant-lease', tenant.user_id],
+    queryFn: async () => {
+      if (!tenant.user_id) return null;
+      
+      const { data, error } = await supabase
+        .from('leases')
+        .select('*')
+        .eq('tenant_id', tenant.user_id)
+        .in('status', ['completed', 'pending_manager_signature', 'pending_tenant_signature'])
+        .gte('end_date', new Date().toISOString().split('T')[0])
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!tenant.user_id,
+  });
+
+  const leaseInfo = activeLease ? {
+    rentDueDay: activeLease.rent_due_day || 1,
+    gracePeriodDays: activeLease.grace_period_days || 5,
+    lateFeeType: activeLease.late_fee_type || 'percentage',
+    lateFeePercentage: activeLease.late_fee_percentage || 5,
+    lateFeeFlatAmount: activeLease.late_fee_flat_amount || 0,
+    lateFeeDailyAmount: activeLease.late_fee_daily_amount || 0,
+    lateFeeMaxAmount: activeLease.late_fee_max_amount || undefined,
+  } : null;
+
+  // Sync balance when tenant changes
+  useEffect(() => {
+    setCurrentBalance(tenant.current_balance || 0);
+  }, [tenant.id, tenant.current_balance]);
+
+  // Handle balance update
+  const handleBalanceUpdate = (newBalance: number) => {
+    setCurrentBalance(newBalance);
+    onUpdate();
+  };
 
   // Realtime subscription for tenant property changes
   useEffect(() => {
@@ -495,6 +578,51 @@ export function TenantPropertiesTab({ tenantId, managerId }: TenantPropertiesTab
             </Button>
           </CardContent>
         </Card>
+      )}
+
+      {/* Balance & Rent Management Section */}
+      {managerId && tenant.manager_id && (
+        <>
+          <Separator className="my-6" />
+          
+          {/* Balance Section */}
+          <BalanceSection
+            tenantId={tenant.id}
+            currentBalance={currentBalance}
+            rentAmount={tenant.rent_amount}
+            leaseStartDate={tenant.lease_start_date}
+            managerId={managerId}
+            onBalanceUpdate={handleBalanceUpdate}
+          />
+
+          {/* Quick Rent Actions */}
+          <div className="mt-6">
+            <QuickRentActions
+              tenantId={tenant.id}
+              managerId={managerId}
+              rentAmount={tenant.rent_amount}
+            />
+          </div>
+
+          {/* Rent Charge History */}
+          <div className="mt-6">
+            <RentChargeHistory
+              tenantId={tenant.id}
+              managerId={managerId}
+            />
+          </div>
+
+          {/* Automation Settings */}
+          <div className="mt-6">
+            <AutomationSettings
+              tenantId={tenant.id}
+              autoChargeRent={automationSettings.autoChargeRent}
+              autoApplyLateFees={automationSettings.autoApplyLateFees}
+              leaseInfo={leaseInfo}
+              onSettingsChange={setAutomationSettings}
+            />
+          </div>
+        </>
       )}
     </div>
   );
