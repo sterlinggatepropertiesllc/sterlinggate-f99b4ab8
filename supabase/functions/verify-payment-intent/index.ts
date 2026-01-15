@@ -45,10 +45,6 @@ serve(async (req) => {
     console.log("[VERIFY-PAYMENT-INTENT] PaymentIntent status:", paymentIntent.status);
     console.log("[VERIFY-PAYMENT-INTENT] PaymentIntent metadata:", paymentIntent.metadata);
 
-    if (paymentIntent.status !== 'succeeded') {
-      throw new Error(`Payment not completed. Status: ${paymentIntent.status}`);
-    }
-
     // Get metadata
     const { payment_type, property_id, lease_id, tenant_id, user_id } = paymentIntent.metadata || {};
     const amountPaid = paymentIntent.amount || 0;
@@ -61,23 +57,119 @@ serve(async (req) => {
       throw new Error("Invalid payment: missing user information");
     }
 
-    // Check if payment already recorded (idempotency)
+    // Check if payment already recorded (idempotency) - check both fields
     const { data: existingPayment } = await supabaseAdmin
       .from('payments')
-      .select('id')
-      .eq('stripe_session_id', payment_intent_id)
+      .select('id, status')
+      .or(`stripe_session_id.eq.${payment_intent_id},stripe_payment_intent_id.eq.${payment_intent_id}`)
+      .limit(1)
       .single();
 
     if (existingPayment) {
-      console.log("[VERIFY-PAYMENT-INTENT] Payment already recorded:", existingPayment.id);
+      console.log("[VERIFY-PAYMENT-INTENT] Payment already recorded:", existingPayment.id, "status:", existingPayment.status);
       return new Response(JSON.stringify({ 
         success: true, 
         payment_id: existingPayment.id,
-        already_recorded: true 
+        already_recorded: true,
+        status: existingPayment.status,
+        isProcessing: existingPayment.status === 'processing',
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
+    }
+
+    // Handle ACH payments that are still processing
+    if (paymentIntent.status === 'processing') {
+      console.log("[VERIFY-PAYMENT-INTENT] ACH payment processing - recording as pending");
+      
+      // Resolve tenant and property IDs for pending payment record
+      let resolvedTenantId = tenant_id;
+      let resolvedPropertyId = property_id;
+
+      if (!resolvedTenantId && lease_id) {
+        const { data: leaseData } = await supabaseAdmin
+          .from('leases')
+          .select('tenant_id, property_id')
+          .eq('id', lease_id)
+          .single();
+
+        if (leaseData) {
+          const { data: tenantRecord } = await supabaseAdmin
+            .from('tenants')
+            .select('id')
+            .eq('user_id', leaseData.tenant_id)
+            .eq('is_active', true)
+            .limit(1)
+            .single();
+
+          if (tenantRecord) {
+            resolvedTenantId = tenantRecord.id;
+          }
+          resolvedPropertyId = leaseData.property_id;
+        }
+      }
+
+      // For balance payments, resolve from tenant
+      if (resolvedTenantId && !resolvedPropertyId) {
+        const { data: tenantData } = await supabaseAdmin
+          .from('tenants')
+          .select('property_id')
+          .eq('id', resolvedTenantId)
+          .single();
+        
+        if (tenantData?.property_id) {
+          resolvedPropertyId = tenantData.property_id;
+        }
+      }
+
+      if (!resolvedTenantId || !resolvedPropertyId) {
+        throw new Error("Could not determine tenant or property for pending payment");
+      }
+
+      // Insert payment with 'processing' status - balance will be updated by webhook
+      const { data: pendingPayment, error: insertError } = await supabaseAdmin
+        .from('payments')
+        .insert({
+          tenant_id: resolvedTenantId,
+          property_id: resolvedPropertyId,
+          lease_id: lease_id || null,
+          amount: amountInDollars,
+          payment_date: new Date().toISOString().split('T')[0],
+          payment_method: 'stripe',
+          payment_method_type: 'ach',
+          status: 'processing',
+          stripe_payment_intent_id: payment_intent_id,
+          payment_type: payment_type,
+          notes: `${payment_type?.replace(/_/g, ' ')} via ACH (processing)`,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error("[VERIFY-PAYMENT-INTENT] Insert error for processing payment:", insertError);
+        throw new Error(`Failed to record processing payment: ${insertError.message}`);
+      }
+
+      console.log("[VERIFY-PAYMENT-INTENT] Processing payment recorded:", pendingPayment.id);
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        payment_id: pendingPayment.id,
+        status: 'processing',
+        isProcessing: true,
+        payment_type,
+        amount: amountInDollars,
+        message: 'Your ACH payment is being processed. It typically takes 4-5 business days to clear.',
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    // For any other non-succeeded status, throw error
+    if (paymentIntent.status !== 'succeeded') {
+      throw new Error(`Payment not completed. Status: ${paymentIntent.status}`);
     }
 
     // Handle application fee payments differently - no tenant/balance updates needed
@@ -261,7 +353,7 @@ serve(async (req) => {
       }
     }
 
-    // Insert payment record
+    // Insert payment record (succeeded status = card payment, record as completed)
     const { data: newPayment, error: insertError } = await supabaseAdmin
       .from('payments')
       .insert({
@@ -271,8 +363,9 @@ serve(async (req) => {
         amount: amountInDollars,
         payment_date: new Date().toISOString().split('T')[0],
         payment_method: 'stripe',
+        payment_method_type: 'card',
         status: 'completed',
-        stripe_session_id: payment_intent_id,
+        stripe_payment_intent_id: payment_intent_id,
         payment_type: payment_type,
         notes: `${payment_type?.replace(/_/g, ' ')} via Stripe (embedded)`,
       })

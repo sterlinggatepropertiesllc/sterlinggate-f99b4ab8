@@ -3,7 +3,13 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Loader2, AlertCircle, Home, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Loader2, AlertCircle, Home, RefreshCw, Clock } from 'lucide-react';
+
+interface PaymentDetails {
+  amount: number;
+  isProcessing?: boolean;
+  message?: string;
+}
 
 export default function PaymentSuccess() {
   const [searchParams] = useSearchParams();
@@ -14,7 +20,7 @@ export default function PaymentSuccess() {
   const [verifying, setVerifying] = useState(true);
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [paymentDetails, setPaymentDetails] = useState<{ amount: number } | null>(null);
+  const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null>(null);
   const [countdown, setCountdown] = useState(5);
 
   useEffect(() => {
@@ -38,7 +44,11 @@ export default function PaymentSuccess() {
 
         if (data.success) {
           setVerified(true);
-          setPaymentDetails({ amount: data.amount });
+          setPaymentDetails({ 
+            amount: data.amount,
+            isProcessing: data.isProcessing || data.status === 'processing',
+            message: data.message,
+          });
         } else {
           throw new Error(data.error || 'Payment verification failed');
         }
@@ -71,7 +81,12 @@ export default function PaymentSuccess() {
     return () => clearInterval(timer);
   }, [verified, navigate]);
 
+  const isProcessing = paymentDetails?.isProcessing;
+
   const getPaymentTitle = () => {
+    if (isProcessing) {
+      return 'Payment Submitted';
+    }
     switch (paymentType) {
       case 'application_fee':
         return 'Application Fee Paid';
@@ -87,6 +102,10 @@ export default function PaymentSuccess() {
   };
 
   const getPaymentMessage = () => {
+    if (isProcessing) {
+      return paymentDetails?.message || 
+        'Your bank transfer is being processed. ACH payments typically take 4-5 business days to clear. Your balance will be updated automatically once the transfer completes.';
+    }
     switch (paymentType) {
       case 'application_fee':
         return 'Your application fee has been processed. You can now complete your rental application.';
@@ -149,9 +168,15 @@ export default function PaymentSuccess() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card className="max-w-md w-full">
         <CardHeader className="text-center pb-4">
-          <div className="w-20 h-20 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle2 className="h-10 w-10 text-success" />
-          </div>
+          {isProcessing ? (
+            <div className="w-20 h-20 bg-warning/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Clock className="h-10 w-10 text-warning" />
+            </div>
+          ) : (
+            <div className="w-20 h-20 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle2 className="h-10 w-10 text-success" />
+            </div>
+          )}
           <CardTitle className="text-2xl font-serif">{getPaymentTitle()}</CardTitle>
         </CardHeader>
         <CardContent className="text-center space-y-6">
