@@ -223,7 +223,7 @@ export default function TenantDetail() {
           </TabsContent>
 
           <TabsContent value="properties" className="animate-fade-in">
-            <TenantPropertiesTab tenantId={tenant.id} managerId={user?.id} />
+            <TenantPropertiesTab tenant={tenant} managerId={user?.id} onUpdate={refetch} />
           </TabsContent>
 
           <TabsContent value="balance" className="animate-fade-in">
