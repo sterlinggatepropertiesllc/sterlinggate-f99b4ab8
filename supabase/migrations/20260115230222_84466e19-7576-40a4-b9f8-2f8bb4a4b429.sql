@@ -1,0 +1,106 @@
+-- Create trigger function for payment status changes (processing -> completed)
+CREATE OR REPLACE FUNCTION notify_on_payment_status_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  property_record RECORD;
+  tenant_name TEXT;
+BEGIN
+  -- Only fire when status changes to 'completed' from 'processing'
+  IF OLD.status = 'processing' AND NEW.status = 'completed' THEN
+    -- Get property and manager info
+    SELECT p.address, p.manager_id
+    INTO property_record
+    FROM properties p
+    WHERE p.id = NEW.property_id;
+
+    -- Get tenant name
+    SELECT pr.full_name INTO tenant_name
+    FROM tenants t
+    LEFT JOIN profiles pr ON pr.id = t.user_id
+    WHERE t.id = NEW.tenant_id;
+
+    -- Create notification for property manager
+    IF property_record.manager_id IS NOT NULL THEN
+      INSERT INTO notifications (user_id, type, title, message, metadata)
+      VALUES (
+        property_record.manager_id,
+        'rent_received',
+        'ACH Payment Cleared',
+        '$' || NEW.amount || ' from ' || COALESCE(tenant_name, 'tenant') || 
+        ' for ' || property_record.address || ' has cleared',
+        jsonb_build_object(
+          'payment_id', NEW.id,
+          'property_id', NEW.property_id,
+          'tenant_id', NEW.tenant_id,
+          'amount', NEW.amount,
+          'payment_type', NEW.payment_type,
+          'payment_method', 'ach'
+        )
+      );
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+-- Create the trigger for UPDATE events on payments
+CREATE TRIGGER on_payment_status_change
+  AFTER UPDATE ON payments
+  FOR EACH ROW
+  EXECUTE FUNCTION notify_on_payment_status_change();
+
+-- Update existing trigger to skip 'processing' payments (avoid duplicate notifications)
+CREATE OR REPLACE FUNCTION notify_on_new_payment()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  property_record RECORD;
+  tenant_name TEXT;
+BEGIN
+  -- Skip processing payments - notification will come when they clear via the status change trigger
+  IF NEW.status = 'processing' THEN
+    RETURN NEW;
+  END IF;
+
+  -- Get property and manager info
+  SELECT p.address, p.manager_id
+  INTO property_record
+  FROM properties p
+  WHERE p.id = NEW.property_id;
+
+  -- Get tenant name
+  SELECT pr.full_name INTO tenant_name
+  FROM tenants t
+  LEFT JOIN profiles pr ON pr.id = t.user_id
+  WHERE t.id = NEW.tenant_id;
+
+  -- Create notification for property manager
+  IF property_record.manager_id IS NOT NULL THEN
+    INSERT INTO notifications (user_id, type, title, message, metadata)
+    VALUES (
+      property_record.manager_id,
+      'rent_received',
+      'Payment Received',
+      '$' || NEW.amount || ' received from ' || COALESCE(tenant_name, 'tenant') || 
+      ' for ' || property_record.address,
+      jsonb_build_object(
+        'payment_id', NEW.id,
+        'property_id', NEW.property_id,
+        'tenant_id', NEW.tenant_id,
+        'amount', NEW.amount,
+        'payment_type', NEW.payment_type
+      )
+    );
+  END IF;
+
+  RETURN NEW;
+END;
+$$;

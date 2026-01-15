@@ -97,6 +97,65 @@ serve(async (req) => {
   }
 });
 
+async function sendDiscordNotificationIfEnabled(
+  // deno-lint-ignore no-explicit-any
+  supabaseAdmin: SupabaseClient<any>,
+  managerId: string,
+  notification: {
+    title: string;
+    message: string;
+    type: string;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  try {
+    // Get manager's notification settings
+    const { data: settings, error: settingsError } = await supabaseAdmin
+      .from("notification_settings")
+      .select("discord_webhook_url, discord_enabled, notify_rent_received")
+      .eq("user_id", managerId)
+      .single();
+
+    if (settingsError) {
+      logStep("No notification settings found for manager", { managerId });
+      return;
+    }
+
+    if (!settings?.discord_enabled || !settings?.discord_webhook_url || !settings?.notify_rent_received) {
+      logStep("Discord notifications not enabled or rent notifications disabled");
+      return;
+    }
+
+    logStep("Sending Discord notification", { title: notification.title });
+
+    // Send to Discord via edge function
+    const response = await fetch(
+      `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-discord-notification`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify({
+          webhook_url: settings.discord_webhook_url,
+          ...notification,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logStep("Discord notification failed", { status: response.status, error: errorText });
+    } else {
+      logStep("Discord notification sent successfully");
+    }
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    logStep("Failed to send Discord notification", { error: errorMessage });
+  }
+}
+
 async function handlePaymentSucceeded(
   // deno-lint-ignore no-explicit-any
   supabaseAdmin: SupabaseClient<any>,
@@ -113,7 +172,7 @@ async function handlePaymentSucceeded(
   // Check if payment already recorded (idempotency)
   const { data: existingPayment } = await supabaseAdmin
     .from("payments")
-    .select("id, status")
+    .select("id, status, tenant_id, property_id")
     .eq("stripe_payment_intent_id", paymentIntent.id)
     .single();
 
@@ -123,8 +182,8 @@ async function handlePaymentSucceeded(
       return;
     }
 
-    // Payment exists but was processing - update to completed
-    logStep("Updating processing payment to completed", { id: existingPayment.id });
+    // Payment exists but was processing - this is an ACH payment clearing!
+    logStep("Updating processing payment to completed (ACH cleared)", { id: existingPayment.id });
 
     const { error: updateError } = await supabaseAdmin
       .from("payments")
@@ -135,9 +194,41 @@ async function handlePaymentSucceeded(
       logStep("Failed to update payment status", { error: updateError.message });
     }
 
+    // Get tenant info for notifications
+    const { data: tenantData } = await supabaseAdmin
+      .from("tenants")
+      .select("manager_id, user_id")
+      .eq("id", existingPayment.tenant_id)
+      .single();
+
+    let tenantName = "tenant";
+    if (tenantData?.user_id) {
+      const { data: profileData } = await supabaseAdmin
+        .from("profiles")
+        .select("full_name")
+        .eq("id", tenantData.user_id)
+        .single();
+      tenantName = profileData?.full_name || "tenant";
+    }
+
+    // Send Discord notification for ACH payment cleared
+    if (tenantData?.manager_id) {
+      await sendDiscordNotificationIfEnabled(supabaseAdmin, tenantData.manager_id, {
+        title: "ACH Payment Cleared",
+        message: `$${amountInDollars.toFixed(2)} from ${tenantName} has cleared`,
+        type: "rent_received",
+        metadata: {
+          amount: amountInDollars,
+          payment_type: payment_type || "unknown",
+          tenant: tenantName,
+          payment_id: existingPayment.id,
+        },
+      });
+    }
+
     // Now update tenant balance for balance/rent payments
-    if ((payment_type === "balance" || payment_type === "rent") && tenant_id) {
-      await updateTenantBalance(supabaseAdmin, tenant_id, amountInDollars, payment_type, user_id);
+    if ((payment_type === "balance" || payment_type === "rent") && existingPayment.tenant_id) {
+      await updateTenantBalance(supabaseAdmin, existingPayment.tenant_id, amountInDollars, payment_type, user_id);
     }
 
     return;
@@ -222,7 +313,7 @@ async function handlePaymentFailed(
   // Find the pending payment
   const { data: existingPayment } = await supabaseAdmin
     .from("payments")
-    .select("id, tenant_id")
+    .select("id, tenant_id, amount")
     .eq("stripe_payment_intent_id", paymentIntent.id)
     .single();
 
@@ -247,7 +338,7 @@ async function handlePaymentFailed(
 
   logStep("Payment marked as failed", { id: existingPayment.id });
 
-  // Optionally create a notification for the manager
+  // Create a notification and send Discord alert for the manager
   if (existingPayment.tenant_id) {
     const { data: tenantData } = await supabaseAdmin
       .from("tenants")
@@ -264,7 +355,7 @@ async function handlePaymentFailed(
 
       const tenantName = profileData?.full_name || "A tenant";
 
-      // Create notification for manager
+      // Create notification for manager (in-app)
       await supabaseAdmin.from("notifications").insert({
         user_id: tenantData.manager_id,
         type: "rent_received", // Using existing type, message indicates failure
@@ -278,6 +369,19 @@ async function handlePaymentFailed(
       });
 
       logStep("Manager notification created");
+
+      // Also send Discord notification for failed payment
+      await sendDiscordNotificationIfEnabled(supabaseAdmin, tenantData.manager_id, {
+        title: "⚠️ ACH Payment Failed",
+        message: `${tenantName}'s payment of $${existingPayment.amount} has failed: ${lastError}`,
+        type: "rent_received",
+        metadata: {
+          amount: existingPayment.amount,
+          tenant: tenantName,
+          failure_reason: lastError,
+          payment_id: existingPayment.id,
+        },
+      });
     }
   }
 }
