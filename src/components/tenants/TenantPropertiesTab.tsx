@@ -269,6 +269,7 @@ export function TenantPropertiesTab({ tenant, managerId, onUpdate }: TenantPrope
     lateFeeFlatAmount: primaryProperty.late_fee_flat_amount || 0,
     lateFeeDailyAmount: primaryProperty.late_fee_daily_amount || 0,
     lateFeeMaxAmount: primaryProperty.late_fee_max_amount || undefined,
+    rentAmount: primaryProperty.rent_amount || 0,
   } : null;
 
   // Realtime subscription for tenant property changes
