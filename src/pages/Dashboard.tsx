@@ -6,8 +6,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useManagerProperties, useCreateProperty, useUpdateProperty, useDeleteProperty } from '@/hooks/useProperties';
 import { useApplications, useUpdateApplication } from '@/hooks/useApplications';
 import { ApplicationDetailsDialog } from '@/components/applications/ApplicationDetailsDialog';
-import { useTenants, useAddTenant, useUpdateTenant, useDeleteTenant, useRevokeTenantAccess } from '@/hooks/useTenants';
+import { useTenants, useAddTenant, useUpdateTenant, useDeleteTenant, useRevokeTenantAccess, useHardDeleteTenant } from '@/hooks/useTenants';
 import { AddTenantDialog } from '@/components/tenants/AddTenantDialog';
+import { TenantsTable } from '@/components/tenants/TenantsTable';
 import { TenantDetailsDialog } from '@/components/tenants/TenantDetailsDialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useLeases, useDeleteLease } from '@/hooks/useLeases';
@@ -875,91 +876,10 @@ export default function Dashboard() {
                   </div>
                 </Card>
               ) : tenants && tenants.length > 0 ? (
-                <Card>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Tenant</TableHead>
-                        <TableHead>Contact</TableHead>
-                        <TableHead>Property</TableHead>
-                        <TableHead>Rent</TableHead>
-                        <TableHead>Lease Period</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {tenants.map((tenant: any) => (
-                        <TableRow 
-                          key={tenant.id} 
-                          className="cursor-pointer hover:bg-muted/50 transition-colors"
-                          onClick={() => navigate(`/dashboard/tenant/${tenant.id}`)}
-                        >
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-accent/10 rounded-full flex items-center justify-center">
-                                <Users className="h-5 w-5 text-accent" />
-                              </div>
-                              <div>
-                                <p className="font-medium">{tenant.user?.full_name || 'Unnamed'}</p>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-sm">
-                              <p>{tenant.user?.email}</p>
-                              {tenant.user?.phone && (
-                                <p className="text-muted-foreground">{tenant.user.phone}</p>
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {tenant.primary_property ? (
-                              <div className="flex items-center gap-1.5 text-sm">
-                                <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span>{tenant.primary_property.address}</span>
-                                {tenant.additional_properties_count > 0 && (
-                                  <Badge variant="secondary" className="ml-1 text-xs">
-                                    +{tenant.additional_properties_count}
-                                  </Badge>
-                                )}
-                              </div>
-                            ) : (
-                              <Badge variant="outline" className="border-warning text-warning">
-                                Unassigned
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {tenant.primary_rent_amount && tenant.primary_rent_amount > 0 ? (
-                              <div className="flex items-center gap-1">
-                                <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span>{Number(tenant.primary_rent_amount).toLocaleString()}/mo</span>
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {tenant.primary_lease_start && tenant.primary_lease_end ? (
-                              <div className="text-sm">
-                                <span>{new Date(tenant.primary_lease_start).toLocaleDateString()}</span>
-                                <span className="text-muted-foreground"> — </span>
-                                <span>{new Date(tenant.primary_lease_end).toLocaleDateString()}</span>
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="secondary" className="bg-success/10 text-success">
-                              Active
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </Card>
+                <TenantsTable 
+                  tenants={tenants} 
+                  onNavigate={(tenantId) => navigate(`/dashboard/tenant/${tenantId}`)} 
+                />
               ) : (
                 <Card className="p-12 text-center border-dashed">
                   <Users className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />

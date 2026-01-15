@@ -189,6 +189,30 @@ export function useRevokeTenantAccess() {
   });
 }
 
+export function useHardDeleteTenant() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (tenantId: string) => {
+      const { error } = await supabase.rpc('hard_delete_tenant', {
+        _tenant_id: tenantId,
+      });
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenants'] });
+      queryClient.invalidateQueries({ queryKey: ['payments'] });
+      queryClient.invalidateQueries({ queryKey: ['rent-charges'] });
+      queryClient.invalidateQueries({ queryKey: ['balance-adjustments'] });
+      toast.success('Tenant permanently deleted');
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete tenant: ${error.message}`);
+    },
+  });
+}
+
 interface AddTenantInput {
   user_id: string;
   manager_id: string;
