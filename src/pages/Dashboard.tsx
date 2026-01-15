@@ -913,10 +913,15 @@ export default function Dashboard() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            {tenant.property ? (
+                            {tenant.primary_property ? (
                               <div className="flex items-center gap-1.5 text-sm">
                                 <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span>{tenant.property.address}</span>
+                                <span>{tenant.primary_property.address}</span>
+                                {tenant.additional_properties_count > 0 && (
+                                  <Badge variant="secondary" className="ml-1 text-xs">
+                                    +{tenant.additional_properties_count}
+                                  </Badge>
+                                )}
                               </div>
                             ) : (
                               <Badge variant="outline" className="border-warning text-warning">
@@ -925,21 +930,21 @@ export default function Dashboard() {
                             )}
                           </TableCell>
                           <TableCell>
-                            {tenant.rent_amount && tenant.rent_amount > 0 ? (
+                            {tenant.primary_rent_amount && tenant.primary_rent_amount > 0 ? (
                               <div className="flex items-center gap-1">
                                 <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-                                <span>{Number(tenant.rent_amount).toLocaleString()}/mo</span>
+                                <span>{Number(tenant.primary_rent_amount).toLocaleString()}/mo</span>
                               </div>
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
                           </TableCell>
                           <TableCell>
-                            {tenant.lease_start_date && tenant.lease_end_date ? (
+                            {tenant.primary_lease_start && tenant.primary_lease_end ? (
                               <div className="text-sm">
-                                <span>{new Date(tenant.lease_start_date).toLocaleDateString()}</span>
+                                <span>{new Date(tenant.primary_lease_start).toLocaleDateString()}</span>
                                 <span className="text-muted-foreground"> — </span>
-                                <span>{new Date(tenant.lease_end_date).toLocaleDateString()}</span>
+                                <span>{new Date(tenant.primary_lease_end).toLocaleDateString()}</span>
                               </div>
                             ) : (
                               <span className="text-muted-foreground">—</span>
@@ -1329,7 +1334,6 @@ export default function Dashboard() {
       <AddTenantDialog
         open={isAddTenantOpen}
         onOpenChange={setIsAddTenantOpen}
-        properties={properties || []}
         existingTenantUserIds={tenants?.map((t: any) => t.user_id) || []}
         managerId={user.id}
       />

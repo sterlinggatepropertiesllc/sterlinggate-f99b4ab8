@@ -3,24 +3,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useAllProfiles } from '@/hooks/useAllProfiles';
 import { useAddTenant } from '@/hooks/useTenants';
-import { Search, User, CalendarIcon, DollarSign } from 'lucide-react';
+import { Search, User } from 'lucide-react';
 import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
-import type { Database } from '@/integrations/supabase/types';
-
-type Property = Database['public']['Tables']['properties']['Row'];
 
 interface AddTenantDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  properties: Property[];
   existingTenantUserIds: string[];
   managerId: string;
 }
@@ -28,15 +20,10 @@ interface AddTenantDialogProps {
 export function AddTenantDialog({ 
   open, 
   onOpenChange, 
-  properties,
   existingTenantUserIds,
   managerId
 }: AddTenantDialogProps) {
   const [selectedUserId, setSelectedUserId] = useState<string>('');
-  const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
-  const [rentAmount, setRentAmount] = useState<string>('');
-  const [leaseStartDate, setLeaseStartDate] = useState<Date | undefined>();
-  const [leaseEndDate, setLeaseEndDate] = useState<Date | undefined>();
   const [searchQuery, setSearchQuery] = useState('');
 
   const { data: allProfiles, isLoading: profilesLoading } = useAllProfiles();
@@ -59,11 +46,6 @@ export function AddTenantDialog({
     );
   }, [availableProfiles, searchQuery]);
 
-  // Get available properties (not occupied)
-  const availableProperties = useMemo(() => {
-    return properties.filter(p => p.status === 'available');
-  }, [properties]);
-
   const selectedUser = allProfiles?.find(p => p.id === selectedUserId);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -73,29 +55,16 @@ export function AddTenantDialog({
 
     await addTenant.mutateAsync({
       user_id: selectedUserId,
-      property_id: selectedPropertyId || null,
-      rent_amount: selectedPropertyId && rentAmount ? parseFloat(rentAmount) : null,
-      lease_start_date: leaseStartDate ? format(leaseStartDate, 'yyyy-MM-dd') : null,
-      lease_end_date: leaseEndDate ? format(leaseEndDate, 'yyyy-MM-dd') : null,
       manager_id: managerId,
     });
 
     // Reset form
-    setSelectedUserId('');
-    setSelectedPropertyId('');
-    setRentAmount('');
-    setLeaseStartDate(undefined);
-    setLeaseEndDate(undefined);
-    setSearchQuery('');
+    resetForm();
     onOpenChange(false);
   };
 
   const resetForm = () => {
     setSelectedUserId('');
-    setSelectedPropertyId('');
-    setRentAmount('');
-    setLeaseStartDate(undefined);
-    setLeaseEndDate(undefined);
     setSearchQuery('');
   };
 
@@ -108,7 +77,7 @@ export function AddTenantDialog({
         <DialogHeader>
           <DialogTitle className="font-serif text-2xl">Add Tenant</DialogTitle>
           <DialogDescription>
-            Add a user as a tenant. Property assignment is optional.
+            Select a user to add as a tenant. You can assign properties and configure rent on the tenant details page.
           </DialogDescription>
         </DialogHeader>
 
@@ -175,120 +144,6 @@ export function AddTenantDialog({
                 <span className="text-sm">{selectedUser.full_name || selectedUser.email}</span>
               </div>
             )}
-          </div>
-
-          {/* Property Selection (Optional) */}
-          <div className="space-y-2">
-            <Label htmlFor="property">Property (Optional)</Label>
-            <Select value={selectedPropertyId} onValueChange={(value) => {
-              if (value === 'none') {
-                setSelectedPropertyId('');
-                setRentAmount('');
-              } else {
-                setSelectedPropertyId(value);
-                // Auto-fill rent amount from property
-                const property = properties.find(p => p.id === value);
-                if (property) {
-                  setRentAmount(property.rent_amount.toString());
-                }
-              }
-            }}>
-              <SelectTrigger>
-                <SelectValue placeholder="No property assigned yet" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No property assigned yet</SelectItem>
-                {availableProperties.map((property) => (
-                  <SelectItem key={property.id} value={property.id}>
-                    {property.address}, {property.city}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Rent Amount - only show if property is selected */}
-          {selectedPropertyId && (
-            <div className="space-y-2">
-              <Label htmlFor="rentAmount">Monthly Rent</Label>
-              <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  id="rentAmount"
-                  type="number"
-                  placeholder="0.00"
-                  value={rentAmount}
-                  onChange={(e) => setRentAmount(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Lease Dates with Premium Calendar Pickers */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Lease Start (Optional)</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal h-10 bg-background hover:bg-muted/50 border-input",
-                      !leaseStartDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
-                    {leaseStartDate ? (
-                      <span className="text-foreground">{format(leaseStartDate, "MMM d, yyyy")}</span>
-                    ) : (
-                      <span>Select date</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={leaseStartDate}
-                    onSelect={setLeaseStartDate}
-                    initialFocus
-                    className={cn("p-3 pointer-events-auto")}
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-            
-            <div className="space-y-2">
-              <Label>Lease End (Optional)</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal h-10 bg-background hover:bg-muted/50 border-input",
-                      !leaseEndDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4 text-primary" />
-                    {leaseEndDate ? (
-                      <span className="text-foreground">{format(leaseEndDate, "MMM d, yyyy")}</span>
-                    ) : (
-                      <span>Select date</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={leaseEndDate}
-                    onSelect={setLeaseEndDate}
-                    disabled={(date) => leaseStartDate ? date < leaseStartDate : false}
-                    initialFocus
-                    className={cn("p-3 pointer-events-auto")}
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
           </div>
 
           {/* Actions */}
