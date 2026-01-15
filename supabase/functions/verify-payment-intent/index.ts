@@ -11,6 +11,51 @@ interface VerifyRequest {
   payment_intent_id: string;
 }
 
+// Helper function to send Discord notification if enabled
+async function sendDiscordNotificationIfEnabled(
+  supabaseAdmin: any,
+  managerId: string,
+  notification: {
+    title: string;
+    message: string;
+    type: string;
+    metadata?: Record<string, unknown>;
+  }
+) {
+  try {
+    // Check if manager has Discord notifications enabled
+    const { data: settings } = await supabaseAdmin
+      .from('notification_settings')
+      .select('discord_enabled, discord_webhook_url, notify_rent_received')
+      .eq('user_id', managerId)
+      .single();
+
+    if (!settings?.discord_enabled || !settings?.discord_webhook_url || !settings?.notify_rent_received) {
+      console.log('[VERIFY-PAYMENT-INTENT] Discord notifications not enabled for manager:', managerId);
+      return;
+    }
+
+    // Call the send-discord-notification edge function
+    const { error } = await supabaseAdmin.functions.invoke('send-discord-notification', {
+      body: {
+        webhook_url: settings.discord_webhook_url,
+        title: notification.title,
+        message: notification.message,
+        type: notification.type,
+        metadata: notification.metadata,
+      },
+    });
+
+    if (error) {
+      console.error('[VERIFY-PAYMENT-INTENT] Failed to send Discord notification:', error);
+    } else {
+      console.log('[VERIFY-PAYMENT-INTENT] Discord notification sent successfully');
+    }
+  } catch (err) {
+    console.error('[VERIFY-PAYMENT-INTENT] Error sending Discord notification:', err);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -152,6 +197,35 @@ serve(async (req) => {
       }
 
       console.log("[VERIFY-PAYMENT-INTENT] Processing payment recorded:", pendingPayment.id);
+
+      // Send Discord notification for ACH payment initiated
+      const { data: tenantNotifyData } = await supabaseAdmin
+        .from('tenants')
+        .select('manager_id, user_id')
+        .eq('id', resolvedTenantId)
+        .single();
+
+      if (tenantNotifyData?.manager_id) {
+        const { data: profileData } = await supabaseAdmin
+          .from('profiles')
+          .select('full_name')
+          .eq('id', tenantNotifyData.user_id)
+          .single();
+
+        const tenantName = profileData?.full_name || 'A tenant';
+
+        await sendDiscordNotificationIfEnabled(supabaseAdmin, tenantNotifyData.manager_id, {
+          title: 'ACH Payment Initiated',
+          message: `$${amountInDollars.toFixed(2)} ACH payment from ${tenantName} is processing (typically clears in 3-5 business days)`,
+          type: 'rent_received',
+          metadata: {
+            amount: amountInDollars,
+            payment_type,
+            tenant: tenantName,
+            status: 'processing',
+          },
+        });
+      }
 
       return new Response(JSON.stringify({ 
         success: true, 
@@ -378,6 +452,34 @@ serve(async (req) => {
     }
 
     console.log("[VERIFY-PAYMENT-INTENT] Payment recorded:", newPayment.id);
+
+    // Send Discord notification for card payment
+    const { data: tenantNotifyData } = await supabaseAdmin
+      .from('tenants')
+      .select('manager_id, user_id')
+      .eq('id', resolvedTenantId)
+      .single();
+
+    if (tenantNotifyData?.manager_id) {
+      const { data: profileData } = await supabaseAdmin
+        .from('profiles')
+        .select('full_name')
+        .eq('id', tenantNotifyData.user_id)
+        .single();
+
+      const tenantName = profileData?.full_name || 'A tenant';
+
+      await sendDiscordNotificationIfEnabled(supabaseAdmin, tenantNotifyData.manager_id, {
+        title: 'Payment Received',
+        message: `$${amountInDollars.toFixed(2)} received from ${tenantName}`,
+        type: 'rent_received',
+        metadata: {
+          amount: amountInDollars,
+          payment_type,
+          tenant: tenantName,
+        },
+      });
+    }
 
     // Update tenant balance for balance and rent payments
     if (payment_type === 'balance' || payment_type === 'rent') {
