@@ -808,37 +808,58 @@ export type Database = {
       tenant_properties: {
         Row: {
           created_at: string | null
+          grace_period_days: number | null
           id: string
           is_primary: boolean | null
+          late_fee_daily_amount: number | null
+          late_fee_flat_amount: number | null
+          late_fee_max_amount: number | null
+          late_fee_percentage: number | null
+          late_fee_type: string | null
           lease_end_date: string | null
           lease_start_date: string | null
           notes: string | null
           property_id: string
           rent_amount: number | null
+          rent_due_day: number | null
           tenant_id: string
           updated_at: string | null
         }
         Insert: {
           created_at?: string | null
+          grace_period_days?: number | null
           id?: string
           is_primary?: boolean | null
+          late_fee_daily_amount?: number | null
+          late_fee_flat_amount?: number | null
+          late_fee_max_amount?: number | null
+          late_fee_percentage?: number | null
+          late_fee_type?: string | null
           lease_end_date?: string | null
           lease_start_date?: string | null
           notes?: string | null
           property_id: string
           rent_amount?: number | null
+          rent_due_day?: number | null
           tenant_id: string
           updated_at?: string | null
         }
         Update: {
           created_at?: string | null
+          grace_period_days?: number | null
           id?: string
           is_primary?: boolean | null
+          late_fee_daily_amount?: number | null
+          late_fee_flat_amount?: number | null
+          late_fee_max_amount?: number | null
+          late_fee_percentage?: number | null
+          late_fee_type?: string | null
           lease_end_date?: string | null
           lease_start_date?: string | null
           notes?: string | null
           property_id?: string
           rent_amount?: number | null
+          rent_due_day?: number | null
           tenant_id?: string
           updated_at?: string | null
         }
