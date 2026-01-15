@@ -533,6 +533,7 @@ export type Database = {
           payment_type: string | null
           property_id: string
           status: string
+          stripe_payment_intent_id: string | null
           stripe_session_id: string | null
           tenant_id: string
         }
@@ -549,6 +550,7 @@ export type Database = {
           payment_type?: string | null
           property_id: string
           status?: string
+          stripe_payment_intent_id?: string | null
           stripe_session_id?: string | null
           tenant_id: string
         }
@@ -565,6 +567,7 @@ export type Database = {
           payment_type?: string | null
           property_id?: string
           status?: string
+          stripe_payment_intent_id?: string | null
           stripe_session_id?: string | null
           tenant_id?: string
         }
