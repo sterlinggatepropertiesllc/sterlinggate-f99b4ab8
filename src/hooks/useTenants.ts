@@ -12,7 +12,8 @@ export function useTenants(managerId: string | undefined) {
     queryFn: async () => {
       if (!managerId) return [];
       
-      const { data, error } = await supabase
+      // Fetch tenants with user profile
+      const { data: tenants, error } = await supabase
         .from('tenants')
         .select(`
           *,
@@ -22,12 +23,6 @@ export function useTenants(managerId: string | undefined) {
             email,
             full_name,
             phone
-          ),
-          property:properties (
-            id,
-            address,
-            city,
-            state
           )
         `)
         .eq('manager_id', managerId)
@@ -35,7 +30,61 @@ export function useTenants(managerId: string | undefined) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data;
+
+      // Fetch tenant_properties for all tenants to get primary property info
+      const tenantIds = tenants.map(t => t.id);
+      
+      if (tenantIds.length === 0) return tenants;
+
+      const { data: tenantProperties, error: tpError } = await supabase
+        .from('tenant_properties')
+        .select(`
+          tenant_id,
+          is_primary,
+          rent_amount,
+          lease_start_date,
+          lease_end_date,
+          property:properties (
+            id,
+            address,
+            city,
+            state
+          )
+        `)
+        .in('tenant_id', tenantIds);
+
+      if (tpError) {
+        console.error('Error fetching tenant properties:', tpError);
+        return tenants;
+      }
+
+      // Group tenant_properties by tenant_id
+      const propertiesByTenant: Record<string, typeof tenantProperties> = {};
+      tenantProperties?.forEach(tp => {
+        if (!propertiesByTenant[tp.tenant_id]) {
+          propertiesByTenant[tp.tenant_id] = [];
+        }
+        propertiesByTenant[tp.tenant_id].push(tp);
+      });
+
+      // Enhance tenants with primary property info from tenant_properties
+      return tenants.map(tenant => {
+        const tenantProps = propertiesByTenant[tenant.id] || [];
+        const primaryProp = tenantProps.find(tp => tp.is_primary) || tenantProps[0];
+        const additionalPropsCount = Math.max(0, tenantProps.length - 1);
+
+        return {
+          ...tenant,
+          // Primary property from tenant_properties
+          primary_property: primaryProp?.property || null,
+          primary_rent_amount: primaryProp?.rent_amount || null,
+          primary_lease_start: primaryProp?.lease_start_date || null,
+          primary_lease_end: primaryProp?.lease_end_date || null,
+          additional_properties_count: additionalPropsCount,
+          // Keep legacy property field for backward compatibility but prefer primary_property
+          property: primaryProp?.property || null,
+        };
+      });
     },
     enabled: !!managerId,
     retry: 1,
@@ -76,27 +125,13 @@ export function useUpdateTenant() {
         .from('tenants')
         .update(updates)
         .eq('id', id)
-        .select(`
-          *,
-          user:profiles!tenants_user_id_fkey (
-            id,
-            email,
-            full_name,
-            phone
-          ),
-          property:properties (
-            id,
-            address,
-            city,
-            state
-          )
-        `)
+        .select()
         .single();
 
       if (error) throw error;
       return data;
     },
-    onSuccess: (data, variables) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
       toast.success('Tenant updated successfully');
     },
@@ -156,10 +191,6 @@ export function useRevokeTenantAccess() {
 
 interface AddTenantInput {
   user_id: string;
-  property_id?: string | null;
-  rent_amount?: number | null;
-  lease_start_date?: string | null;
-  lease_end_date?: string | null;
   manager_id: string;
 }
 
@@ -168,15 +199,11 @@ export function useAddTenant() {
 
   return useMutation({
     mutationFn: async (input: AddTenantInput) => {
-      // First, insert the tenant record
+      // Insert the tenant record (no property assignment - that happens in tenant detail)
       const { data: tenant, error: tenantError } = await supabase
         .from('tenants')
         .insert({
           user_id: input.user_id,
-          property_id: input.property_id || null,
-          rent_amount: input.rent_amount || 0,
-          lease_start_date: input.lease_start_date,
-          lease_end_date: input.lease_end_date,
           manager_id: input.manager_id,
           created_by: input.manager_id,
           is_active: true,
@@ -188,19 +215,13 @@ export function useAddTenant() {
             email,
             full_name,
             phone
-          ),
-          property:properties (
-            id,
-            address,
-            city,
-            state
           )
         `)
         .single();
 
       if (tenantError) throw tenantError;
 
-      // Then, assign the tenant role to the user
+      // Assign the tenant role to the user
       const { error: roleError } = await supabase.rpc('assign_tenant_role', {
         _user_id: input.user_id,
       });
@@ -212,11 +233,9 @@ export function useAddTenant() {
       return tenant;
     },
     onMutate: async (input) => {
-      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['tenants', input.manager_id] });
     },
     onSuccess: (data, variables) => {
-      // Optimistically update the cache
       queryClient.setQueryData(['tenants', variables.manager_id], (old: any[] | undefined) => {
         if (!old) return [data];
         return [data, ...old];
