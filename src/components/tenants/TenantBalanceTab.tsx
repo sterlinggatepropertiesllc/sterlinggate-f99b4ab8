@@ -12,6 +12,8 @@ import { DollarSign, ArrowUp, ArrowDown, Clock, Plus, Minus, AlertTriangle, Cred
 import { useBalanceAdjustments, useApplyBalanceAdjustment } from '@/hooks/useBalanceAdjustments';
 import { useChargeRent } from '@/hooks/useRentCharges';
 import { useTenantProperties } from '@/hooks/useTenantProperties';
+import { usePendingACHPayment } from '@/hooks/usePendingACHPayment';
+import { PendingACHIndicator } from '@/components/payments/PendingACHIndicator';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 
@@ -29,6 +31,7 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
 
   const { data: adjustments, isLoading: adjustmentsLoading } = useBalanceAdjustments(tenant.id);
   const { data: tenantProperties } = useTenantProperties(tenant.id);
+  const { pendingPayment, hasPendingACH } = usePendingACHPayment(tenant.id);
   const applyAdjustment = useApplyBalanceAdjustment();
   const chargeRent = useChargeRent();
 
@@ -105,6 +108,11 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
 
   return (
     <div className="space-y-6">
+      {/* Pending ACH Payment Alert */}
+      {hasPendingACH && pendingPayment && (
+        <PendingACHIndicator payment={pendingPayment} variant="inline" />
+      )}
+
       {/* Balance Overview - Mirrors Tenant Portal */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className={`transition-all duration-300 ${isOverdue ? 'border-destructive/50 bg-gradient-to-br from-destructive/10 to-transparent shadow-lg shadow-destructive/5' : 'border-success/30 bg-gradient-to-br from-success/10 to-transparent'}`}>
