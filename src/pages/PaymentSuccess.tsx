@@ -15,6 +15,7 @@ export default function PaymentSuccess() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const sessionId = searchParams.get('session_id');
+  const paymentIntentId = searchParams.get('payment_intent');
   const paymentType = searchParams.get('type');
   
   const [verifying, setVerifying] = useState(true);
@@ -25,22 +26,37 @@ export default function PaymentSuccess() {
 
   useEffect(() => {
     const verifyPayment = async () => {
-      if (!sessionId) {
-        setError('No session ID provided');
+      // Check if we have either session_id or payment_intent
+      if (!sessionId && !paymentIntentId) {
+        setError('No payment information provided');
         setVerifying(false);
         return;
       }
 
       try {
-        console.log('[PaymentSuccess] Calling verify-payment with session:', sessionId);
-        
-        const { data, error } = await supabase.functions.invoke('verify-payment', {
-          body: { session_id: sessionId },
-        });
+        let data, invokeError;
 
-        console.log('[PaymentSuccess] Response:', { data, error });
+        if (sessionId) {
+          // Checkout Session flow
+          console.log('[PaymentSuccess] Calling verify-payment with session:', sessionId);
+          const response = await supabase.functions.invoke('verify-payment', {
+            body: { session_id: sessionId },
+          });
+          data = response.data;
+          invokeError = response.error;
+        } else if (paymentIntentId) {
+          // Payment Intent flow (embedded payments, ACH)
+          console.log('[PaymentSuccess] Calling verify-payment-intent with payment_intent:', paymentIntentId);
+          const response = await supabase.functions.invoke('verify-payment-intent', {
+            body: { payment_intent_id: paymentIntentId },
+          });
+          data = response.data;
+          invokeError = response.error;
+        }
 
-        if (error) throw error;
+        console.log('[PaymentSuccess] Response:', { data, error: invokeError });
+
+        if (invokeError) throw invokeError;
 
         if (data.success) {
           setVerified(true);
@@ -61,7 +77,7 @@ export default function PaymentSuccess() {
     };
 
     verifyPayment();
-  }, [sessionId]);
+  }, [sessionId, paymentIntentId]);
 
   // Auto-redirect countdown after successful verification
   useEffect(() => {
