@@ -10,6 +10,8 @@ import { useProfile } from '@/hooks/useProfiles';
 import { usePayments } from '@/hooks/usePayments';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useTenantProperties } from '@/hooks/useTenantProperties';
+import { usePendingACHPayment } from '@/hooks/usePendingACHPayment';
+import { PendingACHIndicator } from '@/components/payments/PendingACHIndicator';
 import { supabase } from '@/integrations/supabase/client';
 import { PaymentDialog } from '@/components/payments/PaymentDialog';
 import { Button } from '@/components/ui/button';
@@ -105,6 +107,9 @@ export default function TenantPortal() {
 
   // Fetch tenant's assigned properties from tenant_properties junction table
   const { data: tenantProperties } = useTenantProperties(tenantRecord?.id);
+
+  // Check for pending ACH payment
+  const { pendingPayment, hasPendingACH } = usePendingACHPayment(tenantRecord?.id);
 
   // Calculate total monthly rent across all assigned properties
   const totalMonthlyRent = useMemo(() => {
@@ -483,7 +488,11 @@ export default function TenantPortal() {
                             <DollarSign className={`h-5 w-5 md:h-6 md:w-6 ${isOverdue ? 'text-destructive' : 'text-primary'}`} />
                           </div>
                         </div>
-                        {currentBalance > 0 && tenantRecord?.id && (
+                        {hasPendingACH && pendingPayment ? (
+                          <div className="mt-3">
+                            <PendingACHIndicator payment={pendingPayment} variant="compact" />
+                          </div>
+                        ) : currentBalance > 0 && tenantRecord?.id ? (
                           <Button
                             variant={isOverdue ? "destructive" : "default"}
                             size="sm"
@@ -493,7 +502,7 @@ export default function TenantPortal() {
                             Make Payment
                             <ArrowRight className="h-4 w-4" />
                           </Button>
-                        )}
+                        ) : null}
                       </Card>
                     )}
 
@@ -558,7 +567,11 @@ export default function TenantPortal() {
                             <DollarSign className={`h-5 w-5 md:h-6 md:w-6 ${isOverdue ? 'text-destructive' : 'text-primary'}`} />
                           </div>
                         </div>
-                        {currentBalance > 0 && tenantRecord?.id && (
+                        {hasPendingACH && pendingPayment ? (
+                          <div className="mt-3">
+                            <PendingACHIndicator payment={pendingPayment} variant="compact" />
+                          </div>
+                        ) : currentBalance > 0 && tenantRecord?.id ? (
                           <Button
                             variant={isOverdue ? "destructive" : "default"}
                             size="sm"
@@ -568,7 +581,7 @@ export default function TenantPortal() {
                             Make Payment
                             <ArrowRight className="h-4 w-4" />
                           </Button>
-                        )}
+                        ) : null}
                       </Card>
 
                       <Card className="p-4 md:p-5 hover:shadow-md transition-shadow">
@@ -690,13 +703,19 @@ export default function TenantPortal() {
                     <p className="text-muted-foreground text-sm mb-3">
                       You have ${currentBalance.toLocaleString()} due
                     </p>
-                    <Button 
-                      onClick={() => setShowPaymentDialog(true)} 
-                      className="gap-2"
-                    >
-                      <CreditCard className="h-4 w-4" />
-                      Make Payment
-                    </Button>
+                    {hasPendingACH && pendingPayment ? (
+                      <div className="max-w-md mx-auto">
+                        <PendingACHIndicator payment={pendingPayment} variant="inline" />
+                      </div>
+                    ) : (
+                      <Button 
+                        onClick={() => setShowPaymentDialog(true)} 
+                        className="gap-2"
+                      >
+                        <CreditCard className="h-4 w-4" />
+                        Make Payment
+                      </Button>
+                    )}
                   </Card>
                 )}
 
