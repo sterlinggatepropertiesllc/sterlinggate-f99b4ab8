@@ -163,11 +163,16 @@ async function handlePaymentSucceeded(
 ) {
   logStep("Processing payment_intent.succeeded", { id: paymentIntent.id });
 
-  const { payment_type, property_id, lease_id, tenant_id, user_id } = paymentIntent.metadata || {};
+  const { payment_type, property_id, lease_id, tenant_id, user_id, convenience_fee: convenienceFeeStr } = paymentIntent.metadata || {};
   const amountPaid = paymentIntent.amount || 0;
   const amountInDollars = amountPaid / 100;
+  
+  // Calculate base amount (excluding convenience fee for card payments)
+  const convenienceFee = parseInt(convenienceFeeStr || '0', 10);
+  const convenienceFeeInDollars = convenienceFee / 100;
+  const baseAmountInDollars = convenienceFee > 0 ? (amountInDollars - convenienceFeeInDollars) : amountInDollars;
 
-  logStep("Payment details", { payment_type, tenant_id, amountInDollars });
+  logStep("Payment details", { payment_type, tenant_id, amountInDollars, convenienceFee, baseAmountInDollars });
 
   // Check if payment already recorded (idempotency)
   const { data: existingPayment } = await supabaseAdmin
@@ -226,9 +231,9 @@ async function handlePaymentSucceeded(
       });
     }
 
-    // Now update tenant balance for balance/rent payments
+    // Now update tenant balance for balance/rent payments (use base amount, not total with fee)
     if ((payment_type === "balance" || payment_type === "rent") && existingPayment.tenant_id) {
-      await updateTenantBalance(supabaseAdmin, existingPayment.tenant_id, amountInDollars, payment_type, user_id);
+      await updateTenantBalance(supabaseAdmin, existingPayment.tenant_id, baseAmountInDollars, payment_type, user_id, convenienceFee);
     }
 
     return;
@@ -271,20 +276,23 @@ async function handlePaymentSucceeded(
     return;
   }
 
-  // Insert completed payment record
+  // Insert completed payment record with base amount
   const { error: insertError } = await supabaseAdmin
     .from("payments")
     .insert({
       tenant_id: resolvedTenantId,
       property_id: resolvedPropertyId,
       lease_id: lease_id || null,
-      amount: amountInDollars,
+      amount: baseAmountInDollars,
+      convenience_fee: convenienceFee > 0 ? convenienceFee : null,
       payment_date: new Date().toISOString().split("T")[0],
       payment_method: "stripe",
       status: "completed",
       stripe_payment_intent_id: paymentIntent.id,
       payment_type: payment_type,
-      notes: `${payment_type?.replace(/_/g, " ")} via Stripe webhook`,
+      notes: convenienceFee > 0 
+        ? `${payment_type?.replace(/_/g, " ")} via Stripe webhook - card fee: $${convenienceFeeInDollars.toFixed(2)}`
+        : `${payment_type?.replace(/_/g, " ")} via Stripe webhook`,
     });
 
   if (insertError) {
@@ -294,9 +302,9 @@ async function handlePaymentSucceeded(
 
   logStep("Payment recorded via webhook");
 
-  // Update tenant balance for balance/rent payments
+  // Update tenant balance for balance/rent payments (use base amount)
   if (payment_type === "balance" || payment_type === "rent") {
-    await updateTenantBalance(supabaseAdmin, resolvedTenantId, amountInDollars, payment_type, user_id);
+    await updateTenantBalance(supabaseAdmin, resolvedTenantId, baseAmountInDollars, payment_type, user_id, convenienceFee);
   }
 }
 
@@ -390,11 +398,12 @@ async function updateTenantBalance(
   // deno-lint-ignore no-explicit-any
   supabaseAdmin: SupabaseClient<any>,
   tenantId: string,
-  amountInDollars: number,
+  baseAmountInDollars: number,
   paymentType: string,
-  userId?: string
+  userId?: string,
+  convenienceFee?: number
 ) {
-  logStep("Updating tenant balance", { tenantId, amountInDollars });
+  logStep("Updating tenant balance", { tenantId, baseAmountInDollars, convenienceFee });
 
   const { data: tenantData, error: tenantFetchError } = await supabaseAdmin
     .from("tenants")
@@ -408,9 +417,9 @@ async function updateTenantBalance(
   }
 
   const previousBalance = tenantData?.current_balance || 0;
-  const newBalance = previousBalance - amountInDollars;
+  const newBalance = previousBalance - baseAmountInDollars;
 
-  logStep("Balance update calculation", { previousBalance, amountInDollars, newBalance });
+  logStep("Balance update calculation", { previousBalance, baseAmountInDollars, newBalance });
 
   const { error: updateError } = await supabaseAdmin
     .from("tenants")
@@ -425,15 +434,18 @@ async function updateTenantBalance(
   logStep("Balance updated successfully");
 
   // Insert balance adjustment record
+  const convenienceFeeInDollars = (convenienceFee || 0) / 100;
   const { error: adjustmentError } = await supabaseAdmin
     .from("balance_adjustments")
     .insert({
       tenant_id: tenantId,
       adjustment_type: "payment",
-      amount: amountInDollars,
+      amount: baseAmountInDollars,
       previous_balance: previousBalance,
       new_balance: newBalance,
-      description: `Stripe ${paymentType} payment (ACH cleared)`,
+      description: convenienceFee && convenienceFee > 0
+        ? `Stripe ${paymentType} payment - base amount, card fee: $${convenienceFeeInDollars.toFixed(2)}`
+        : `Stripe ${paymentType} payment`,
       created_by: userId || null,
     });
 

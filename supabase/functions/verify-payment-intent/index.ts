@@ -91,11 +91,19 @@ serve(async (req) => {
     console.log("[VERIFY-PAYMENT-INTENT] PaymentIntent metadata:", paymentIntent.metadata);
 
     // Get metadata
-    const { payment_type, property_id, lease_id, tenant_id, user_id } = paymentIntent.metadata || {};
-    const amountPaid = paymentIntent.amount || 0;
-    const amountInDollars = amountPaid / 100;
+  const { payment_type, property_id, lease_id, tenant_id, user_id, convenience_fee: convenienceFeeStr } = paymentIntent.metadata || {};
+  const amountPaid = paymentIntent.amount || 0;
+  const amountInDollars = amountPaid / 100;
+  
+  // Calculate base amount (excluding convenience fee for card payments)
+  const convenienceFee = parseInt(convenienceFeeStr || '0', 10);
+  const convenienceFeeInDollars = convenienceFee / 100;
+  const baseAmountInDollars = convenienceFee > 0 ? (amountInDollars - convenienceFeeInDollars) : amountInDollars;
 
-    console.log("[VERIFY-PAYMENT-INTENT] Payment details:", { payment_type, property_id, lease_id, tenant_id, amountInDollars });
+  console.log("[VERIFY-PAYMENT-INTENT] Payment details:", { 
+    payment_type, property_id, lease_id, tenant_id, 
+    amountInDollars, convenienceFee, baseAmountInDollars 
+  });
 
     if (!user_id) {
       console.error("[VERIFY-PAYMENT-INTENT] No user_id in metadata");
@@ -428,20 +436,24 @@ serve(async (req) => {
     }
 
     // Insert payment record (succeeded status = card payment, record as completed)
+    // Store the base amount as the payment amount (what actually reduces balance)
     const { data: newPayment, error: insertError } = await supabaseAdmin
       .from('payments')
       .insert({
         tenant_id: resolvedTenantId,
         property_id: resolvedPropertyId,
         lease_id: lease_id || null,
-        amount: amountInDollars,
+        amount: baseAmountInDollars,
+        convenience_fee: convenienceFee > 0 ? convenienceFee : null,
         payment_date: new Date().toISOString().split('T')[0],
         payment_method: 'stripe',
         payment_method_type: 'card',
         status: 'completed',
         stripe_payment_intent_id: payment_intent_id,
         payment_type: payment_type,
-        notes: `${payment_type?.replace(/_/g, ' ')} via Stripe (embedded)`,
+        notes: convenienceFee > 0 
+          ? `${payment_type?.replace(/_/g, ' ')} via Stripe (embedded) - card fee: $${convenienceFeeInDollars.toFixed(2)}`
+          : `${payment_type?.replace(/_/g, ' ')} via Stripe (embedded)`,
       })
       .select()
       .single();
@@ -494,10 +506,11 @@ serve(async (req) => {
       if (tenantFetchError) {
         console.error("[VERIFY-PAYMENT-INTENT] Failed to fetch tenant balance:", tenantFetchError);
       } else {
-        const previousBalance = tenantData?.current_balance || 0;
-        const newBalance = previousBalance - amountInDollars;
+      const previousBalance = tenantData?.current_balance || 0;
+        // Use baseAmountInDollars for balance reduction (excludes card fee)
+        const newBalance = previousBalance - baseAmountInDollars;
 
-        console.log("[VERIFY-PAYMENT-INTENT] Balance update:", { previousBalance, amountInDollars, newBalance });
+        console.log("[VERIFY-PAYMENT-INTENT] Balance update:", { previousBalance, baseAmountInDollars, newBalance, convenienceFee });
 
         const { error: updateError } = await supabaseAdmin
           .from('tenants')
@@ -509,16 +522,18 @@ serve(async (req) => {
         } else {
           console.log("[VERIFY-PAYMENT-INTENT] Balance updated successfully");
 
-          // Insert balance adjustment record
+          // Insert balance adjustment record with base amount
           const { error: adjustmentError } = await supabaseAdmin
             .from('balance_adjustments')
             .insert({
               tenant_id: resolvedTenantId,
               adjustment_type: 'payment',
-              amount: amountInDollars,
+              amount: baseAmountInDollars,
               previous_balance: previousBalance,
               new_balance: newBalance,
-              description: `Stripe ${payment_type} payment (embedded)`,
+              description: convenienceFee > 0 
+                ? `Stripe ${payment_type} payment (embedded) - base amount, card fee: $${convenienceFeeInDollars.toFixed(2)}`
+                : `Stripe ${payment_type} payment (embedded)`,
               created_by: user_id,
             });
 
