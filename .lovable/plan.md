@@ -1,196 +1,116 @@
 
-# Pending ACH Payments Visual Indicator and Balance Flow
 
-## Summary
+# Show Effective Balance as Primary on Tenant Portal
 
-You're right - the current balance shows $2,100 but doesn't reflect the $400 in pending ACH payments. We need to:
+## What This Changes
 
-1. Show an "effective balance" of $1,700 (what Travis would owe after pending payments clear)
-2. Display all 4 pending ACH payments visually (currently only shows 1)
-3. Allow Travis to pay the remaining $1,700 while ACH is pending
-4. If any ACH fails after the 5th, apply late fees automatically
+Currently, when Travis logs in, he sees:
+- **Primary display:** "Current Balance: $2,100" 
+- **Secondary (inside collapsible):** "Effective Balance: $1,700"
 
----
+After this change, he will see:
+- **Primary display:** "Remaining Balance: $1,700" (the effective balance)
+- **Pending indicator:** "$400 in 4 ACH payments processing"
+- **Small note:** "Official balance: $2,100"
 
-## Current Problems
+## Property Assignment Confirmation
 
-| Issue | Current State | Proposed Fix |
-|-------|--------------|--------------|
-| Only 1 pending ACH shown | Hook uses `.limit(1).maybeSingle()` | Fetch ALL pending ACH payments |
-| Balance doesn't reflect pending | Shows $2,100 (doesn't subtract pending $400) | Show "Effective Balance: $1,700" with pending indicator |
-| Can't make additional payments | UI shows pending ACH but doesn't allow more payments | Show "Pay Remaining Balance" button alongside pending indicator |
-| No late fee on failed ACH | `handlePaymentFailed` only notifies, doesn't apply late fee | Add late fee logic when failure occurs after grace period |
+All tenants can make payments because:
+1. **Travis Boyd**: Has `property_id` set on tenant record + 2 properties in `tenant_properties` with primary set
+2. **John Robinson (tenant 1)**: Has `property_id` set + 1 property in `tenant_properties` with primary set
+3. **John Robinson (tenant 2)**: Has `property_id` set on tenant record (fallback works)
 
----
+The edge functions now check in this order:
+1. `tenants.property_id` (direct field)
+2. `leases` table
+3. `tenant_properties` table (new fallback we added)
 
-## Visual Design
-
-### Tenant Portal Dashboard (After Changes)
-
-```text
-+-------------------------------------------+
-| Current Balance             $1,700        |
-| (after pending payments)                  |
-|                                           |
-| +---------------------------------------+ |
-| | 4 ACH Payments Pending     $400 total | |
-| | $100 x 4 • Initiated Feb 4            | |
-| | Typically clears in 3-5 business days | |
-| +---------------------------------------+ |
-|                                           |
-| [Pay Remaining Balance: $1,700]           |
-+-------------------------------------------+
-```
-
-### Manager Dashboard (After Changes)
-
-```text
-+-------------------------------------------+
-| Current Balance               $2,100      |
-| (official balance)                        |
-|                                           |
-| +---------------------------------------+ |
-| | 4 ACH Payments Processing   $400      | |
-| | If all clear: $1,700 remaining        | |
-| +---------------------------------------+ |
-+-------------------------------------------+
-```
+So even if a tenant has no entries in `tenant_properties`, their direct `property_id` will be used.
 
 ---
 
 ## Changes Required
 
-### Part 1: Fetch All Pending ACH Payments (not just 1)
+### File: `src/pages/TenantPortal.tsx`
 
-**File:** `src/hooks/usePendingACHPayment.ts`
+**Location 1: Lines 476-518 (No property assigned balance card)**
+- Change "Current Balance" label to "Remaining Balance" when pending ACH exists
+- Show `effectiveBalance` instead of `currentBalance` as the primary number
+- Move the `PendingACHPaymentsCard` below the balance display
+- Add small note showing official balance for reference
 
-Create a new hook `usePendingACHPayments` (plural) that:
-- Fetches ALL payments with status='processing' and payment_method_type='ach'
-- Returns array of payments and total pending amount
-- Calculates effective balance (current balance minus pending amount)
+**Location 2: Lines 558-600 (Main dashboard balance card)**
+- Same changes as above
+- Display effective balance as the main number
+- Show pending ACH indicator below
+- Pass `effectiveBalance` to the "Pay Remaining" button
 
-### Part 2: New Component for Multiple Pending Payments
+### File: `src/components/payments/PendingACHPaymentsCard.tsx`
 
-**File:** `src/components/payments/PendingACHPaymentsCard.tsx`
+- Simplify the component to focus on the pending indicator only
+- Remove the effective balance calculation from this component (it's now shown in the main card)
+- Keep the collapsible list of individual payments
 
-Create a new component that:
-- Shows total pending amount (e.g., "$400 in 4 payments")
-- Shows effective balance after pending clears
-- Lists individual pending payments in a collapsible section
-- Shows expected clear date (3-5 days from initiated)
+### File: `src/components/payments/PaymentDialog.tsx`
 
-### Part 3: Update Tenant Portal Balance Card
+- Update "Pay Full Balance" button to use effective balance when pending ACH exists
+- Show remaining balance clearly in the payment flow
 
-**File:** `src/pages/TenantPortal.tsx`
+---
 
-Changes:
-- Show "Effective Balance" instead of "Current Balance" when pending ACH exists
-- Display the new PendingACHPaymentsCard component
-- Enable "Pay Remaining Balance" button even when ACH is pending
-- Pass effective balance (current - pending) to payment dialog
+## Visual Mockup (After Changes)
 
-### Part 4: Update Manager Balance Tab
-
-**File:** `src/components/tenants/TenantBalanceTab.tsx`
-
-Changes:
-- Show both official balance ($2,100) and effective balance ($1,700)
-- Display all pending ACH payments with the new component
-- Keep manager's view of official balance for record-keeping
-
-### Part 5: Add Late Fee on Failed ACH Payment
-
-**File:** `supabase/functions/stripe-webhook/index.ts`
-
-Update `handlePaymentFailed` to:
-1. Check if today is past the grace period (rent_due_day + grace_period_days)
-2. Look up tenant's late fee configuration from `tenant_properties`
-3. If past grace period, calculate and apply late fee via `apply_balance_adjustment` RPC
-4. Notify manager about both the failure AND the late fee applied
+```text
++-------------------------------------------+
+|                                           |
+| Remaining Balance            $1,700       |
+| (after pending payments)                  |
+|                                           |
+| +---------------------------------------+ |
+| | 4 ACH Payments Processing   $400      | |
+| | Typically clears in 3-5 business days | |
+| | [View details]                        | |
+| +---------------------------------------+ |
+|                                           |
+| Official balance: $2,100                  |
+|                                           |
+| [Pay Remaining Balance]                   |
++-------------------------------------------+
+```
 
 ---
 
 ## Technical Details
 
-### New Hook: usePendingACHPayments
+### Balance Display Logic
 
 ```typescript
-interface PendingACHSummary {
-  payments: PendingACHPayment[];
-  totalPending: number;
-  effectiveBalance: number;
-  count: number;
-}
+// Determine which balance to show as primary
+const displayBalance = hasPendingACH ? effectiveBalance : currentBalance;
+const displayLabel = hasPendingACH ? "Remaining Balance" : "Current Balance";
 
-export function usePendingACHPayments(tenantId: string | undefined, currentBalance: number) {
-  // Fetch ALL pending ACH payments (not just 1)
-  // Calculate totalPending = sum of all payment amounts
-  // Calculate effectiveBalance = currentBalance - totalPending
-  // Return { payments, totalPending, effectiveBalance, count }
-}
+// Show official balance as secondary when pending
+{hasPendingACH && (
+  <p className="text-xs text-muted-foreground">
+    Official balance: ${currentBalance.toLocaleString()}
+  </p>
+)}
 ```
 
-### Late Fee Logic in stripe-webhook
+### Payment Dialog Updates
 
-When payment fails:
-1. Get tenant's properties from `tenant_properties`
-2. For each property, check: `grace_period_days` and `rent_due_day`
-3. Calculate grace period end: 1st + 5 days = 6th
-4. If today > 6th, apply late fee:
-   - If `late_fee_type` = 'percentage': fee = rent_amount * (late_fee_percentage / 100)
-   - If `late_fee_type` = 'flat': fee = late_fee_flat_amount
-5. Call RPC `apply_balance_adjustment` with adjustment_type='late_fee'
-6. Send notification about late fee applied
-
-### Database Query for Pending Payments
-
-```sql
-SELECT id, amount, created_at, payment_date, payment_method_type, status, notes
-FROM payments
-WHERE tenant_id = ?
-  AND status = 'processing'
-  AND payment_method_type = 'ach'
-ORDER BY created_at DESC
--- No LIMIT - fetch all
+```typescript
+// In PaymentDialog, use effective balance for "Pay Full" option
+const payFullAmount = hasPendingACH ? effectiveBalance : currentBalance;
 ```
 
 ---
 
-## Files to Create/Modify
+## Files to Modify
 
-| File | Action | Description |
-|------|--------|-------------|
-| `src/hooks/usePendingACHPayments.ts` | Create | New hook to fetch ALL pending ACH payments with totals |
-| `src/components/payments/PendingACHPaymentsCard.tsx` | Create | New component showing multiple pending payments |
-| `src/pages/TenantPortal.tsx` | Modify | Use new hook, show effective balance, allow additional payments |
-| `src/components/tenants/TenantBalanceTab.tsx` | Modify | Show both official and effective balance |
-| `src/components/payments/PaymentDialog.tsx` | Modify | Accept effective balance for payment options |
-| `supabase/functions/stripe-webhook/index.ts` | Modify | Add late fee logic to handlePaymentFailed |
+| File | Changes |
+|------|---------|
+| `src/pages/TenantPortal.tsx` | Show effectiveBalance as primary, add official balance note |
+| `src/components/payments/PendingACHPaymentsCard.tsx` | Simplify to just show pending indicator |
+| `src/components/payments/PaymentDialog.tsx` | Use effective balance for payment options |
 
----
-
-## Late Fee Calculation Example
-
-For Travis's properties:
-- Rent due day: 1st
-- Grace period: 5 days
-- Late fee type: percentage
-- Late fee percentage: 5%
-- Rent per property: $1,050
-
-If ACH fails on Feb 7th (after the 6th):
-- Late fee per property: $1,050 * 5% = $52.50
-- Total late fee (2 properties): $105
-
-This would be added to Travis's balance automatically.
-
----
-
-## Immediate Data Fix Needed
-
-Travis's current balance shows $2,100, but this doesn't match what you mentioned earlier ($22,100). Let me verify the actual balance:
-- Current balance in DB: $2,100
-- 4 ACH payments processing: $400 total
-- Effective balance: $1,700
-
-If the balance should be different, we can adjust it after implementing these changes.
