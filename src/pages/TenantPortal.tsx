@@ -474,27 +474,33 @@ export default function TenantPortal() {
 
                     {/* Balance Card - Always visible even without property */}
                     {(currentBalance !== 0 || isOverdue) && (
-                      <Card className={`p-4 md:p-5 max-w-md ${isOverdue ? 'border-destructive/50 bg-destructive/5' : ''}`}>
+                      <Card className={`p-4 md:p-5 max-w-md ${(hasPendingACH ? effectiveBalance : currentBalance) > 0 ? 'border-destructive/50 bg-destructive/5' : ''}`}>
                         <div className="flex items-start justify-between mb-auto">
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs md:text-sm text-muted-foreground">Current Balance</p>
-                            <p className={`text-xl md:text-2xl font-serif mt-1 truncate ${isOverdue ? 'text-destructive' : ''}`}>
-                              ${Math.abs(currentBalance).toLocaleString()}
+                            <p className="text-xs md:text-sm text-muted-foreground">
+                              {hasPendingACH ? 'Remaining Balance' : 'Current Balance'}
                             </p>
-                            {currentBalance < 0 && (
+                            <p className={`text-xl md:text-2xl font-serif mt-1 truncate ${(hasPendingACH ? effectiveBalance : currentBalance) > 0 ? 'text-destructive' : ''}`}>
+                              ${Math.abs(hasPendingACH ? effectiveBalance : currentBalance).toLocaleString()}
+                            </p>
+                            {hasPendingACH && (
+                              <p className="text-xs text-muted-foreground mt-1">after pending payments</p>
+                            )}
+                            {(hasPendingACH ? effectiveBalance : currentBalance) < 0 && (
                               <Badge variant="secondary" className="mt-1 text-xs bg-emerald-500/10 text-emerald-500">
                                 Credit
                               </Badge>
                             )}
-                            {isOverdue && (
+                            {(hasPendingACH ? effectiveBalance : currentBalance) > 0 && (
                               <p className="text-xs text-destructive mt-1">Outstanding balance</p>
                             )}
                           </div>
-                          <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${isOverdue ? 'bg-destructive/10' : 'bg-primary/10'}`}>
-                            <DollarSign className={`h-5 w-5 md:h-6 md:w-6 ${isOverdue ? 'text-destructive' : 'text-primary'}`} />
+                          <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${(hasPendingACH ? effectiveBalance : currentBalance) > 0 ? 'bg-destructive/10' : 'bg-primary/10'}`}>
+                            <DollarSign className={`h-5 w-5 md:h-6 md:w-6 ${(hasPendingACH ? effectiveBalance : currentBalance) > 0 ? 'text-destructive' : 'text-primary'}`} />
                           </div>
                         </div>
-                        {hasPendingACH && pendingPayments.length > 0 ? (
+                        
+                        {hasPendingACH && pendingPayments.length > 0 && (
                           <div className="mt-3">
                             <PendingACHPaymentsCard 
                               payments={pendingPayments}
@@ -504,17 +510,25 @@ export default function TenantPortal() {
                               variant="tenant"
                             />
                           </div>
-                        ) : effectiveBalance > 0 && tenantRecord?.id ? (
+                        )}
+                        
+                        {hasPendingACH && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Official balance: ${currentBalance.toLocaleString()}
+                          </p>
+                        )}
+                        
+                        {effectiveBalance > 0 && tenantRecord?.id && (
                           <Button
-                            variant={isOverdue ? "destructive" : "default"}
+                            variant={(hasPendingACH ? effectiveBalance : currentBalance) > 0 ? "destructive" : "default"}
                             size="sm"
                             className="w-full mt-3 card-action-btn"
                             onClick={() => setShowPaymentDialog(true)}
                           >
-                            Make Payment
+                            {hasPendingACH ? 'Pay Remaining Balance' : 'Make Payment'}
                             <ArrowRight className="h-4 w-4" />
                           </Button>
-                        ) : null}
+                        )}
                       </Card>
                     )}
 
@@ -556,30 +570,33 @@ export default function TenantPortal() {
 
                     {/* Summary Cards */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-                      <Card className={`p-4 md:p-5 hover:shadow-md transition-shadow ${isOverdue ? 'border-destructive/50 bg-destructive/5' : ''}`}>
+                      <Card className={`p-4 md:p-5 hover:shadow-md transition-shadow ${(hasPendingACH ? effectiveBalance : currentBalance) > 0 ? 'border-destructive/50 bg-destructive/5' : ''}`}>
                         <div className="flex items-start justify-between mb-auto">
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs md:text-sm text-muted-foreground">Current Balance</p>
-                            <p className={`text-xl md:text-2xl font-serif mt-1 truncate ${isOverdue ? 'text-destructive' : ''}`}>
-                              ${Math.abs(currentBalance).toLocaleString()}
+                            <p className="text-xs md:text-sm text-muted-foreground">
+                              {hasPendingACH ? 'Remaining Balance' : 'Current Balance'}
                             </p>
-                            {currentBalance < 0 && (
+                            <p className={`text-xl md:text-2xl font-serif mt-1 truncate ${(hasPendingACH ? effectiveBalance : currentBalance) > 0 ? 'text-destructive' : ''}`}>
+                              ${Math.abs(hasPendingACH ? effectiveBalance : currentBalance).toLocaleString()}
+                            </p>
+                            {hasPendingACH && (
+                              <p className="text-xs text-muted-foreground mt-0.5">after pending payments</p>
+                            )}
+                            {(hasPendingACH ? effectiveBalance : currentBalance) < 0 && (
                               <Badge variant="secondary" className="mt-1 text-xs bg-emerald-500/10 text-emerald-500">
                                 Credit
                               </Badge>
                             )}
-                            {currentBalance > 0 && !isOverdue && (
-                              <p className="text-xs text-muted-foreground mt-1">Due this cycle</p>
-                            )}
-                            {isOverdue && (
-                              <p className="text-xs text-destructive mt-1">Overdue</p>
+                            {(hasPendingACH ? effectiveBalance : currentBalance) > 0 && (
+                              <p className="text-xs text-destructive mt-1">Outstanding</p>
                             )}
                           </div>
-                          <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${isOverdue ? 'bg-destructive/10' : 'bg-primary/10'}`}>
-                            <DollarSign className={`h-5 w-5 md:h-6 md:w-6 ${isOverdue ? 'text-destructive' : 'text-primary'}`} />
+                          <div className={`w-10 h-10 md:w-11 md:h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${(hasPendingACH ? effectiveBalance : currentBalance) > 0 ? 'bg-destructive/10' : 'bg-primary/10'}`}>
+                            <DollarSign className={`h-5 w-5 md:h-6 md:w-6 ${(hasPendingACH ? effectiveBalance : currentBalance) > 0 ? 'text-destructive' : 'text-primary'}`} />
                           </div>
                         </div>
-                        {hasPendingACH && pendingPayments.length > 0 ? (
+                        
+                        {hasPendingACH && pendingPayments.length > 0 && (
                           <div className="mt-3">
                             <PendingACHPaymentsCard 
                               payments={pendingPayments}
@@ -589,17 +606,25 @@ export default function TenantPortal() {
                               variant="tenant"
                             />
                           </div>
-                        ) : effectiveBalance > 0 && tenantRecord?.id ? (
+                        )}
+                        
+                        {hasPendingACH && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Official balance: ${currentBalance.toLocaleString()}
+                          </p>
+                        )}
+                        
+                        {effectiveBalance > 0 && tenantRecord?.id && (
                           <Button
-                            variant={isOverdue ? "destructive" : "default"}
+                            variant={(hasPendingACH ? effectiveBalance : currentBalance) > 0 ? "destructive" : "default"}
                             size="sm"
                             className="w-full mt-3 card-action-btn"
                             onClick={() => setShowPaymentDialog(true)}
                           >
-                            Make Payment
+                            {hasPendingACH ? 'Pay Remaining Balance' : 'Make Payment'}
                             <ArrowRight className="h-4 w-4" />
                           </Button>
-                        ) : null}
+                        )}
                       </Card>
 
                       <Card className="p-4 md:p-5 hover:shadow-md transition-shadow">
@@ -1301,6 +1326,7 @@ export default function TenantPortal() {
           onClose={() => setShowPaymentDialog(false)}
           tenantId={tenantRecord.id}
           currentBalance={currentBalance}
+          effectiveBalance={effectiveBalance}
           rentAmount={tenantRecord.rent_amount ?? undefined}
           onSuccess={() => {
             refetchTenant();
