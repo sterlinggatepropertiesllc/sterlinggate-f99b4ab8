@@ -1,103 +1,92 @@
 
 
-# Auto-Refresh App Updates (With Safety Guards)
+# Instant Auto-Update (No Waiting, No Banners)
 
 ## The Approach
 
-Yes, we can make it automatic! But we need to be smart about **when** to auto-refresh so we don't interrupt tenants mid-payment or mid-signature.
-
-## Safety Rules
-
-The app will **only auto-refresh** when it's safe:
-
-| Situation | Auto-Refresh? |
-|-----------|---------------|
-| Tenant browsing dashboard | Yes |
-| Payment dialog open | No (wait until closed) |
-| Signing a lease | No (wait until done) |
-| Filling out application form | No (wait until submitted) |
-| Messaging/typing | No (wait until idle) |
+When the app loads, it immediately checks if there's a newer version. If yes, it hard-refreshes right away - no banner, no waiting, no safety checks.
 
 ## How It Works
 
 ```text
-New version detected
-        |
-        v
-  Is user in a "safe" state?
-        |
-    +---+---+
-    |       |
-   Yes      No
-    |       |
-    v       v
-  Auto    Wait & check again
-  refresh   every 5 seconds
+App loads
+    |
+    v
+Check version.json
+    |
+    v
+Version mismatch?
+    |
++---+---+
+|       |
+No     Yes
+|       |
+v       v
+Continue  Instant hard refresh
+normally  (clear cache + reload)
 ```
-
----
 
 ## Implementation
 
-### 1. Create Safe-State Detection
+### 1. Version File: `public/version.json`
 
-The hook will check if any dialogs or forms are open by:
-- Looking for open payment dialogs (`showPaymentDialog`, `rentPaymentDialog.open`)
-- Checking if on the `/sign-lease/` route
-- Detecting if user is actively typing (no keyboard activity for 10 seconds)
-
-### 2. Version Check Hook with Auto-Refresh
-
-```typescript
-// src/hooks/useAppVersion.ts
-export const useAppVersion = () => {
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-  const initialVersion = useRef<string | null>(null);
-  const location = useLocation();
-
-  // Detect if user is in a "safe" state for auto-refresh
-  const isSafeToRefresh = useCallback(() => {
-    // Don't refresh during lease signing
-    if (location.pathname.startsWith('/sign-lease')) return false;
-    
-    // Don't refresh if any dialogs are open (check DOM)
-    const hasOpenDialog = document.querySelector('[role="dialog"][data-state="open"]');
-    if (hasOpenDialog) return false;
-    
-    // Don't refresh if user is actively typing
-    const activeElement = document.activeElement;
-    if (activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA') {
-      return false;
-    }
-    
-    return true;
-  }, [location.pathname]);
-
-  // When update available and safe, auto-refresh
-  useEffect(() => {
-    if (!updateAvailable) return;
-    
-    const attemptRefresh = () => {
-      if (isSafeToRefresh()) {
-        forceHardRefresh();
-      }
-    };
-    
-    // Try immediately
-    attemptRefresh();
-    
-    // Keep checking every 5 seconds if not safe yet
-    const interval = setInterval(attemptRefresh, 5000);
-    return () => clearInterval(interval);
-  }, [updateAvailable, isSafeToRefresh]);
-
-  // ... version checking logic
-};
+```json
+{
+  "version": "2024-02-04-1200"
+}
 ```
 
-### 3. Hard Refresh Function (Cache Clearing)
+### 2. Cache Headers: `public/_headers`
+
+Prevents browsers from caching HTML and version file:
+
+```text
+/version.json
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+```
+
+### 3. Version Hook: `src/hooks/useAppVersion.ts`
+
+Simple hook that:
+- Checks version immediately on mount
+- If mismatch detected, triggers hard refresh instantly
+- No polling, no intervals - just one check on load
 
 ```typescript
+export const useAppVersion = () => {
+  useEffect(() => {
+    const checkAndUpdate = async () => {
+      try {
+        // Get stored version from sessionStorage
+        const storedVersion = sessionStorage.getItem('app_version');
+        
+        // Fetch current version (bypass cache)
+        const response = await fetch('/version.json', {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' }
+        });
+        const data = await response.json();
+        
+        if (!storedVersion) {
+          // First load - store current version
+          sessionStorage.setItem('app_version', data.version);
+        } else if (storedVersion !== data.version) {
+          // Version mismatch - hard refresh immediately
+          sessionStorage.setItem('app_version', data.version);
+          forceHardRefresh();
+        }
+      } catch (e) {
+        // Silently fail if version check fails
+      }
+    };
+
+    checkAndUpdate();
+  }, []);
+};
+
 const forceHardRefresh = async () => {
   // Clear Cache API
   if ('caches' in window) {
@@ -118,7 +107,21 @@ const forceHardRefresh = async () => {
 };
 ```
 
----
+### 4. Initialize in App: `src/App.tsx`
+
+Add the hook at the top level so it runs on every page load:
+
+```typescript
+import { useAppVersion } from "@/hooks/useAppVersion";
+
+const App = () => {
+  useAppVersion(); // Check version immediately on load
+  
+  return (
+    // ... rest of app
+  );
+};
+```
 
 ## Files to Create/Modify
 
@@ -126,21 +129,25 @@ const forceHardRefresh = async () => {
 |------|--------|---------|
 | `public/version.json` | Create | Version identifier |
 | `public/_headers` | Create | Prevent caching of HTML |
-| `src/hooks/useAppVersion.ts` | Create | Version check + safe auto-refresh |
+| `src/hooks/useAppVersion.ts` | Create | Instant version check + hard refresh |
 | `src/App.tsx` | Modify | Initialize the hook |
-
----
 
 ## User Experience
 
-- **No banner** - updates happen silently when safe
-- If user is mid-payment, the refresh waits until they close the dialog
-- If user is signing a lease, the refresh waits until they navigate away
-- Maximum wait: a few seconds after they finish their current action
+1. User opens app (or returns to it)
+2. App checks version instantly
+3. If outdated: immediate hard refresh (happens so fast they might just see a flash)
+4. Fresh version loads
 
----
+## Updating the Version
 
-## Optional: Visual Indicator
+When you publish changes, update `public/version.json`:
 
-If you'd like, we can add a small "Updating..." toast notification when the auto-refresh happens so users know why the page reloaded. This is optional and can be enabled/disabled.
+```json
+{
+  "version": "2024-02-04-1430"
+}
+```
+
+Next time any user loads the app, they'll get the new version automatically.
 
