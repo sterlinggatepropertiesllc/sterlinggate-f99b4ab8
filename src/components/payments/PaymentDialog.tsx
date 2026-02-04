@@ -31,6 +31,7 @@ interface PaymentDialogProps {
   onClose: () => void;
   tenantId: string;
   currentBalance: number;
+  effectiveBalance?: number;
   rentAmount?: number;
   onSuccess?: () => void;
 }
@@ -42,9 +43,13 @@ export function PaymentDialog({
   onClose,
   tenantId,
   currentBalance,
+  effectiveBalance,
   rentAmount,
   onSuccess,
 }: PaymentDialogProps) {
+  // Use effective balance if provided, otherwise fall back to current balance
+  const displayBalance = effectiveBalance !== undefined ? effectiveBalance : currentBalance;
+  const hasPendingACH = effectiveBalance !== undefined && effectiveBalance !== currentBalance;
   const { createPaymentIntent, isCreating } = useEmbeddedPayment();
   const { settings: paymentMethodSettings, loading: settingsLoading } = usePaymentMethodSettings();
   const [customAmount, setCustomAmount] = useState('');
@@ -212,18 +217,25 @@ export function PaymentDialog({
         {/* Step 1: Amount Selection */}
         {step === 'amount' && (
           <div className="space-y-6">
-            {/* Current Balance Display */}
+            {/* Balance Display */}
             <div className="p-4 bg-muted/50 rounded-lg">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Current Balance</span>
-                <span className={`text-2xl font-semibold ${currentBalance > 0 ? 'text-destructive' : 'text-success'}`}>
-                  ${Math.abs(currentBalance).toFixed(2)}
-                  {currentBalance < 0 && <span className="text-sm ml-1">(Credit)</span>}
+                <span className="text-sm text-muted-foreground">
+                  {hasPendingACH ? 'Remaining Balance' : 'Current Balance'}
+                </span>
+                <span className={`text-2xl font-semibold ${displayBalance > 0 ? 'text-destructive' : 'text-success'}`}>
+                  ${Math.abs(displayBalance).toFixed(2)}
+                  {displayBalance < 0 && <span className="text-sm ml-1">(Credit)</span>}
                 </span>
               </div>
+              {hasPendingACH && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Official balance: ${currentBalance.toFixed(2)}
+                </p>
+              )}
             </div>
 
-            {currentBalance > 0 && (
+            {displayBalance > 0 && (
               <>
                 {/* Quick Amount Buttons */}
                 <div className="space-y-2">
@@ -232,15 +244,17 @@ export function PaymentDialog({
                     <Button
                       variant="outline"
                       className="h-auto py-3 flex flex-col items-start group"
-                      onClick={() => handleAmountSelect(currentBalance)}
+                      onClick={() => handleAmountSelect(displayBalance)}
                       disabled={isCreating || settingsLoading}
                     >
-                      <span className="font-medium">Pay Full Balance</span>
+                      <span className="font-medium">
+                        {hasPendingACH ? 'Pay Remaining' : 'Pay Full Balance'}
+                      </span>
                       <span className="text-sm text-muted-foreground group-hover:text-accent-foreground transition-colors">
-                        ${currentBalance.toFixed(2)}
+                        ${displayBalance.toFixed(2)}
                       </span>
                     </Button>
-                    {rentAmount && rentAmount > 0 && (
+                    {rentAmount && rentAmount > 0 && rentAmount !== displayBalance && (
                       <Button
                         variant="outline"
                         className="h-auto py-3 flex flex-col items-start group"
