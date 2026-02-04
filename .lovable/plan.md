@@ -1,68 +1,146 @@
 
-# Fix Manager Dashboard to Show Effective Balance
 
-## Problem
-The manager dashboard (Balance tab) still shows $2,100 as "Current Balance" even though the pending ACH indicator correctly shows "If all clear: $1,700 remaining". The main balance card needs to display the effective balance when ACH payments are pending.
+# Auto-Refresh App Updates (With Safety Guards)
 
-## Current vs Expected
+## The Approach
 
-| Element | Current | Expected |
-|---------|---------|----------|
-| Label | "CURRENT BALANCE" | "REMAINING BALANCE" (when pending) |
-| Amount | $2,100 | $1,700 (effective balance) |
-| Secondary info | None | "Official balance: $2,100" note |
+Yes, we can make it automatic! But we need to be smart about **when** to auto-refresh so we don't interrupt tenants mid-payment or mid-signature.
 
-## Changes Required
+## Safety Rules
 
-### File: `src/components/tenants/TenantBalanceTab.tsx`
+The app will **only auto-refresh** when it's safe:
 
-**Lines 130-154: Update the balance card to show effective balance**
+| Situation | Auto-Refresh? |
+|-----------|---------------|
+| Tenant browsing dashboard | Yes |
+| Payment dialog open | No (wait until closed) |
+| Signing a lease | No (wait until done) |
+| Filling out application form | No (wait until submitted) |
+| Messaging/typing | No (wait until idle) |
 
-1. Add logic to determine which balance to display:
-   - When `hasPendingACH` is true: show `effectiveBalance` with label "Remaining Balance"
-   - When no pending ACH: show `currentBalance` with label "Current Balance"
+## How It Works
 
-2. Update the isOverdue calculation to use effective balance for styling
+```text
+New version detected
+        |
+        v
+  Is user in a "safe" state?
+        |
+    +---+---+
+    |       |
+   Yes      No
+    |       |
+    v       v
+  Auto    Wait & check again
+  refresh   every 5 seconds
+```
 
-3. Add a secondary note showing official balance when pending ACH exists
+---
 
-4. Update badge text to reflect remaining vs owed status
+## Implementation
 
-**Code Changes:**
+### 1. Create Safe-State Detection
+
+The hook will check if any dialogs or forms are open by:
+- Looking for open payment dialogs (`showPaymentDialog`, `rentPaymentDialog.open`)
+- Checking if on the `/sign-lease/` route
+- Detecting if user is actively typing (no keyboard activity for 10 seconds)
+
+### 2. Version Check Hook with Auto-Refresh
 
 ```typescript
-// Before the return statement, add:
-const displayBalance = hasPendingACH ? effectiveBalance : currentBalance;
-const displayLabel = hasPendingACH ? "Remaining Balance" : "Current Balance";
-const isEffectiveOverdue = displayBalance > 0;
+// src/hooks/useAppVersion.ts
+export const useAppVersion = () => {
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const initialVersion = useRef<string | null>(null);
+  const location = useLocation();
 
-// In the balance card (lines 130-154):
-// - Change "Current Balance" to {displayLabel}
-// - Change ${Math.abs(currentBalance).toLocaleString()} to ${Math.abs(displayBalance).toLocaleString()}
-// - Update isOverdue references to isEffectiveOverdue
-// - Add note below badge: {hasPendingACH && <p>Official balance: ${currentBalance.toLocaleString()}</p>}
+  // Detect if user is in a "safe" state for auto-refresh
+  const isSafeToRefresh = useCallback(() => {
+    // Don't refresh during lease signing
+    if (location.pathname.startsWith('/sign-lease')) return false;
+    
+    // Don't refresh if any dialogs are open (check DOM)
+    const hasOpenDialog = document.querySelector('[role="dialog"][data-state="open"]');
+    if (hasOpenDialog) return false;
+    
+    // Don't refresh if user is actively typing
+    const activeElement = document.activeElement;
+    if (activeElement?.tagName === 'INPUT' || activeElement?.tagName === 'TEXTAREA') {
+      return false;
+    }
+    
+    return true;
+  }, [location.pathname]);
+
+  // When update available and safe, auto-refresh
+  useEffect(() => {
+    if (!updateAvailable) return;
+    
+    const attemptRefresh = () => {
+      if (isSafeToRefresh()) {
+        forceHardRefresh();
+      }
+    };
+    
+    // Try immediately
+    attemptRefresh();
+    
+    // Keep checking every 5 seconds if not safe yet
+    const interval = setInterval(attemptRefresh, 5000);
+    return () => clearInterval(interval);
+  }, [updateAvailable, isSafeToRefresh]);
+
+  // ... version checking logic
+};
 ```
 
-## Visual Result (After Fix)
+### 3. Hard Refresh Function (Cache Clearing)
 
-```text
-+-------------------------------------------+
-| REMAINING BALANCE            $1,700       |
-| [Amount Owed badge]                       |
-| Official balance: $2,100                  |
-+-------------------------------------------+
+```typescript
+const forceHardRefresh = async () => {
+  // Clear Cache API
+  if ('caches' in window) {
+    const names = await caches.keys();
+    await Promise.all(names.map(name => caches.delete(name)));
+  }
+  
+  // Unregister service workers
+  if ('serviceWorker' in navigator) {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map(r => r.unregister()));
+  }
+  
+  // Navigate with cache-busting parameter
+  const url = new URL(window.location.href);
+  url.searchParams.set('_v', Date.now().toString());
+  window.location.href = url.toString();
+};
 ```
 
-When no pending ACH payments:
-```text
-+-------------------------------------------+
-| CURRENT BALANCE              $X,XXX       |
-| [Amount Owed/Paid in Full badge]          |
-+-------------------------------------------+
-```
+---
 
-## Files to Modify
+## Files to Create/Modify
 
-| File | Changes |
-|------|---------|
-| `src/components/tenants/TenantBalanceTab.tsx` | Update balance card to show effectiveBalance when hasPendingACH is true |
+| File | Action | Purpose |
+|------|--------|---------|
+| `public/version.json` | Create | Version identifier |
+| `public/_headers` | Create | Prevent caching of HTML |
+| `src/hooks/useAppVersion.ts` | Create | Version check + safe auto-refresh |
+| `src/App.tsx` | Modify | Initialize the hook |
+
+---
+
+## User Experience
+
+- **No banner** - updates happen silently when safe
+- If user is mid-payment, the refresh waits until they close the dialog
+- If user is signing a lease, the refresh waits until they navigate away
+- Maximum wait: a few seconds after they finish their current action
+
+---
+
+## Optional: Visual Indicator
+
+If you'd like, we can add a small "Updating..." toast notification when the auto-refresh happens so users know why the page reloaded. This is optional and can be enabled/disabled.
+
