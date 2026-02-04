@@ -176,6 +176,23 @@ serve(async (req) => {
         }
       }
 
+      // Fallback: Check tenant_properties table for multi-property tenants
+      if (resolvedTenantId && !resolvedPropertyId) {
+        console.log("[VERIFY-PAYMENT-INTENT] Checking tenant_properties table...");
+        const { data: tenantProperty } = await supabaseAdmin
+          .from('tenant_properties')
+          .select('property_id')
+          .eq('tenant_id', resolvedTenantId)
+          .order('is_primary', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (tenantProperty?.property_id) {
+          resolvedPropertyId = tenantProperty.property_id;
+          console.log("[VERIFY-PAYMENT-INTENT] Found property_id from tenant_properties:", resolvedPropertyId);
+        }
+      }
+
       if (!resolvedTenantId || !resolvedPropertyId) {
         throw new Error("Could not determine tenant or property for pending payment");
       }
@@ -426,6 +443,23 @@ serve(async (req) => {
         
         if (tenantCheck?.property_id) {
           resolvedPropertyId = tenantCheck.property_id;
+        }
+      }
+      
+      // Fallback: Check tenant_properties table for multi-property tenants
+      if (resolvedTenantId && !resolvedPropertyId) {
+        console.log("[VERIFY-PAYMENT-INTENT] Checking tenant_properties table...");
+        const { data: tenantProperty } = await supabaseAdmin
+          .from('tenant_properties')
+          .select('property_id')
+          .eq('tenant_id', resolvedTenantId)
+          .order('is_primary', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (tenantProperty?.property_id) {
+          resolvedPropertyId = tenantProperty.property_id;
+          console.log("[VERIFY-PAYMENT-INTENT] Found property_id from tenant_properties:", resolvedPropertyId);
         }
       }
       

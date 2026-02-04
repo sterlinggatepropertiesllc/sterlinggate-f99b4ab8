@@ -272,8 +272,27 @@ async function handlePaymentSucceeded(
   }
 
   if (!resolvedTenantId || !resolvedPropertyId) {
-    logStep("Cannot resolve tenant or property", { resolvedTenantId, resolvedPropertyId });
-    return;
+    // Fallback: Check tenant_properties table for multi-property tenants
+    if (resolvedTenantId && !resolvedPropertyId) {
+      logStep("Checking tenant_properties table...");
+      const { data: tenantProperty } = await supabaseAdmin
+        .from('tenant_properties')
+        .select('property_id')
+        .eq('tenant_id', resolvedTenantId)
+        .order('is_primary', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (tenantProperty?.property_id) {
+        resolvedPropertyId = tenantProperty.property_id;
+        logStep("Found property_id from tenant_properties", { resolvedPropertyId });
+      }
+    }
+    
+    if (!resolvedTenantId || !resolvedPropertyId) {
+      logStep("Cannot resolve tenant or property", { resolvedTenantId, resolvedPropertyId });
+      return;
+    }
   }
 
   // Insert completed payment record with base amount

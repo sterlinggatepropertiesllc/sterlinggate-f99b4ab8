@@ -136,6 +136,23 @@ serve(async (req) => {
         }
       }
       
+      // Fallback: Check tenant_properties table for multi-property tenants
+      if (!resolvedPropertyId) {
+        console.log("[CREATE-PAYMENT-INTENT] Checking tenant_properties table...");
+        const { data: tenantProperty } = await supabaseAdmin
+          .from('tenant_properties')
+          .select('property_id')
+          .eq('tenant_id', body.tenant_id)
+          .order('is_primary', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (tenantProperty?.property_id) {
+          resolvedPropertyId = tenantProperty.property_id;
+          console.log("[CREATE-PAYMENT-INTENT] Found property_id from tenant_properties:", resolvedPropertyId);
+        }
+      }
+      
       console.log("[CREATE-PAYMENT-INTENT] Balance payment validated for tenant:", body.tenant_id);
     }
 
