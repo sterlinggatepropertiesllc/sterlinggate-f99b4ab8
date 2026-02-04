@@ -10,8 +10,8 @@ import { useProfile } from '@/hooks/useProfiles';
 import { usePayments } from '@/hooks/usePayments';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useTenantProperties } from '@/hooks/useTenantProperties';
-import { usePendingACHPayment } from '@/hooks/usePendingACHPayment';
-import { PendingACHIndicator } from '@/components/payments/PendingACHIndicator';
+import { usePendingACHPayments } from '@/hooks/usePendingACHPayments';
+import { PendingACHPaymentsCard } from '@/components/payments/PendingACHPaymentsCard';
 import { supabase } from '@/integrations/supabase/client';
 import { PaymentDialog } from '@/components/payments/PaymentDialog';
 import { Button } from '@/components/ui/button';
@@ -108,8 +108,14 @@ export default function TenantPortal() {
   // Fetch tenant's assigned properties from tenant_properties junction table
   const { data: tenantProperties } = useTenantProperties(tenantRecord?.id);
 
-  // Check for pending ACH payment
-  const { pendingPayment, hasPendingACH } = usePendingACHPayment(tenantRecord?.id);
+  // Check for pending ACH payments (all of them)
+  const { 
+    pendingPayments, 
+    totalPending, 
+    effectiveBalance, 
+    hasPendingACH, 
+    count: pendingCount 
+  } = usePendingACHPayments(tenantRecord?.id, tenantRecord?.current_balance ?? 0);
 
   // Calculate total monthly rent across all assigned properties
   const totalMonthlyRent = useMemo(() => {
@@ -488,11 +494,17 @@ export default function TenantPortal() {
                             <DollarSign className={`h-5 w-5 md:h-6 md:w-6 ${isOverdue ? 'text-destructive' : 'text-primary'}`} />
                           </div>
                         </div>
-                        {hasPendingACH && pendingPayment ? (
+                        {hasPendingACH && pendingPayments.length > 0 ? (
                           <div className="mt-3">
-                            <PendingACHIndicator payment={pendingPayment} variant="compact" />
+                            <PendingACHPaymentsCard 
+                              payments={pendingPayments}
+                              totalPending={totalPending}
+                              effectiveBalance={effectiveBalance}
+                              currentBalance={currentBalance}
+                              variant="tenant"
+                            />
                           </div>
-                        ) : currentBalance > 0 && tenantRecord?.id ? (
+                        ) : effectiveBalance > 0 && tenantRecord?.id ? (
                           <Button
                             variant={isOverdue ? "destructive" : "default"}
                             size="sm"
@@ -567,11 +579,17 @@ export default function TenantPortal() {
                             <DollarSign className={`h-5 w-5 md:h-6 md:w-6 ${isOverdue ? 'text-destructive' : 'text-primary'}`} />
                           </div>
                         </div>
-                        {hasPendingACH && pendingPayment ? (
+                        {hasPendingACH && pendingPayments.length > 0 ? (
                           <div className="mt-3">
-                            <PendingACHIndicator payment={pendingPayment} variant="compact" />
+                            <PendingACHPaymentsCard 
+                              payments={pendingPayments}
+                              totalPending={totalPending}
+                              effectiveBalance={effectiveBalance}
+                              currentBalance={currentBalance}
+                              variant="tenant"
+                            />
                           </div>
-                        ) : currentBalance > 0 && tenantRecord?.id ? (
+                        ) : effectiveBalance > 0 && tenantRecord?.id ? (
                           <Button
                             variant={isOverdue ? "destructive" : "default"}
                             size="sm"
@@ -703,9 +721,15 @@ export default function TenantPortal() {
                     <p className="text-muted-foreground text-sm mb-3">
                       You have ${currentBalance.toLocaleString()} due
                     </p>
-                    {hasPendingACH && pendingPayment ? (
+                    {hasPendingACH && pendingPayments.length > 0 ? (
                       <div className="max-w-md mx-auto">
-                        <PendingACHIndicator payment={pendingPayment} variant="inline" />
+                        <PendingACHPaymentsCard 
+                          payments={pendingPayments}
+                          totalPending={totalPending}
+                          effectiveBalance={effectiveBalance}
+                          currentBalance={currentBalance}
+                          variant="tenant"
+                        />
                       </div>
                     ) : (
                       <Button 

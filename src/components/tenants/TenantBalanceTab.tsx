@@ -12,8 +12,8 @@ import { DollarSign, ArrowUp, ArrowDown, Clock, Plus, Minus, AlertTriangle, Cred
 import { useBalanceAdjustments, useApplyBalanceAdjustment } from '@/hooks/useBalanceAdjustments';
 import { useChargeRent } from '@/hooks/useRentCharges';
 import { useTenantProperties } from '@/hooks/useTenantProperties';
-import { usePendingACHPayment } from '@/hooks/usePendingACHPayment';
-import { PendingACHIndicator } from '@/components/payments/PendingACHIndicator';
+import { usePendingACHPayments } from '@/hooks/usePendingACHPayments';
+import { PendingACHPaymentsCard } from '@/components/payments/PendingACHPaymentsCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
 
@@ -31,12 +31,18 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
 
   const { data: adjustments, isLoading: adjustmentsLoading } = useBalanceAdjustments(tenant.id);
   const { data: tenantProperties } = useTenantProperties(tenant.id);
-  const { pendingPayment, hasPendingACH } = usePendingACHPayment(tenant.id);
   const applyAdjustment = useApplyBalanceAdjustment();
   const chargeRent = useChargeRent();
 
   const currentBalance = tenant.current_balance ?? 0;
   const isOverdue = currentBalance > 0;
+
+  const { 
+    pendingPayments, 
+    totalPending, 
+    effectiveBalance, 
+    hasPendingACH 
+  } = usePendingACHPayments(tenant.id, currentBalance);
   
   // Calculate total monthly rent from all assigned properties
   const totalMonthlyRent = useMemo(() => {
@@ -108,9 +114,15 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
 
   return (
     <div className="space-y-6">
-      {/* Pending ACH Payment Alert */}
-      {hasPendingACH && pendingPayment && (
-        <PendingACHIndicator payment={pendingPayment} variant="inline" />
+      {/* Pending ACH Payments Card */}
+      {hasPendingACH && pendingPayments.length > 0 && (
+        <PendingACHPaymentsCard
+          payments={pendingPayments}
+          totalPending={totalPending}
+          effectiveBalance={effectiveBalance}
+          currentBalance={currentBalance}
+          variant="manager"
+        />
       )}
 
       {/* Balance Overview - Mirrors Tenant Portal */}

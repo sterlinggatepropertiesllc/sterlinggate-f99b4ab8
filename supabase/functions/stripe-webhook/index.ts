@@ -409,7 +409,133 @@ async function handlePaymentFailed(
           payment_id: existingPayment.id,
         },
       });
+
+      // Check if we should apply late fee (if past grace period)
+      await applyLateFeeIfApplicable(supabaseAdmin, existingPayment.tenant_id, tenantData.manager_id, tenantName);
     }
+  }
+}
+
+async function applyLateFeeIfApplicable(
+  // deno-lint-ignore no-explicit-any
+  supabaseAdmin: SupabaseClient<any>,
+  tenantId: string,
+  managerId: string,
+  tenantName: string
+) {
+  logStep("Checking if late fee should be applied", { tenantId });
+
+  const today = new Date();
+  const currentDay = today.getDate();
+
+  // Get tenant's property assignments with late fee configuration
+  const { data: tenantProperties, error: tpError } = await supabaseAdmin
+    .from("tenant_properties")
+    .select(`
+      id,
+      property_id,
+      rent_amount,
+      rent_due_day,
+      grace_period_days,
+      late_fee_type,
+      late_fee_percentage,
+      late_fee_flat_amount,
+      property:properties(address)
+    `)
+    .eq("tenant_id", tenantId);
+
+  if (tpError || !tenantProperties || tenantProperties.length === 0) {
+    logStep("No tenant properties found for late fee calculation", { error: tpError?.message });
+    return;
+  }
+
+  let totalLateFee = 0;
+  const lateFeeDetails: string[] = [];
+
+  for (const tp of tenantProperties) {
+    const rentDueDay = tp.rent_due_day || 1;
+    const gracePeriodDays = tp.grace_period_days || 5;
+    const graceEndDay = rentDueDay + gracePeriodDays;
+
+    logStep("Checking property for late fee", {
+      propertyId: tp.property_id,
+      rentDueDay,
+      gracePeriodDays,
+      graceEndDay,
+      currentDay,
+    });
+
+    // Only apply late fee if we're past the grace period
+    if (currentDay > graceEndDay) {
+      const rentAmount = tp.rent_amount || 0;
+      let lateFee = 0;
+
+      if (tp.late_fee_type === "percentage") {
+        const percentage = tp.late_fee_percentage || 5;
+        lateFee = rentAmount * (percentage / 100);
+        logStep("Calculated percentage late fee", { percentage, rentAmount, lateFee });
+      } else if (tp.late_fee_type === "flat") {
+        lateFee = tp.late_fee_flat_amount || 0;
+        logStep("Using flat late fee", { lateFee });
+      } else {
+        // Default to 5% if not configured
+        lateFee = rentAmount * 0.05;
+        logStep("Using default 5% late fee", { rentAmount, lateFee });
+      }
+
+      if (lateFee > 0) {
+        totalLateFee += lateFee;
+        // deno-lint-ignore no-explicit-any
+        const propertyAddress = (tp.property as any)?.address || "Unknown property";
+        lateFeeDetails.push(`$${lateFee.toFixed(2)} for ${propertyAddress}`);
+      }
+    } else {
+      logStep("Not past grace period yet, skipping late fee", { currentDay, graceEndDay });
+    }
+  }
+
+  if (totalLateFee > 0) {
+    logStep("Applying total late fee", { totalLateFee, details: lateFeeDetails });
+
+    // Apply the late fee using the RPC function
+    const { error: rpcError } = await supabaseAdmin.rpc("apply_balance_adjustment", {
+      _tenant_id: tenantId,
+      _adjustment_type: "late_fee",
+      _amount: totalLateFee,
+      _description: `Late fee applied after failed ACH payment: ${lateFeeDetails.join(", ")}`,
+    });
+
+    if (rpcError) {
+      logStep("Failed to apply late fee", { error: rpcError.message });
+      return;
+    }
+
+    logStep("Late fee applied successfully", { totalLateFee });
+
+    // Notify manager about the late fee
+    await supabaseAdmin.from("notifications").insert({
+      user_id: managerId,
+      type: "rent_received",
+      title: "Late Fee Applied",
+      message: `$${totalLateFee.toFixed(2)} late fee applied to ${tenantName}'s balance after failed payment`,
+      metadata: {
+        tenant_id: tenantId,
+        late_fee: totalLateFee,
+        details: lateFeeDetails,
+      },
+    });
+
+    // Discord notification for late fee
+    await sendDiscordNotificationIfEnabled(supabaseAdmin, managerId, {
+      title: "💰 Late Fee Applied",
+      message: `$${totalLateFee.toFixed(2)} late fee added to ${tenantName}'s balance`,
+      type: "rent_received",
+      metadata: {
+        tenant: tenantName,
+        late_fee: totalLateFee,
+        details: lateFeeDetails,
+      },
+    });
   }
 }
 
