@@ -1,116 +1,68 @@
 
+# Fix Manager Dashboard to Show Effective Balance
 
-# Show Effective Balance as Primary on Tenant Portal
+## Problem
+The manager dashboard (Balance tab) still shows $2,100 as "Current Balance" even though the pending ACH indicator correctly shows "If all clear: $1,700 remaining". The main balance card needs to display the effective balance when ACH payments are pending.
 
-## What This Changes
+## Current vs Expected
 
-Currently, when Travis logs in, he sees:
-- **Primary display:** "Current Balance: $2,100" 
-- **Secondary (inside collapsible):** "Effective Balance: $1,700"
-
-After this change, he will see:
-- **Primary display:** "Remaining Balance: $1,700" (the effective balance)
-- **Pending indicator:** "$400 in 4 ACH payments processing"
-- **Small note:** "Official balance: $2,100"
-
-## Property Assignment Confirmation
-
-All tenants can make payments because:
-1. **Travis Boyd**: Has `property_id` set on tenant record + 2 properties in `tenant_properties` with primary set
-2. **John Robinson (tenant 1)**: Has `property_id` set + 1 property in `tenant_properties` with primary set
-3. **John Robinson (tenant 2)**: Has `property_id` set on tenant record (fallback works)
-
-The edge functions now check in this order:
-1. `tenants.property_id` (direct field)
-2. `leases` table
-3. `tenant_properties` table (new fallback we added)
-
-So even if a tenant has no entries in `tenant_properties`, their direct `property_id` will be used.
-
----
+| Element | Current | Expected |
+|---------|---------|----------|
+| Label | "CURRENT BALANCE" | "REMAINING BALANCE" (when pending) |
+| Amount | $2,100 | $1,700 (effective balance) |
+| Secondary info | None | "Official balance: $2,100" note |
 
 ## Changes Required
 
-### File: `src/pages/TenantPortal.tsx`
+### File: `src/components/tenants/TenantBalanceTab.tsx`
 
-**Location 1: Lines 476-518 (No property assigned balance card)**
-- Change "Current Balance" label to "Remaining Balance" when pending ACH exists
-- Show `effectiveBalance` instead of `currentBalance` as the primary number
-- Move the `PendingACHPaymentsCard` below the balance display
-- Add small note showing official balance for reference
+**Lines 130-154: Update the balance card to show effective balance**
 
-**Location 2: Lines 558-600 (Main dashboard balance card)**
-- Same changes as above
-- Display effective balance as the main number
-- Show pending ACH indicator below
-- Pass `effectiveBalance` to the "Pay Remaining" button
+1. Add logic to determine which balance to display:
+   - When `hasPendingACH` is true: show `effectiveBalance` with label "Remaining Balance"
+   - When no pending ACH: show `currentBalance` with label "Current Balance"
 
-### File: `src/components/payments/PendingACHPaymentsCard.tsx`
+2. Update the isOverdue calculation to use effective balance for styling
 
-- Simplify the component to focus on the pending indicator only
-- Remove the effective balance calculation from this component (it's now shown in the main card)
-- Keep the collapsible list of individual payments
+3. Add a secondary note showing official balance when pending ACH exists
 
-### File: `src/components/payments/PaymentDialog.tsx`
+4. Update badge text to reflect remaining vs owed status
 
-- Update "Pay Full Balance" button to use effective balance when pending ACH exists
-- Show remaining balance clearly in the payment flow
+**Code Changes:**
 
----
+```typescript
+// Before the return statement, add:
+const displayBalance = hasPendingACH ? effectiveBalance : currentBalance;
+const displayLabel = hasPendingACH ? "Remaining Balance" : "Current Balance";
+const isEffectiveOverdue = displayBalance > 0;
 
-## Visual Mockup (After Changes)
+// In the balance card (lines 130-154):
+// - Change "Current Balance" to {displayLabel}
+// - Change ${Math.abs(currentBalance).toLocaleString()} to ${Math.abs(displayBalance).toLocaleString()}
+// - Update isOverdue references to isEffectiveOverdue
+// - Add note below badge: {hasPendingACH && <p>Official balance: ${currentBalance.toLocaleString()}</p>}
+```
+
+## Visual Result (After Fix)
 
 ```text
 +-------------------------------------------+
-|                                           |
-| Remaining Balance            $1,700       |
-| (after pending payments)                  |
-|                                           |
-| +---------------------------------------+ |
-| | 4 ACH Payments Processing   $400      | |
-| | Typically clears in 3-5 business days | |
-| | [View details]                        | |
-| +---------------------------------------+ |
-|                                           |
+| REMAINING BALANCE            $1,700       |
+| [Amount Owed badge]                       |
 | Official balance: $2,100                  |
-|                                           |
-| [Pay Remaining Balance]                   |
 +-------------------------------------------+
 ```
 
----
-
-## Technical Details
-
-### Balance Display Logic
-
-```typescript
-// Determine which balance to show as primary
-const displayBalance = hasPendingACH ? effectiveBalance : currentBalance;
-const displayLabel = hasPendingACH ? "Remaining Balance" : "Current Balance";
-
-// Show official balance as secondary when pending
-{hasPendingACH && (
-  <p className="text-xs text-muted-foreground">
-    Official balance: ${currentBalance.toLocaleString()}
-  </p>
-)}
+When no pending ACH payments:
+```text
++-------------------------------------------+
+| CURRENT BALANCE              $X,XXX       |
+| [Amount Owed/Paid in Full badge]          |
++-------------------------------------------+
 ```
-
-### Payment Dialog Updates
-
-```typescript
-// In PaymentDialog, use effective balance for "Pay Full" option
-const payFullAmount = hasPendingACH ? effectiveBalance : currentBalance;
-```
-
----
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/pages/TenantPortal.tsx` | Show effectiveBalance as primary, add official balance note |
-| `src/components/payments/PendingACHPaymentsCard.tsx` | Simplify to just show pending indicator |
-| `src/components/payments/PaymentDialog.tsx` | Use effective balance for payment options |
-
+| `src/components/tenants/TenantBalanceTab.tsx` | Update balance card to show effectiveBalance when hasPendingACH is true |
