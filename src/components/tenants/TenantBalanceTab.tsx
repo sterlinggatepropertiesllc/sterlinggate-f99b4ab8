@@ -35,7 +35,6 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
   const chargeRent = useChargeRent();
 
   const currentBalance = tenant.current_balance ?? 0;
-  const isOverdue = currentBalance > 0;
 
   const { 
     pendingPayments, 
@@ -43,6 +42,11 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
     effectiveBalance, 
     hasPendingACH 
   } = usePendingACHPayments(tenant.id, currentBalance);
+
+  // Determine which balance to display based on pending ACH status
+  const displayBalance = hasPendingACH ? effectiveBalance : currentBalance;
+  const displayLabel = hasPendingACH ? "Remaining Balance" : "Current Balance";
+  const isOverdue = displayBalance > 0;
   
   // Calculate total monthly rent from all assigned properties
   const totalMonthlyRent = useMemo(() => {
@@ -131,16 +135,21 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
           <CardContent className="pt-6">
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-sm text-muted-foreground uppercase tracking-wider">Current Balance</p>
+                <p className="text-sm text-muted-foreground uppercase tracking-wider">{displayLabel}</p>
                 <p className={`text-4xl font-serif mt-1 ${isOverdue ? 'text-destructive' : 'text-success'}`}>
-                  ${Math.abs(currentBalance).toLocaleString()}
+                  ${Math.abs(displayBalance).toLocaleString()}
                 </p>
                 <Badge 
                   variant={isOverdue ? 'destructive' : 'secondary'} 
                   className={`mt-2 ${!isOverdue ? 'bg-success/10 text-success border border-success/20' : 'shadow-sm shadow-destructive/20'}`}
                 >
-                  {isOverdue ? 'Amount Owed' : currentBalance < 0 ? 'Credit' : 'Paid in Full'}
+                  {isOverdue ? 'Amount Owed' : displayBalance < 0 ? 'Credit' : 'Paid in Full'}
                 </Badge>
+                {hasPendingACH && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Official balance: ${currentBalance.toLocaleString()}
+                  </p>
+                )}
               </div>
               <div className={`w-14 h-14 rounded-xl flex items-center justify-center ring-2 shadow-lg ${isOverdue ? 'bg-gradient-to-br from-destructive/20 to-destructive/5 ring-destructive/20 shadow-destructive/10' : 'bg-gradient-to-br from-success/20 to-success/5 ring-success/20 shadow-success/10'}`}>
                 {isOverdue ? (
