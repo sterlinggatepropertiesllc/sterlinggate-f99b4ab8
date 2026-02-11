@@ -152,7 +152,7 @@ export default function Auth() {
     <div className="min-h-screen hero-gradient flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-accent/5 via-transparent to-transparent" />
       
-      <div className="w-full max-w-md relative animate-fade-in">
+      <div className="w-full max-w-md max-w-full sm:max-w-md relative animate-fade-in">
         <Link 
           to="/" 
           className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-smooth mb-6"
@@ -161,12 +161,12 @@ export default function Auth() {
           Back to home
         </Link>
 
-        <Card className="shadow-elevated border-border/50">
+        <Card className="shadow-elevated border-border/50 overflow-hidden">
           <CardHeader className="text-center pb-2">
             <div className="mx-auto mb-2">
-              <img src={logo} alt="Sterling Gate Properties" className="h-20 w-auto object-contain mx-auto" />
+              <img src={logo} alt="Sterling Gate Properties" className="h-14 sm:h-20 w-auto object-contain mx-auto" />
             </div>
-            <CardTitle className="text-3xl font-serif">Sterling Gate Properties</CardTitle>
+            <CardTitle className="text-2xl sm:text-3xl font-serif">Sterling Gate Properties</CardTitle>
             <CardDescription className="text-base">
               Commercial real estate management, simplified
             </CardDescription>
@@ -188,7 +188,7 @@ export default function Auth() {
                       <Input
                         id="signin-email"
                         type="email"
-                        placeholder="you@example.com"
+                        placeholder="Enter your email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className="pl-10"
@@ -203,7 +203,7 @@ export default function Auth() {
                       <Input
                         id="signin-password"
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="••••••••"
+                        placeholder="Enter your password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="pl-10 pr-10"
@@ -244,7 +244,7 @@ export default function Auth() {
                       <Input
                         id="signup-email"
                         type="email"
-                        placeholder="you@example.com"
+                        placeholder="Enter your email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className="pl-10"
@@ -259,7 +259,7 @@ export default function Auth() {
                       <Input
                         id="signup-password"
                         type={showPassword ? 'text' : 'password'}
-                        placeholder="••••••••"
+                        placeholder="Enter your password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         className="pl-10 pr-10"
