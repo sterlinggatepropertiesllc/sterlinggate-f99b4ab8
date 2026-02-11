@@ -48,17 +48,17 @@ export function SettingsDialog() {
         ) : settings ? (
           <Tabs defaultValue="fees" className="mt-4">
             <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="fees" className="gap-2">
-                <DollarSign className="h-4 w-4" />
-                Fees
+              <TabsTrigger value="fees" className="gap-1.5 text-xs sm:text-sm">
+                <DollarSign className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">Fees</span>
               </TabsTrigger>
-              <TabsTrigger value="discord" className="gap-2">
-                <Webhook className="h-4 w-4" />
-                Discord
+              <TabsTrigger value="discord" className="gap-1.5 text-xs sm:text-sm">
+                <Webhook className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">Discord</span>
               </TabsTrigger>
-              <TabsTrigger value="notifications" className="gap-2">
-                <Bell className="h-4 w-4" />
-                In-App
+              <TabsTrigger value="notifications" className="gap-1.5 text-xs sm:text-sm">
+                <Bell className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">In-App</span>
               </TabsTrigger>
             </TabsList>
 

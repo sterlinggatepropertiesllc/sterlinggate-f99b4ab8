@@ -76,25 +76,25 @@ export function TenantOverviewTab({ tenant, onUpdate }: TenantOverviewTabProps) 
               </div>
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Full Name</p>
-                <p className="font-medium text-foreground">{tenant.user?.full_name || 'Not provided'}</p>
+                <p className="font-medium text-foreground truncate">{tenant.user?.full_name || 'Not provided'}</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-gradient-to-r from-blue-500/10 to-transparent border-l-4 border-l-blue-500 hover:from-blue-500/15 transition-colors">
-              <div className="p-2 rounded-lg bg-blue-500/10">
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-gradient-to-r from-blue-500/10 to-transparent border-l-4 border-l-blue-500 hover:from-blue-500/15 transition-colors overflow-hidden">
+              <div className="p-2 rounded-lg bg-blue-500/10 shrink-0">
                 <Mail className="h-5 w-5 text-blue-400" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Email</p>
-                <p className="font-medium text-foreground">{tenant.user?.email || 'Not provided'}</p>
+                <p className="font-medium text-foreground truncate">{tenant.user?.email || 'Not provided'}</p>
               </div>
             </div>
-            <div className="flex items-center gap-3 p-4 rounded-lg bg-gradient-to-r from-emerald-500/10 to-transparent border-l-4 border-l-emerald-500 hover:from-emerald-500/15 transition-colors">
-              <div className="p-2 rounded-lg bg-emerald-500/10">
+            <div className="flex items-center gap-3 p-4 rounded-lg bg-gradient-to-r from-emerald-500/10 to-transparent border-l-4 border-l-emerald-500 hover:from-emerald-500/15 transition-colors overflow-hidden">
+              <div className="p-2 rounded-lg bg-emerald-500/10 shrink-0">
                 <Phone className="h-5 w-5 text-emerald-400" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">Phone</p>
-                <p className="font-medium text-foreground">{tenant.user?.phone || 'Not provided'}</p>
+                <p className="font-medium text-foreground truncate">{tenant.user?.phone || 'Not provided'}</p>
               </div>
             </div>
           </div>
