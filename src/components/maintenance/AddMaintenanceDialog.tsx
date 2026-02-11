@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +10,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 import { useCreateMaintenance } from '@/hooks/useMaintenance';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Database } from '@/integrations/supabase/types';
@@ -46,12 +50,15 @@ export function AddMaintenanceDialog({ open, onOpenChange, properties }: Props) 
     defaultValues: {
       category: 'other',
       performed_by: 'owner',
+      performed_date: format(new Date(), 'yyyy-MM-dd'),
       material_cost: 0,
       labor_cost: 0,
       ownership_split_percentage: 50,
       status: 'pending',
     },
   });
+
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
 
   const materialCost = watch('material_cost') || 0;
   const laborCost = watch('labor_cost') || 0;
@@ -130,7 +137,34 @@ export function AddMaintenanceDialog({ open, onOpenChange, properties }: Props) 
             </div>
             <div>
               <Label>Performed Date *</Label>
-              <Input type="date" {...register('performed_date')} />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !selectedDate && "text-muted-foreground"
+                    )}
+                  >
+                    {format(selectedDate, "PPP")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => {
+                      if (date) {
+                        setSelectedDate(date);
+                        setValue('performed_date', format(date, 'yyyy-MM-dd'));
+                      }
+                    }}
+                    initialFocus
+                    className="pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
               {errors.performed_date && <p className="text-sm text-destructive mt-1">{errors.performed_date.message}</p>}
             </div>
           </div>
