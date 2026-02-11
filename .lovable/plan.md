@@ -1,25 +1,94 @@
 
 
-## Fix Performed Date Picker in Add Maintenance Dialog
+## Maintenance Module UX Overhaul
 
-### Problem
-The "Performed Date" field currently uses a native HTML `<Input type="date">`, which shows the browser's default calendar icon and requires clicking that tiny icon to open the picker. It also has no default value, showing "mm/dd/yyyy" placeholder text.
+A comprehensive UI/interaction upgrade to make the Maintenance module feel modern and production-grade. No database changes.
 
-### Solution
-Replace the native date input with a custom Popover + Calendar date picker (using the existing Shadcn components already in the project). The entire button area will be clickable, no separate calendar icon, and today's date will be pre-selected by default.
+### 1. Date Range Picker (Google-style)
 
-### Changes to `src/components/maintenance/AddMaintenanceDialog.tsx`
+Replace the two native `<Input type="date">` fields with a single Popover-based date range picker:
+- Uses the existing `Calendar` component with `mode="range"` (supported by `react-day-picker`)
+- Shows a clickable button displaying "Feb 1, 2026 -- Feb 28, 2026" or "Select date range"
+- Highlights selected range visually
+- Clears with an X button
+- Filters table in real-time as range changes
 
-1. **Update the Zod schema**: Change `performed_date` from `z.string()` to accept a `Date` object internally, then format to string on submit
-2. **Add a `selectedDate` state** initialized to `new Date()` (today), and set the form default for `performed_date` to today's date string (e.g. `format(new Date(), 'yyyy-MM-dd')`)
-3. **Replace the `<Input type="date">` block** (lines 131-135) with a Popover containing:
-   - A `Button` (variant="outline") showing the formatted date (e.g. "Feb 11, 2026") or "Pick a date" -- the entire button is clickable
-   - A `Calendar` (mode="single") inside `PopoverContent` with `pointer-events-auto`
-   - On select, update both the local state and the form value via `setValue('performed_date', format(date, 'yyyy-MM-dd'))`
-4. **Add imports**: `format` from `date-fns`, `Calendar` from `@/components/ui/calendar`, `Popover/PopoverTrigger/PopoverContent` from `@/components/ui/popover`, `CalendarIcon` from `lucide-react`, `cn` from `@/lib/utils`
+### 2. Edit Functionality
 
-### Visual Result
-- Full-width clickable button showing today's date by default
-- Opens a styled calendar popover on click (matching app's dark theme)
-- No native browser calendar icon
-- Consistent with the rest of the design system
+- Add `useUpdateMaintenance` hook to `useMaintenance.ts` (uses `.update().eq('id', id)`)
+- Refactor `AddMaintenanceDialog` to accept an optional `editRecord?: MaintenanceRecord` prop
+- When `editRecord` is provided: pre-fill all fields, show "Edit Maintenance" title, call update instead of create
+- Add a Pencil icon button next to the Trash icon in each row
+- Clicking opens the dialog pre-filled with that record's data
+
+### 3. Bulk Selection + Live Summary Bar
+
+- Add `selectedIds: Set<string>` state in `MaintenanceDashboard`
+- Add a `Checkbox` in the header row (master select/deselect all visible)
+- Add a `Checkbox` in each data row
+- When 1+ rows selected, show a sticky summary bar below the table with:
+  - Selected count, Total Cost, Total Partner Share (all memoized)
+  - "Export Selected" button that exports only checked rows to CSV
+- Selection state is purely client-side, no re-fetching
+
+### 4. Summary Cards Above Table
+
+Add 3 cards above the table (below filters):
+- **Total Records** -- count of filtered records
+- **Total Maintenance Cost** -- sum of `total_cost` from filtered records
+- **Total Partner Share** -- sum of `partner_share_amount` from filtered records
+- All values derived from memoized `filtered` array, updating as filters change
+
+### 5. Visual Design Upgrades (MaintenanceDashboard)
+
+- Table rows: increase vertical padding (`py-4`), add hover effect (`hover:bg-muted/50 transition-colors`)
+- Currency formatting: use `toLocaleString('en-US', { style: 'currency', currency: 'USD' })` for proper `$1,670.00` display
+- Partner Share column: subtle accent color text
+- Status badges: Completed = green (`bg-emerald-500/15 text-emerald-500`), Pending = amber (`bg-amber-500/15 text-amber-500`) with custom classes
+- Buttons: "Add Maintenance" stays primary, "Export CSV" stays outline/secondary
+- Property names: `max-w-[180px] truncate` with title tooltip
+
+### 6. Modal UX Upgrade (AddMaintenanceDialog)
+
+Reorganize into clearly labeled sections:
+
+**Section 1 -- Basic Info** (with a subtle section header)
+- Property, Title, Category, Date, Performed By
+
+**Section 2 -- Cost Breakdown** (inside a Card with border)
+- Material Cost, Labor Cost side-by-side
+- Total Cost displayed large and bold below
+
+**Section 3 -- Ownership Split** (inside a Card with border)
+- Split % input
+- Partner Share displayed large, bold, with accent color
+- Helper text: "Partner share is calculated automatically."
+
+**Performed By** -- Replace radio circles with pill-style toggle buttons:
+- Three side-by-side buttons styled like selectable pills (using ToggleGroup or custom styled buttons)
+- Active state has primary bg, inactive has muted bg
+- Vendor Name field animates in with a CSS transition when "Vendor" is selected
+
+### 7. Table Improvements
+
+- Right-align all monetary columns
+- Proper currency formatting throughout
+- Subtle row dividers (already via Table component, ensure visible)
+- Increased row padding for breathing room
+- Actions column: Edit (Pencil) + Delete (Trash) icons side-by-side
+
+### Files to Change
+
+| File | Changes |
+|------|---------|
+| `src/hooks/useMaintenance.ts` | Add `useUpdateMaintenance` hook |
+| `src/components/maintenance/MaintenanceDashboard.tsx` | Full rewrite: date range picker, summary cards, bulk selection, visual upgrades, edit support |
+| `src/components/maintenance/AddMaintenanceDialog.tsx` | Full rewrite: edit mode support, sectioned layout, pill toggles, card-style cost sections |
+
+### Technical Notes
+
+- All summary calculations use `useMemo` derived from `filtered` array -- no extra queries
+- Bulk selection is pure client state (`Set<string>`) -- no performance impact
+- `react-day-picker` already supports `mode="range"` out of the box via the existing `Calendar` component
+- No database schema changes, no RLS changes, no new tables
+
