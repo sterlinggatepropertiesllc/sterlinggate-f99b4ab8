@@ -1,28 +1,28 @@
 
 
-## Fix Login Page Overflow and Input Placeholders
+## Fix Telegram Mini App Top Header Overlap
 
 ### Problem
-The login screen appears "zoomed in" / overflowing on the right side in Telegram Mini Apps and mobile. Input field placeholders are not clearly visible -- icons overlap them.
+When the app runs inside a Telegram Mini App, Telegram's native header controls (Close button, notification badge, collapse arrow, three-dot menu) overlap with the app's own top header bar (hamburger menu, title, notification bell, settings). This makes the top of the app unusable.
 
-### Root Causes
-1. The card's `max-w-md` (448px) plus `p-6` internal padding and `p-4` outer padding can exceed narrow Telegram viewports (typically 360-390px wide)
-2. No `overflow-hidden` on the card or form container, so content bleeds out
-3. The `text-3xl` title ("Sterling Gate Properties") is quite wide and may push the card wider
+### Solution
+Add a CSS class that applies top padding only when running inside a Telegram Mini App, using the safe-area inset values provided by Telegram's WebApp environment. This ensures the app content starts below Telegram's native controls.
 
 ### Changes
 
-#### 1. Fix Auth page layout (`src/pages/Auth.tsx`)
-- Add `overflow-hidden` to the Card component
-- Reduce the title size on small screens: change `text-3xl` to `text-2xl sm:text-3xl`
-- Reduce logo height on small screens: `h-14 sm:h-20`
-- Ensure the outer wrapper constrains properly with `max-w-full`
-- Update placeholder text to be clearer: "Enter your email" and "Enter your password" (more readable than the current ones, especially with icon overlap)
+#### 1. Add Telegram safe-area class to the root element (`src/contexts/TelegramContext.tsx`)
+- When Telegram is detected, add a CSS class (e.g., `telegram-webapp`) to the `<html>` element
+- This allows global CSS to apply Telegram-specific padding without affecting normal browser usage
 
-#### 2. Add global overflow safety (`src/index.css`)
-- Add `overflow-x: hidden` to the `#root` or `html` element to prevent any horizontal scroll on mobile/Telegram
+#### 2. Add Telegram-specific top padding (`src/index.css`)
+- Add a CSS rule that applies top padding when the `telegram-webapp` class is present on the `<html>` element
+- Use `env(safe-area-inset-top, 48px)` as padding, with a fallback of 48px (approximate height of Telegram's header controls)
+
+#### 3. Adjust sticky header in Dashboard (`src/pages/Dashboard.tsx`)
+- Update the sticky top header bar's `top` value to account for Telegram's safe area so it doesn't slide under Telegram's controls when scrolling
 
 ### Files to Change
-- `src/pages/Auth.tsx` -- responsive sizing, overflow-hidden on card, better placeholders
-- `src/index.css` -- global overflow-x hidden on html/root
+- `src/contexts/TelegramContext.tsx` -- add `telegram-webapp` class to `<html>` element when in Telegram
+- `src/index.css` -- add `.telegram-webapp` padding-top rule
+- `src/pages/Dashboard.tsx` -- no changes needed if global padding handles it, but may need minor sticky header adjustment
 
