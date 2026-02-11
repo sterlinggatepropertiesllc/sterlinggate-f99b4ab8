@@ -8,8 +8,9 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useBalanceAdjustments, useApplyBalanceAdjustment, calculateOverdueBalance, useRealtimeTenantBalance } from '@/hooks/useBalanceAdjustments';
+import { supabase } from '@/integrations/supabase/client';
 import { format, parseISO } from 'date-fns';
-import { DollarSign, ChevronDown, ChevronUp, Clock, AlertTriangle, Plus, Minus } from 'lucide-react';
+import { DollarSign, ChevronDown, ChevronUp, Clock, AlertTriangle, Plus, Minus, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface BalanceSectionProps {
@@ -44,6 +45,7 @@ export function BalanceSection({
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
 
   const { data: adjustments, isLoading: adjustmentsLoading } = useBalanceAdjustments(tenantId);
   const applyAdjustment = useApplyBalanceAdjustment();
@@ -56,6 +58,36 @@ export function BalanceSection({
   useRealtimeTenantBalance(tenantId, handleRealtimeUpdate);
 
   const overdueBalance = calculateOverdueBalance(currentBalance, rentAmount, leaseStartDate);
+
+  const handleReconcile = async () => {
+    setIsReconciling(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('reconcile-ach-payments', {
+        body: { tenant_id: tenantId },
+      });
+
+      if (error) throw error;
+
+      if (data.updated > 0) {
+        toast.success(`Reconciled ${data.updated} payment(s). Balance updated.`);
+        queryClient.invalidateQueries({ queryKey: ['tenants'] });
+        queryClient.invalidateQueries({ queryKey: ['balance-adjustments', tenantId] });
+        queryClient.invalidateQueries({ queryKey: ['payments'] });
+        queryClient.invalidateQueries({ queryKey: ['pending-ach-payments'] });
+      } else {
+        toast.info('No stuck payments found to reconcile.');
+      }
+
+      if (data.failed > 0) {
+        toast.warning(`${data.failed} payment(s) could not be reconciled.`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Reconciliation failed';
+      toast.error(msg);
+    } finally {
+      setIsReconciling(false);
+    }
+  };
 
   const handleSubmit = async () => {
     const parsedAmount = parseFloat(amount);
@@ -135,6 +167,20 @@ export function BalanceSection({
           )}
         </div>
       </div>
+
+      {/* Reconcile Payments */}
+      {currentBalance > 0 && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleReconcile}
+          disabled={isReconciling}
+          className="w-full"
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${isReconciling ? 'animate-spin' : ''}`} />
+          {isReconciling ? 'Reconciling...' : 'Reconcile Stuck Payments'}
+        </Button>
+      )}
 
       {/* Adjustment Form */}
       <div className="bg-muted/20 rounded-lg p-4 space-y-3 border border-border/50">
