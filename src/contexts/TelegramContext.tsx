@@ -52,6 +52,14 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       
       // Expand to full height
       tg.expand();
+      
+      // Request fullscreen if available (newer clients)
+      tg.requestFullscreen?.();
+      
+      // Prevent accidental close on scroll
+      if ('isVerticalSwipesEnabled' in tg) {
+        tg.isVerticalSwipesEnabled = false;
+      }
 
       // Apply Telegram theme colors to CSS variables
       if (tg.themeParams) {
