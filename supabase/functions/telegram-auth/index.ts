@@ -58,7 +58,7 @@ serve(async (req) => {
   }
 
   try {
-    const { initData } = await req.json();
+    const { initData, chatId: frontendChatId } = await req.json();
     if (!initData) {
       return new Response(JSON.stringify({ error: "Missing initData" }), {
         status: 400,
@@ -71,6 +71,16 @@ serve(async (req) => {
 
     // Validate the initData signature
     const parsed = await validateInitData(initData, botToken);
+
+    // Validate auth_date is not older than 24 hours
+    const authDate = parsed.auth_date ? parseInt(parsed.auth_date, 10) : 0;
+    const now = Math.floor(Date.now() / 1000);
+    if (now - authDate > 86400) {
+      return new Response(JSON.stringify({ error: "Auth data expired (>24h)" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Extract user info
     const userDataStr = parsed.user;
@@ -114,10 +124,14 @@ serve(async (req) => {
       if (signUpError) throw signUpError;
       userId = signUpData.user.id;
 
-      // Update profile with telegram_id
+      // Update profile with telegram_id and chat_id if available
+      const profileUpdate: Record<string, unknown> = { telegram_id: telegramId };
+      if (frontendChatId) {
+        profileUpdate.telegram_chat_id = frontendChatId;
+      }
       await supabase
         .from("profiles")
-        .update({ telegram_id: telegramId })
+        .update(profileUpdate)
         .eq("id", userId);
 
       // Assign tenant role by default for Telegram users
