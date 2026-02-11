@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { useEffect } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 
 export interface OverdueTenant {
   id: string;
@@ -12,15 +12,30 @@ export interface OverdueTenant {
   rentDueDay: number;
 }
 
+const STORAGE_KEY = 'overdue-alerts-dismissed';
+
+function getDismissedMap(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveDismissedMap(map: Record<string, number>) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+}
+
 export function useOverdueTenants(managerId: string | undefined) {
   const queryClient = useQueryClient();
+  const [dismissedMap, setDismissedMap] = useState<Record<string, number>>(getDismissedMap);
 
   const query = useQuery({
     queryKey: ['overdue-tenants', managerId],
     queryFn: async () => {
       if (!managerId) return [];
 
-      // Get all active tenants for this manager with positive balance
       const { data: tenants, error } = await supabase
         .from('tenants')
         .select(`
@@ -37,18 +52,15 @@ export function useOverdueTenants(managerId: string | undefined) {
 
       if (error) throw error;
 
-      // For each tenant with a balance, check if they have an active lease and get details
       const overdueTenants: OverdueTenant[] = [];
 
       for (const tenant of tenants || []) {
-        // Get profile info
         const { data: profile } = await supabase
           .from('profiles')
           .select('full_name, email')
           .eq('id', tenant.user_id)
           .single();
 
-        // Get property info if assigned
         let propertyAddress: string | null = null;
         if (tenant.property_id) {
           const { data: property } = await supabase
@@ -59,7 +71,6 @@ export function useOverdueTenants(managerId: string | undefined) {
           propertyAddress = property?.address || null;
         }
 
-        // Get active lease for rent due day
         const { data: lease } = await supabase
           .from('leases')
           .select('rent_due_day, grace_period_days')
@@ -74,29 +85,23 @@ export function useOverdueTenants(managerId: string | undefined) {
         const rentDueDay = lease?.rent_due_day || 1;
         const gracePeriod = lease?.grace_period_days || 5;
 
-        // Calculate days overdue
         const today = new Date();
         const currentMonth = today.getMonth();
         const currentYear = today.getFullYear();
         
-        // Due date for current month
         let dueDate = new Date(currentYear, currentMonth, rentDueDay);
         
-        // If we're before the due date this month, check last month's due date
         if (today < dueDate) {
           dueDate = new Date(currentYear, currentMonth - 1, rentDueDay);
         }
 
-        // Add grace period
         const gracePeriodEnd = new Date(dueDate);
         gracePeriodEnd.setDate(gracePeriodEnd.getDate() + gracePeriod);
 
-        // Calculate days overdue (only if past grace period)
         const daysOverdue = today > gracePeriodEnd 
           ? Math.floor((today.getTime() - gracePeriodEnd.getTime()) / (1000 * 60 * 60 * 24))
           : 0;
 
-        // Only include if actually overdue (past grace period)
         if (daysOverdue > 0) {
           overdueTenants.push({
             id: tenant.id,
@@ -110,51 +115,58 @@ export function useOverdueTenants(managerId: string | undefined) {
         }
       }
 
-      // Sort by days overdue (most overdue first)
       return overdueTenants.sort((a, b) => b.daysOverdue - a.daysOverdue);
     },
     enabled: !!managerId,
-    refetchInterval: 60000, // Refresh every minute
+    refetchInterval: 60000,
   });
 
-  // Set up real-time subscription
   useEffect(() => {
     if (!managerId) return;
 
     const channel = supabase
       .channel('overdue-tenants-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'tenants',
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['overdue-tenants', managerId] });
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'balance_adjustments',
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ['overdue-tenants', managerId] });
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tenants' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['overdue-tenants', managerId] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'balance_adjustments' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['overdue-tenants', managerId] });
+      })
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [managerId, queryClient]);
 
+  const activeOverdueTenants = useMemo(() => {
+    const all = query.data || [];
+    return all.filter((t) => {
+      if (!(t.id in dismissedMap)) return true;
+      return dismissedMap[t.id] !== t.amountOwed;
+    });
+  }, [query.data, dismissedMap]);
+
+  const dismissAlert = useCallback((tenantId: string, amount: number) => {
+    setDismissedMap((prev) => {
+      const next = { ...prev, [tenantId]: amount };
+      saveDismissedMap(next);
+      return next;
+    });
+  }, []);
+
+  const clearAllAlerts = useCallback(() => {
+    const all = query.data || [];
+    const next: Record<string, number> = { ...dismissedMap };
+    all.forEach((t) => { next[t.id] = t.amountOwed; });
+    saveDismissedMap(next);
+    setDismissedMap(next);
+  }, [query.data, dismissedMap]);
+
   return {
-    overdueTenants: query.data || [],
+    overdueTenants: activeOverdueTenants,
+    allOverdueTenants: query.data || [],
     isLoading: query.isLoading,
-    count: query.data?.length || 0,
+    count: activeOverdueTenants.length,
+    dismissAlert,
+    clearAllAlerts,
   };
 }
