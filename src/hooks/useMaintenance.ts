@@ -38,6 +38,20 @@ interface MaintenanceInsert {
   attachments?: any[];
 }
 
+interface MaintenanceUpdate {
+  title?: string;
+  description?: string | null;
+  category?: string;
+  material_cost?: number;
+  labor_cost?: number;
+  performed_by?: string;
+  performed_by_name?: string | null;
+  ownership_split_percentage?: number;
+  status?: string;
+  performed_date?: string;
+  property_id?: string;
+}
+
 export function useMaintenance() {
   return useQuery({
     queryKey: ['maintenance'],
@@ -73,6 +87,31 @@ export function useCreateMaintenance() {
     },
     onError: (error) => {
       toast.error(`Failed to save: ${error.message}`);
+    },
+  });
+}
+
+export function useUpdateMaintenance() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: MaintenanceUpdate }) => {
+      const { data, error } = await supabase
+        .from('maintenance_records' as any)
+        .update(updates as any)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['maintenance'] });
+      toast.success('Maintenance record updated');
+    },
+    onError: (error) => {
+      toast.error(`Failed to update: ${error.message}`);
     },
   });
 }
