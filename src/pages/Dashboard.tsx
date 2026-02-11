@@ -485,7 +485,7 @@ export default function Dashboard() {
         {/* Main Content */}
         <main className="flex-1 overflow-auto min-w-0">
           {/* Top Header Bar */}
-          <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 md:px-8 py-3 md:py-4">
+          <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 md:px-8 py-3 md:py-4 telegram-sticky-header">
             <div className="flex items-center justify-between gap-3">
               {/* Mobile hamburger */}
               {isMobile && (
