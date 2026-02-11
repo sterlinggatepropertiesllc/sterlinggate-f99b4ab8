@@ -28,7 +28,6 @@ export function useTelegramNotificationPrefs() {
 
     setLoading(true);
     try {
-      // Fetch topics relevant to user's role
       const roleScope = role === 'property_manager' ? 'property_manager' : 'tenant';
       const { data: topicsData } = await supabase
         .from('telegram_notification_topics')
@@ -37,7 +36,6 @@ export function useTelegramNotificationPrefs() {
 
       setTopics((topicsData as NotificationTopic[]) || []);
 
-      // Fetch user's prefs
       const { data: prefsData } = await supabase
         .from('telegram_notification_prefs')
         .select('*')
@@ -45,7 +43,6 @@ export function useTelegramNotificationPrefs() {
 
       setPrefs((prefsData as NotificationPref[]) || []);
 
-      // Check if chat_id is linked
       const { data: profile } = await supabase
         .from('profiles')
         .select('telegram_chat_id')
@@ -63,6 +60,20 @@ export function useTelegramNotificationPrefs() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Auto-refresh when user returns to the app (e.g. after messaging the bot)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !chatLinked) {
+        fetchData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [fetchData, chatLinked]);
 
   const togglePref = async (topicKey: string, enabled: boolean) => {
     if (!user) return;
@@ -99,7 +110,7 @@ export function useTelegramNotificationPrefs() {
 
   const isEnabled = (topicKey: string): boolean => {
     const pref = prefs.find((p) => p.topic_key === topicKey);
-    return pref ? pref.enabled : true; // default enabled
+    return pref ? pref.enabled : true;
   };
 
   return { topics, prefs, chatLinked, loading, togglePref, isEnabled, refetch: fetchData };
