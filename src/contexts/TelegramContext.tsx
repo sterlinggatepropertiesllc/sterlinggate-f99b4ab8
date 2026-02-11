@@ -54,6 +54,9 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       
       // Request fullscreen if available (newer clients)
       tg.requestFullscreen?.();
+
+      // Add telegram-webapp class to html element for global CSS targeting
+      document.documentElement.classList.add('telegram-webapp');
       
       // Prevent accidental close on scroll
       if ('isVerticalSwipesEnabled' in tg) {
@@ -92,6 +95,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
 
       return () => {
         window.removeEventListener('popstate', updateBackButton);
+        document.documentElement.classList.remove('telegram-webapp');
       };
     }
   }, []);

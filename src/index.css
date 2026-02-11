@@ -163,6 +163,11 @@ html, #root {
     padding-right: env(safe-area-inset-right);
   }
 
+  /* Telegram Mini App: push content below native header controls */
+  html.telegram-webapp body {
+    padding-top: max(env(safe-area-inset-top, 0px), 48px);
+  }
+
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Outfit', system-ui, sans-serif;
     font-weight: 500;
