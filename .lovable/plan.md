@@ -1,37 +1,28 @@
 
 
-## Fix Zoomed-In Display on Mobile and Telegram Mini Apps
+## Fix Login Page Overflow and Input Placeholders
 
 ### Problem
-The app appears zoomed in when opened on mobile devices and inside Telegram Mini Apps. This is caused by the viewport meta tag missing zoom-prevention attributes, allowing the browser/Telegram WebView to auto-zoom the content.
+The login screen appears "zoomed in" / overflowing on the right side in Telegram Mini Apps and mobile. Input field placeholders are not clearly visible -- icons overlap them.
+
+### Root Causes
+1. The card's `max-w-md` (448px) plus `p-6` internal padding and `p-4` outer padding can exceed narrow Telegram viewports (typically 360-390px wide)
+2. No `overflow-hidden` on the card or form container, so content bleeds out
+3. The `text-3xl` title ("Sterling Gate Properties") is quite wide and may push the card wider
 
 ### Changes
 
-#### 1. Update viewport meta tag (`index.html`)
-Add `maximum-scale=1.0` and `user-scalable=no` to the existing viewport meta tag. This prevents the WebView from auto-zooming and ensures the app renders at 1:1 scale.
+#### 1. Fix Auth page layout (`src/pages/Auth.tsx`)
+- Add `overflow-hidden` to the Card component
+- Reduce the title size on small screens: change `text-3xl` to `text-2xl sm:text-3xl`
+- Reduce logo height on small screens: `h-14 sm:h-20`
+- Ensure the outer wrapper constrains properly with `max-w-full`
+- Update placeholder text to be clearer: "Enter your email" and "Enter your password" (more readable than the current ones, especially with icon overlap)
 
-**Before:**
-```html
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-```
-
-**After:**
-```html
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-```
-
-#### 2. Add CSS zoom reset (`src/index.css`)
-Add `text-size-adjust` properties to the `html` element to prevent mobile browsers from auto-inflating text sizes, which can contribute to the zoomed-in appearance:
-
-```css
-html {
-  -webkit-text-size-adjust: 100%;
-  -moz-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-```
+#### 2. Add global overflow safety (`src/index.css`)
+- Add `overflow-x: hidden` to the `#root` or `html` element to prevent any horizontal scroll on mobile/Telegram
 
 ### Files to Change
-- `index.html` -- add maximum-scale and user-scalable to viewport meta
-- `src/index.css` -- add text-size-adjust to html element
+- `src/pages/Auth.tsx` -- responsive sizing, overflow-hidden on card, better placeholders
+- `src/index.css` -- global overflow-x hidden on html/root
 
