@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 
 interface TelegramContextType {
@@ -72,13 +71,28 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // Set up back button
+      // Dynamic back button visibility
+      const updateBackButton = () => {
+        if (window.location.pathname === '/' || window.location.pathname === '') {
+          tg.BackButton.hide();
+        } else {
+          tg.BackButton.show();
+        }
+      };
+
       tg.BackButton.onClick(() => {
         window.history.back();
       });
 
+      window.addEventListener('popstate', updateBackButton);
+      updateBackButton();
+
       // Auto-authenticate
       authenticateWithTelegram(tg.initData);
+
+      return () => {
+        window.removeEventListener('popstate', updateBackButton);
+      };
     }
   }, []);
 
