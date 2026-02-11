@@ -1,72 +1,25 @@
 
 
-## Add Maintenance Module
+## Fix Performed Date Picker in Add Maintenance Dialog
 
-### Overview
-A new "Maintenance" tab in the admin dashboard for tracking property maintenance records with cost breakdowns, ownership splits, and CSV export.
+### Problem
+The "Performed Date" field currently uses a native HTML `<Input type="date">`, which shows the browser's default calendar icon and requires clicking that tiny icon to open the picker. It also has no default value, showing "mm/dd/yyyy" placeholder text.
 
-### 1. Database Migration
-Create `maintenance_records` table with RLS policies for property managers.
+### Solution
+Replace the native date input with a custom Popover + Calendar date picker (using the existing Shadcn components already in the project). The entire button area will be clickable, no separate calendar icon, and today's date will be pre-selected by default.
 
-```text
-Table: maintenance_records
-- id (uuid, PK)
-- property_id (uuid, FK to properties)
-- manager_id (uuid, references auth.users)
-- title (text, NOT NULL)
-- description (text)
-- category (text: repair, upgrade, inspection, landscaping, other)
-- material_cost (numeric, default 0)
-- labor_cost (numeric, default 0)
-- total_cost (numeric, generated as material_cost + labor_cost)
-- performed_by (text: owner, partner, vendor)
-- performed_by_name (text, nullable)
-- ownership_split_percentage (numeric, default 50)
-- partner_share_amount (numeric, generated as total_cost * ownership_split_percentage / 100)
-- status (text: pending, completed, default pending)
-- performed_date (date)
-- attachments (jsonb, default '[]')
-- created_at (timestamptz, default now())
+### Changes to `src/components/maintenance/AddMaintenanceDialog.tsx`
 
-RLS: Property managers can manage records where manager_id = auth.uid()
-```
+1. **Update the Zod schema**: Change `performed_date` from `z.string()` to accept a `Date` object internally, then format to string on submit
+2. **Add a `selectedDate` state** initialized to `new Date()` (today), and set the form default for `performed_date` to today's date string (e.g. `format(new Date(), 'yyyy-MM-dd')`)
+3. **Replace the `<Input type="date">` block** (lines 131-135) with a Popover containing:
+   - A `Button` (variant="outline") showing the formatted date (e.g. "Feb 11, 2026") or "Pick a date" -- the entire button is clickable
+   - A `Calendar` (mode="single") inside `PopoverContent` with `pointer-events-auto`
+   - On select, update both the local state and the form value via `setValue('performed_date', format(date, 'yyyy-MM-dd'))`
+4. **Add imports**: `format` from `date-fns`, `Calendar` from `@/components/ui/calendar`, `Popover/PopoverTrigger/PopoverContent` from `@/components/ui/popover`, `CalendarIcon` from `lucide-react`, `cn` from `@/lib/utils`
 
-`total_cost` and `partner_share_amount` will be generated columns so they always stay in sync.
-
-### 2. Sidebar Update (Dashboard.tsx)
-- Add `'maintenance'` to the `DashboardTab` type union
-- Add a new nav item after "Payments" (audit): `{ id: 'maintenance', label: 'Maintenance', icon: Wrench }`
-- Add the tab rendering case for `maintenance`
-
-### 3. New Files
-
-| File | Purpose |
-|------|---------|
-| `src/hooks/useMaintenance.ts` | CRUD hooks using react-query + Supabase (follows `usePayments.ts` pattern) |
-| `src/components/maintenance/MaintenanceDashboard.tsx` | Main tab content: filters, table, export CSV |
-| `src/components/maintenance/AddMaintenanceDialog.tsx` | Modal form with live cost calculations |
-
-### 4. MaintenanceDashboard Component
-- Property dropdown filter, date range picker, status filter (reusing existing date picker pattern from AuditDashboard)
-- Table with columns: Property, Title, Category, Total Cost, Partner Share, Performed By, Date, Status
-- Export CSV button that respects active filters
-- "+ Add Maintenance" button opening the dialog
-
-### 5. AddMaintenanceDialog Component
-- Property dropdown (required), Title (required), Category dropdown, Performed Date (required)
-- Performed By radio: Owner / Partner / Vendor (if Vendor, show Vendor Name field)
-- Material Cost + Labor Cost inputs with live Total Cost display
-- Ownership Split % input with live Partner Share calculation
-- Description textarea, Status toggle, Attachments file upload (stored in Supabase storage)
-- Form validation via react-hook-form + zod
-
-### 6. CSV Export
-- Generates CSV from filtered records
-- Triggers browser download
-- Columns match the table display
-
-### Technical Notes
-- Generated columns in Postgres ensure `total_cost` and `partner_share_amount` are always consistent
-- Follows the same design patterns as the existing Payments/Audit tab
-- No changes to the Payments module or any ledger integration
-- File attachments stored in a new `maintenance-attachments` storage bucket
+### Visual Result
+- Full-width clickable button showing today's date by default
+- Opens a styled calendar popover on click (matching app's dark theme)
+- No native browser calendar icon
+- Consistent with the rest of the design system
