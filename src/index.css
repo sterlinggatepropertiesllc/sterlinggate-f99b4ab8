@@ -138,6 +138,11 @@
   * {
     @apply border-border;
     min-width: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button, a, [role="button"], input, select, textarea {
+    touch-action: manipulation;
   }
 
   body {
