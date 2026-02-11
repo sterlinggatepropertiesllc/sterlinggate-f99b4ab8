@@ -63,9 +63,24 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         tg.isVerticalSwipesEnabled = false;
       }
 
+      // Read Telegram safe area insets and set CSS variables
+      const root = document.documentElement;
+      
+      // tg.safeAreaInset and tg.contentSafeAreaInset available in newer clients
+      const safeArea = tg.safeAreaInset;
+      const contentSafeArea = tg.contentSafeAreaInset;
+      
+      if (safeArea) {
+        root.style.setProperty('--tg-safe-top', `${safeArea.top || 0}px`);
+        root.style.setProperty('--tg-safe-bottom', `${safeArea.bottom || 0}px`);
+      }
+      if (contentSafeArea) {
+        root.style.setProperty('--tg-content-safe-top', `${contentSafeArea.top || 0}px`);
+        root.style.setProperty('--tg-content-safe-bottom', `${contentSafeArea.bottom || 0}px`);
+      }
+
       // Apply Telegram theme colors to CSS variables
       if (tg.themeParams) {
-        const root = document.documentElement;
         if (tg.themeParams.bg_color) {
           root.style.setProperty('--background', hexToHsl(tg.themeParams.bg_color));
         }
