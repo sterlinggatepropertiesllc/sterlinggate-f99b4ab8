@@ -127,43 +127,35 @@ serve(async (req) => {
         .select();
     }
 
-    // Generate a session for this user
-    // Use admin API to generate a magic link token, or sign in directly
-    // We'll use admin.generateLink to get a session
+    // Generate a session for this user directly using admin API
+    const { data: userData } = await supabase.auth.admin.getUserById(userId);
+    if (!userData.user) throw new Error("User not found");
+
+    // Use the Supabase Admin API to generate link and extract token
     const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
       type: "magiclink",
-      email: (existingProfile?.email) || `tg_${telegramId}@telegram.user`,
+      email: userData.user.email!,
     });
 
     if (linkError) throw linkError;
 
-    // Extract the token from the link and exchange it for a session
-    const url = new URL(linkData.properties.action_link);
-    const token_hash = url.searchParams.get("token") || url.hash?.replace("#", "") || "";
-    
-    // We need to return the hashed token so the client can verify it
-    // Actually, let's use a different approach - sign in directly
-    // Use the admin API to create a session
-    // The cleanest approach: return the action_link for the client to use
-    // But even cleaner: generate session tokens directly
+    // Extract the OTP token from the action link
+    const actionLink = new URL(linkData.properties.action_link);
+    const token = actionLink.searchParams.get("token") || "";
 
-    // Get the user's email to sign them in
-    const { data: userData } = await supabase.auth.admin.getUserById(userId);
-    if (!userData.user) throw new Error("User not found");
-
-    // Generate a new session using admin
-    const { data: sessionData, error: sessionError } = await supabase.auth.admin.generateLink({
-      type: "magiclink", 
-      email: userData.user.email!,
+    // Verify the token server-side to get a real session
+    const { data: sessionData, error: sessionError } = await supabase.auth.verifyOtp({
+      token_hash: linkData.properties.hashed_token,
+      type: "magiclink",
     });
 
     if (sessionError) throw sessionError;
 
-    // Return the action link properties for client-side verification
+    // Return the session tokens so the client can set them directly
     return new Response(
       JSON.stringify({
-        token_hash: sessionData.properties.hashed_token,
-        email: userData.user.email,
+        access_token: sessionData.session?.access_token,
+        refresh_token: sessionData.session?.refresh_token,
         user_id: userId,
         telegram_user: telegramUser,
       }),

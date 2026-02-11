@@ -134,16 +134,19 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       const data = await response.json();
       setTelegramUser(data.telegram_user);
 
-      // Verify the OTP token to establish a session
-      const { error: verifyError } = await supabase.auth.verifyOtp({
-        email: data.email,
-        token: data.token_hash,
-        type: 'email',
-      });
+      // Set the session directly using the tokens from the server
+      if (data.access_token && data.refresh_token) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
+        });
 
-      if (verifyError) {
-        console.error('OTP verification error:', verifyError);
-        throw new Error('Failed to establish session');
+        if (sessionError) {
+          console.error('Session set error:', sessionError);
+          throw new Error('Failed to establish session');
+        }
+      } else {
+        throw new Error('No session tokens received');
       }
     } catch (err) {
       console.error('Telegram auth error:', err);
