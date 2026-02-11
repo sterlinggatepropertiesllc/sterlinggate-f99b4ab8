@@ -181,32 +181,27 @@ export default function Auth() {
 
               <TabsContent value="signin" className="space-y-4">
                 <form onSubmit={handleSignIn} className="space-y-4">
-                  <div className="space-y-2">
+                    <div className="space-y-2">
                     <Label htmlFor="signin-email">Email</Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="signin-email"
                         type="email"
                         placeholder="Enter your email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="pl-10"
                         required
                       />
                     </div>
-                  </div>
-                  <div className="space-y-2">
+                    <div className="space-y-2">
                     <Label htmlFor="signin-password">Password</Label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="signin-password"
                         type={showPassword ? 'text' : 'password'}
                         placeholder="Enter your password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="pl-10 pr-10"
+                        className="pr-10"
                         required
                       />
                       <button
@@ -217,7 +212,7 @@ export default function Auth() {
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
-                  </div>
+                    </div>
                   <Button type="submit" className="w-full" disabled={isLoading}>
                     {isLoading ? 'Signing in...' : 'Sign In'}
                   </Button>
@@ -237,32 +232,27 @@ export default function Auth() {
                       required
                     />
                   </div>
-                  <div className="space-y-2">
+                    <div className="space-y-2">
                     <Label htmlFor="signup-email">Email</Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="signup-email"
                         type="email"
                         placeholder="Enter your email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="pl-10"
                         required
                       />
                     </div>
-                  </div>
-                  <div className="space-y-2">
+                    <div className="space-y-2">
                     <Label htmlFor="signup-password">Password</Label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="signup-password"
                         type={showPassword ? 'text' : 'password'}
                         placeholder="Enter your password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="pl-10 pr-10"
+                        className="pr-10"
                         required
                       />
                       <button
@@ -273,7 +263,7 @@ export default function Auth() {
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
-                  </div>
+                    </div>
                   
                   <div className="space-y-3">
                     <Label>I am a...</Label>
