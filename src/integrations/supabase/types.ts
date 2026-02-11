@@ -385,6 +385,74 @@ export type Database = {
           },
         ]
       }
+      maintenance_records: {
+        Row: {
+          attachments: Json
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          labor_cost: number
+          manager_id: string
+          material_cost: number
+          ownership_split_percentage: number
+          partner_share_amount: number | null
+          performed_by: string
+          performed_by_name: string | null
+          performed_date: string
+          property_id: string
+          status: string
+          title: string
+          total_cost: number | null
+        }
+        Insert: {
+          attachments?: Json
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          labor_cost?: number
+          manager_id: string
+          material_cost?: number
+          ownership_split_percentage?: number
+          partner_share_amount?: number | null
+          performed_by?: string
+          performed_by_name?: string | null
+          performed_date?: string
+          property_id: string
+          status?: string
+          title: string
+          total_cost?: number | null
+        }
+        Update: {
+          attachments?: Json
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          labor_cost?: number
+          manager_id?: string
+          material_cost?: number
+          ownership_split_percentage?: number
+          partner_share_amount?: number | null
+          performed_by?: string
+          performed_by_name?: string | null
+          performed_date?: string
+          property_id?: string
+          status?: string
+          title?: string
+          total_cost?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_records_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           attachment_name: string | null

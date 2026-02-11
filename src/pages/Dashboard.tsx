@@ -55,6 +55,7 @@ import { MessagingCenter } from '@/components/messages/MessagingCenter';
 import { AuditCertificate } from '@/components/leases/AuditCertificate';
 import { InquiriesTab } from '@/components/inquiries/InquiriesTab';
 import type { Database } from '@/integrations/supabase/types';
+import { MaintenanceDashboard } from '@/components/maintenance/MaintenanceDashboard';
 import { 
   LayoutDashboard, 
   Home, 
@@ -79,11 +80,12 @@ import {
   PenTool,
   Shield,
   Menu,
-  HelpCircle
+  HelpCircle,
+  Wrench
 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
-type DashboardTab = 'overview' | 'properties' | 'applications' | 'tenants' | 'leases' | 'messages' | 'inquiries' | 'analytics' | 'audit';
+type DashboardTab = 'overview' | 'properties' | 'applications' | 'tenants' | 'leases' | 'messages' | 'inquiries' | 'analytics' | 'audit' | 'maintenance';
 type Property = Database['public']['Tables']['properties']['Row'];
 
 export default function Dashboard() {
@@ -140,7 +142,7 @@ export default function Dashboard() {
   // Handle tab navigation from URL query params (for notification clicks)
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['overview', 'properties', 'applications', 'tenants', 'leases', 'messages', 'inquiries', 'analytics', 'audit'].includes(tabParam)) {
+    if (tabParam && ['overview', 'properties', 'applications', 'tenants', 'leases', 'messages', 'inquiries', 'analytics', 'audit', 'maintenance'].includes(tabParam)) {
       setActiveTab(tabParam as DashboardTab);
       // Clear the query param after setting the tab
       setSearchParams({}, { replace: true });
@@ -414,6 +416,7 @@ export default function Dashboard() {
     { id: 'inquiries', label: 'Inquiries', icon: HelpCircle, badge: unreadInquiriesCount },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'audit', label: 'Payments', icon: Receipt, badge: unreadPaymentCount },
+    { id: 'maintenance', label: 'Maintenance', icon: Wrench },
   ];
 
 
@@ -1127,6 +1130,9 @@ export default function Dashboard() {
 
           {/* Audit Tab */}
           {activeTab === 'audit' && <AuditDashboard />}
+
+          {/* Maintenance Tab */}
+          {activeTab === 'maintenance' && <MaintenanceDashboard />}
           </div>
         </main>
       </div>
