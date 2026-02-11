@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.reconcile-ach-payments]
 verify_jwt = false
+
+[functions.telegram-auth]
+verify_jwt = false

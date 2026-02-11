@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import logo from '@/assets/logo.png';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import type { Database } from '@/integrations/supabase/types';
+import { useTelegram } from '@/contexts/TelegramContext';
 
 type AppRole = Database['public']['Enums']['app_role'];
 
@@ -26,13 +27,57 @@ export default function Auth() {
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState<AppRole>('tenant');
   const [showPassword, setShowPassword] = useState(false);
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { isTelegram, isAuthenticating, authError } = useTelegram();
   
   const redirectTo = searchParams.get('redirect');
   const action = searchParams.get('action');
   const propertyId = searchParams.get('propertyId');
+
+  // If user is already authenticated (e.g. via Telegram), redirect
+  useEffect(() => {
+    if (user && !isAuthenticating) {
+      if (action === 'apply' && propertyId) {
+        navigate(`/properties?apply=${propertyId}`);
+      } else if (redirectTo) {
+        navigate(redirectTo);
+      } else {
+        navigate('/');
+      }
+    }
+  }, [user, isAuthenticating]);
+
+  // Show loading state while Telegram is authenticating
+  if (isTelegram && isAuthenticating) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
+          <p className="text-muted-foreground">Signing in via Telegram...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isTelegram && authError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <CardTitle>Authentication Error</CardTitle>
+            <CardDescription>{authError}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Please try closing and reopening the app in Telegram.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
