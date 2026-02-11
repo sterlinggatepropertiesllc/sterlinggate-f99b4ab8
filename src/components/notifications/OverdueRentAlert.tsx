@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, ChevronRight, X } from "lucide-react";
+import { AlertTriangle, ChevronRight, X, CheckCheck } from "lucide-react";
 import { useOverdueTenants } from "@/hooks/useOverdueTenants";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,12 +23,11 @@ interface OverdueRentAlertProps {
 }
 
 export function OverdueRentAlert({ managerId }: OverdueRentAlertProps) {
-  const { overdueTenants, count, isLoading } = useOverdueTenants(managerId);
+  const { overdueTenants, count, isLoading, dismissAlert, clearAllAlerts } = useOverdueTenants(managerId);
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
-  // Don't render anything if no overdue tenants
   if (isLoading || count === 0) {
     return null;
   }
@@ -36,6 +35,11 @@ export function OverdueRentAlert({ managerId }: OverdueRentAlertProps) {
   const handleTenantClick = (tenantId: string) => {
     setIsOpen(false);
     navigate(`/dashboard/tenant/${tenantId}?tab=balance`);
+  };
+
+  const handleDismiss = (e: React.MouseEvent, tenantId: string, amount: number) => {
+    e.stopPropagation();
+    dismissAlert(tenantId, amount);
   };
 
   const OverdueList = () => (
@@ -65,7 +69,19 @@ export function OverdueRentAlert({ managerId }: OverdueRentAlertProps) {
                 </span>
               </div>
             </div>
-            <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-amber-500 transition-colors flex-shrink-0" />
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => handleDismiss(e, tenant.id, tenant.amountOwed)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleDismiss(e as any, tenant.id, tenant.amountOwed); }}
+                className="h-7 w-7 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
+                title="Dismiss alert"
+              >
+                <X className="h-4 w-4 text-muted-foreground" />
+              </span>
+              <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-amber-500 transition-colors" />
+            </div>
           </div>
         </button>
       ))}
@@ -79,18 +95,11 @@ export function OverdueRentAlert({ managerId }: OverdueRentAlertProps) {
       className="relative h-10 w-10 rounded-full overflow-visible group"
       aria-label={`${count} overdue rent alerts`}
     >
-      {/* Outer pulsing halo */}
       <span className="absolute inset-0 rounded-full animate-overdue-amber-halo" />
-      
-      {/* Inner ring effect */}
       <span className="absolute inset-1 rounded-full animate-overdue-amber-ring" />
-      
-      {/* Icon container */}
       <span className="relative flex items-center justify-center h-full w-full rounded-full bg-amber-500/10 group-hover:bg-amber-500/20 transition-colors duration-200">
         <AlertTriangle className="h-5 w-5 text-amber-500" />
       </span>
-      
-      {/* Badge */}
       {count > 0 && (
         <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center rounded-full overdue-badge-amber text-[11px] font-bold text-white px-1.5 animate-overdue-badge-glow">
           {count > 9 ? '9+' : count}
@@ -99,7 +108,6 @@ export function OverdueRentAlert({ managerId }: OverdueRentAlertProps) {
     </Button>
   );
 
-  // Use Sheet for mobile, Popover for desktop
   if (isMobile) {
     return (
       <Sheet open={isOpen} onOpenChange={setIsOpen}>
@@ -108,16 +116,27 @@ export function OverdueRentAlert({ managerId }: OverdueRentAlertProps) {
         </SheetTrigger>
         <SheetContent side="bottom" className="h-[70vh] rounded-t-xl">
           <SheetHeader className="pb-4 border-b border-amber-500/20">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-full bg-amber-500/10">
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-full bg-amber-500/10">
+                  <AlertTriangle className="h-5 w-5 text-amber-500" />
+                </div>
+                <div>
+                  <SheetTitle className="text-lg">Overdue Rent Alerts</SheetTitle>
+                  <p className="text-sm text-muted-foreground">
+                    {count} {count === 1 ? 'tenant' : 'tenants'} with overdue balances
+                  </p>
+                </div>
               </div>
-              <div>
-                <SheetTitle className="text-lg">Overdue Rent Alerts</SheetTitle>
-                <p className="text-sm text-muted-foreground">
-                  {count} {count === 1 ? 'tenant' : 'tenants'} with overdue balances
-                </p>
-              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearAllAlerts}
+                className="h-8 text-xs gap-1.5 text-muted-foreground"
+              >
+                <CheckCheck className="h-3.5 w-3.5" />
+                Clear All
+              </Button>
             </div>
           </SheetHeader>
           <ScrollArea className="h-full py-4">
@@ -153,11 +172,12 @@ export function OverdueRentAlert({ managerId }: OverdueRentAlertProps) {
             </div>
             <Button
               variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => setIsOpen(false)}
+              size="sm"
+              onClick={clearAllAlerts}
+              className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
             >
-              <X className="h-4 w-4" />
+              <CheckCheck className="h-3.5 w-3.5" />
+              Clear All
             </Button>
           </div>
         </div>
