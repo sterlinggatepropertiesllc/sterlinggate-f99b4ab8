@@ -157,7 +157,7 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-serif text-2xl flex items-center gap-3">
             <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center">
@@ -252,7 +252,7 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
         {/* Access & Status Section */}
         <div className="space-y-3">
           <h4 className="text-sm font-medium text-muted-foreground">Access & Status</h4>
-          <div className="flex items-center justify-between bg-muted/30 rounded-lg p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/30 rounded-lg p-4">
             <div>
               <p className="font-medium">Tenant Portal Access</p>
               <p className="text-sm text-muted-foreground">
@@ -261,7 +261,7 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
             </div>
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="outline" size="sm" className="text-warning border-warning hover:bg-warning/10 whitespace-nowrap flex-shrink-0">
+                <Button variant="outline" size="sm" className="text-warning border-warning hover:bg-warning/10 whitespace-nowrap flex-shrink-0 w-full sm:w-auto">
                   <Shield className="h-4 w-4 mr-2 flex-shrink-0" /> 
                   <span>Revoke Access</span>
                 </Button>
@@ -294,7 +294,7 @@ export function TenantDetailsDialog({ tenant, open, onOpenChange, properties }: 
         {/* Danger Zone */}
         <div className="space-y-3">
           <h4 className="text-sm font-medium text-destructive">Danger Zone</h4>
-          <div className="flex items-center justify-between border border-destructive/30 rounded-lg p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-destructive/30 rounded-lg p-4">
             <div>
               <p className="font-medium">Delete Tenant</p>
               <p className="text-sm text-muted-foreground">

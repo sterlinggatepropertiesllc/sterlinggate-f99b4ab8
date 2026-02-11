@@ -190,12 +190,12 @@ export function AuditDashboard() {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-serif">Audit</h1>
-          <p className="text-muted-foreground">Financial tracking and reporting</p>
+          <h1 className="text-2xl md:text-3xl font-serif">Audit</h1>
+          <p className="text-muted-foreground text-sm md:text-base">Financial tracking and reporting</p>
         </div>
-        <Button onClick={exportToCSV} variant="outline">
+        <Button onClick={exportToCSV} variant="outline" className="w-full sm:w-auto">
           <Download className="mr-2 h-4 w-4" />
           Export CSV
         </Button>
@@ -384,43 +384,47 @@ export function AuditDashboard() {
               <p>No transactions found for the selected period</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Property</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredPayments.slice(0, 50).map((payment) => {
-                  const property = properties.find(p => p.id === payment.property_id);
-                  return (
-                    <TableRow key={payment.id}>
-                      <TableCell className="font-medium">
-                        {format(parseISO(payment.payment_date), 'MMM d, yyyy')}
-                      </TableCell>
-                      <TableCell>
-                        {property ? `${property.address}, ${property.city}` : 'Unknown'}
-                      </TableCell>
-                      <TableCell className="font-semibold text-green-600">
-                        {formatCurrency(Number(payment.amount))}
-                      </TableCell>
-                      <TableCell className="capitalize">
-                        {payment.payment_method?.replace('_', ' ')}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={payment.status === 'completed' ? 'default' : 'secondary'}>
-                          {payment.status}
-                        </Badge>
-                      </TableCell>
+            <div className="overflow-x-auto -mx-6">
+              <div className="min-w-[600px] px-6">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Property</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Method</TableHead>
+                      <TableHead>Status</TableHead>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredPayments.slice(0, 50).map((payment) => {
+                      const property = properties.find(p => p.id === payment.property_id);
+                      return (
+                        <TableRow key={payment.id}>
+                          <TableCell className="font-medium">
+                            {format(parseISO(payment.payment_date), 'MMM d, yyyy')}
+                          </TableCell>
+                          <TableCell>
+                            {property ? `${property.address}, ${property.city}` : 'Unknown'}
+                          </TableCell>
+                          <TableCell className="font-semibold text-green-600">
+                            {formatCurrency(Number(payment.amount))}
+                          </TableCell>
+                          <TableCell className="capitalize">
+                            {payment.payment_method?.replace('_', ' ')}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={payment.status === 'completed' ? 'default' : 'secondary'}>
+                              {payment.status}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

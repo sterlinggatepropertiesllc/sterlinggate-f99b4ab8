@@ -709,12 +709,12 @@ export default function Dashboard() {
           {/* Properties Tab */}
           {activeTab === 'properties' && (
             <div className="animate-fade-in">
-              <div className="flex items-center justify-between mb-8">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8">
                 <div>
-                  <h1 className="text-3xl font-serif">Properties</h1>
-                  <p className="text-muted-foreground">Manage your rental properties</p>
+                  <h1 className="text-2xl md:text-3xl font-serif">Properties</h1>
+                  <p className="text-muted-foreground text-sm md:text-base">Manage your rental properties</p>
                 </div>
-                <Button onClick={() => setIsAddPropertyOpen(true)}>
+                <Button onClick={() => setIsAddPropertyOpen(true)} className="w-full sm:w-auto min-h-[44px]">
                   <Plus className="mr-2 h-4 w-4" /> Add Property
                 </Button>
               </div>
@@ -792,10 +792,10 @@ export default function Dashboard() {
                         setIsApplicationDetailsOpen(true);
                       }}
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="font-serif text-xl">{app.profiles?.full_name || 'Applicant'}</h3>
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-2">
+                            <h3 className="font-serif text-lg sm:text-xl">{app.profiles?.full_name || 'Applicant'}</h3>
                             <Badge 
                               variant="outline"
                               className={
@@ -810,7 +810,7 @@ export default function Dashboard() {
                               {app.status}
                             </Badge>
                           </div>
-                          <p className="text-muted-foreground mb-1">
+                          <p className="text-muted-foreground mb-1 text-sm truncate">
                             <MapPin className="h-4 w-4 inline mr-1" />
                             {app.properties?.address}, {app.properties?.city}
                           </p>
@@ -824,16 +824,18 @@ export default function Dashboard() {
                           )}
                         </div>
                         {app.status === 'pending' && (
-                          <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex gap-2 w-full sm:w-auto" onClick={(e) => e.stopPropagation()}>
                             <Button 
                               size="sm" 
                               variant="outline"
+                              className="flex-1 sm:flex-initial"
                               onClick={() => handleRejectApplication(app.id, 'Application did not meet requirements')}
                             >
                               <XCircle className="h-4 w-4 mr-1" /> Reject
                             </Button>
                             <Button 
                               size="sm"
+                              className="flex-1 sm:flex-initial"
                               onClick={() => handleApproveApplication(app.id)}
                             >
                               <CheckCircle2 className="h-4 w-4 mr-1" /> Approve
@@ -857,12 +859,12 @@ export default function Dashboard() {
           {/* Tenants Tab */}
           {activeTab === 'tenants' && (
             <div className="animate-fade-in">
-              <div className="flex items-center justify-between mb-8">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8">
                 <div>
-                  <h1 className="text-3xl font-serif">Tenants</h1>
-                  <p className="text-muted-foreground">Manage your current tenants</p>
+                  <h1 className="text-2xl md:text-3xl font-serif">Tenants</h1>
+                  <p className="text-muted-foreground text-sm md:text-base">Manage your current tenants</p>
                 </div>
-                <Button onClick={() => setIsAddTenantOpen(true)}>
+                <Button onClick={() => setIsAddTenantOpen(true)} className="w-full sm:w-auto min-h-[44px]">
                   <Plus className="mr-2 h-4 w-4" /> Add Tenant
                 </Button>
               </div>
@@ -896,12 +898,12 @@ export default function Dashboard() {
           {/* Leases Tab */}
           {activeTab === 'leases' && (
             <div className="animate-fade-in">
-              <div className="flex items-center justify-between mb-8">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8">
                 <div>
-                  <h1 className="text-3xl font-serif">Leases</h1>
-                  <p className="text-muted-foreground">Manage and track lease agreements</p>
+                  <h1 className="text-2xl md:text-3xl font-serif">Leases</h1>
+                  <p className="text-muted-foreground text-sm md:text-base">Manage and track lease agreements</p>
                 </div>
-                <Button onClick={() => setIsCreateLeaseOpen(true)} className="btn-platinum">
+                <Button onClick={() => setIsCreateLeaseOpen(true)} className="btn-platinum w-full sm:w-auto min-h-[44px]">
                   <Plus className="h-4 w-4 mr-2" /> Create Lease
                 </Button>
               </div>
@@ -961,16 +963,16 @@ export default function Dashboard() {
                           }}
                           className="p-6 hover:shadow-card transition-smooth cursor-pointer hover:border-primary/30"
                         >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h3 className="font-serif text-xl mb-1">{lease.properties?.address}</h3>
-                              <p className="text-muted-foreground">Tenant: {lease.tenant?.full_name || lease.tenant?.email}</p>
-                              <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="min-w-0 flex-1">
+                              <h3 className="font-serif text-lg sm:text-xl mb-1 truncate">{lease.properties?.address}</h3>
+                              <p className="text-muted-foreground text-sm truncate">Tenant: {lease.tenant?.full_name || lease.tenant?.email}</p>
+                              <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-2 text-sm text-muted-foreground">
                                 <span>{new Date(lease.start_date).toLocaleDateString()} - {new Date(lease.end_date).toLocaleDateString()}</span>
                                 <span>${Number(lease.monthly_rent).toLocaleString()}/mo</span>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
                               <Badge 
                                 variant="outline"
                                 className={config.className}
@@ -978,7 +980,6 @@ export default function Dashboard() {
                                 {config.label}
                               </Badge>
                               
-                              {/* Lease expiration warning badge */}
                               {lease.status === 'completed' && (() => {
                                 const daysUntilEnd = differenceInDays(new Date(lease.end_date), new Date());
                                 if (daysUntilEnd < 0) {
@@ -1006,7 +1007,7 @@ export default function Dashboard() {
                               {lease.status === 'pending_tenant_signature' && (
                                 <Link to={`/sign-lease/${lease.id}`}>
                                   <Button size="sm" variant="outline">
-                                    <Eye className="h-4 w-4 mr-2" /> View
+                                    <Eye className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">View</span>
                                   </Button>
                                 </Link>
                               )}
@@ -1014,7 +1015,7 @@ export default function Dashboard() {
                               {lease.status === 'pending_manager_signature' && (
                                 <Link to={`/sign-lease/${lease.id}`}>
                                   <Button size="sm" className="btn-platinum">
-                                    <PenTool className="h-4 w-4 mr-2" /> Sign Now
+                                    <PenTool className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Sign Now</span>
                                   </Button>
                                 </Link>
                               )}
@@ -1023,7 +1024,7 @@ export default function Dashboard() {
                                 <>
                                   <Link to={`/sign-lease/${lease.id}`}>
                                     <Button size="sm" variant="outline">
-                                      <Eye className="h-4 w-4 mr-2" /> View
+                                      <Eye className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">View</span>
                                     </Button>
                                   </Link>
                                   <Button 
@@ -1034,12 +1035,11 @@ export default function Dashboard() {
                                       setSelectedLeaseForCert(lease);
                                     }}
                                   >
-                                    <Shield className="h-4 w-4 mr-2" /> Certificate
+                                    <Shield className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Certificate</span>
                                   </Button>
                                 </>
                               )}
 
-                              {/* Edit Lease Button */}
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -1052,7 +1052,6 @@ export default function Dashboard() {
                                 <Edit className="h-4 w-4" />
                               </Button>
 
-                              {/* Delete Lease Button with Confirmation */}
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
                                   <Button 
@@ -1070,9 +1069,7 @@ export default function Dashboard() {
                                       Are you sure you want to delete the lease for{' '}
                                       <strong>{lease.properties?.address}</strong>?
                                       <br /><br />
-                                      This action cannot be undone. The lease will also be removed from 
-                                      the tenant's portal. Any associated signatures and documents will 
-                                      be permanently deleted.
+                                      This action cannot be undone.
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>

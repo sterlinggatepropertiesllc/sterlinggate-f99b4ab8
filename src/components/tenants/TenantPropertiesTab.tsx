@@ -428,14 +428,14 @@ export function TenantPropertiesTab({ tenant, managerId, onUpdate }: TenantPrope
   return (
     <div className="space-y-6">
       {/* Header with Add Button */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-serif">Assigned Properties</h2>
           <p className="text-sm text-muted-foreground">
             {tenantProperties?.length || 0} {(tenantProperties?.length || 0) === 1 ? 'property' : 'properties'} assigned
           </p>
         </div>
-        <Button onClick={() => setIsAddingProperty(true)} disabled={availableProperties.length === 0}>
+        <Button onClick={() => setIsAddingProperty(true)} disabled={availableProperties.length === 0} className="w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" />
           Assign Property
         </Button>
