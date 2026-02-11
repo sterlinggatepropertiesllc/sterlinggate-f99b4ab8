@@ -1,53 +1,72 @@
 
 
-## Fix Telegram Mini App Layout for iOS Safe Area
+## Add Maintenance Module
 
-### Problem
-- `min-h-screen` (which maps to `100vh`) doesn't account for Telegram's actual viewport on iOS, causing cramped layouts
-- The body already uses `--tg-viewport-stable-height` but individual pages all use `min-h-screen` which overrides this
-- `tg.expand()` is already called -- no change needed there
+### Overview
+A new "Maintenance" tab in the admin dashboard for tracking property maintenance records with cost breakdowns, ownership splits, and CSV export.
 
-### Solution
+### 1. Database Migration
+Create `maintenance_records` table with RLS policies for property managers.
 
-#### 1. Set `--tg-viewport-height` CSS variable dynamically (`src/contexts/TelegramContext.tsx`)
-- Listen to `Telegram.WebApp.onEvent('viewportChanged', ...)` to capture `viewportStableHeight`
-- Set `--tg-viewport-stable-height` CSS variable on `document.documentElement` dynamically
-- This keeps the variable in sync even when the Telegram keyboard opens/closes
+```text
+Table: maintenance_records
+- id (uuid, PK)
+- property_id (uuid, FK to properties)
+- manager_id (uuid, references auth.users)
+- title (text, NOT NULL)
+- description (text)
+- category (text: repair, upgrade, inspection, landscaping, other)
+- material_cost (numeric, default 0)
+- labor_cost (numeric, default 0)
+- total_cost (numeric, generated as material_cost + labor_cost)
+- performed_by (text: owner, partner, vendor)
+- performed_by_name (text, nullable)
+- ownership_split_percentage (numeric, default 50)
+- partner_share_amount (numeric, generated as total_cost * ownership_split_percentage / 100)
+- status (text: pending, completed, default pending)
+- performed_date (date)
+- attachments (jsonb, default '[]')
+- created_at (timestamptz, default now())
 
-#### 2. Replace `min-h-screen` with a Telegram-aware utility (`src/index.css`)
-- Add a CSS rule for `html.telegram-webapp` that overrides `min-h-screen` behavior:
-  ```css
-  html.telegram-webapp .min-h-screen {
-    min-height: var(--tg-viewport-stable-height, 100vh) !important;
-  }
-  ```
-- This is a single global rule that fixes ALL pages without touching each file individually
-- On non-Telegram browsers, the fallback `100vh` keeps everything working normally
+RLS: Property managers can manage records where manager_id = auth.uid()
+```
 
-#### 3. Fix sidebar `min-h-screen` in Dashboard/TenantPortal
-- The desktop sidebar in `Dashboard.tsx` (line 480) and `TenantPortal.tsx` (line 426) uses `min-h-screen` directly -- the global CSS override handles this too
+`total_cost` and `partner_share_amount` will be generated columns so they always stay in sync.
 
-#### 4. Fix MessagingCenter `100vh` calc
-- `MessagingCenter.tsx` uses `h-[calc(100vh-180px)]` -- replace with `h-[calc(var(--tg-viewport-stable-height,100vh)-180px)]` inside a Telegram-aware class, or simply use a more flexible approach like `h-[calc(100dvh-180px)]` which respects dynamic viewport on modern browsers
+### 2. Sidebar Update (Dashboard.tsx)
+- Add `'maintenance'` to the `DashboardTab` type union
+- Add a new nav item after "Payments" (audit): `{ id: 'maintenance', label: 'Maintenance', icon: Wrench }`
+- Add the tab rendering case for `maintenance`
 
-#### 5. Improve safe area padding (`src/index.css`)
-- The existing `html.telegram-webapp body` rule already has safe area padding, but add a minimum bottom padding of 16px for comfort:
-  ```css
-  padding-bottom: calc(
-    max(...existing...) + 16px
-  );
-  ```
+### 3. New Files
 
-### Files to Change
+| File | Purpose |
+|------|---------|
+| `src/hooks/useMaintenance.ts` | CRUD hooks using react-query + Supabase (follows `usePayments.ts` pattern) |
+| `src/components/maintenance/MaintenanceDashboard.tsx` | Main tab content: filters, table, export CSV |
+| `src/components/maintenance/AddMaintenanceDialog.tsx` | Modal form with live cost calculations |
 
-| File | Change |
-|------|--------|
-| `src/contexts/TelegramContext.tsx` | Add `viewportChanged` event listener, set `--tg-viewport-stable-height` CSS variable dynamically |
-| `src/index.css` | Add global `html.telegram-webapp .min-h-screen` override; update bottom padding; add `100dvh` fallback for body |
-| `src/components/messages/MessagingCenter.tsx` | Replace `100vh` calc with `100dvh` for dynamic viewport support |
+### 4. MaintenanceDashboard Component
+- Property dropdown filter, date range picker, status filter (reusing existing date picker pattern from AuditDashboard)
+- Table with columns: Property, Title, Category, Total Cost, Partner Share, Performed By, Date, Status
+- Export CSV button that respects active filters
+- "+ Add Maintenance" button opening the dialog
 
-### Why This Approach
-- **Zero page-level changes**: A single global CSS rule catches all `min-h-screen` usage across every page
-- **Dynamic updates**: Listening to `viewportChanged` keeps the variable accurate as the Telegram viewport shifts
-- **Progressive enhancement**: Falls back to `100vh` on non-Telegram browsers and `100dvh` on modern browsers
+### 5. AddMaintenanceDialog Component
+- Property dropdown (required), Title (required), Category dropdown, Performed Date (required)
+- Performed By radio: Owner / Partner / Vendor (if Vendor, show Vendor Name field)
+- Material Cost + Labor Cost inputs with live Total Cost display
+- Ownership Split % input with live Partner Share calculation
+- Description textarea, Status toggle, Attachments file upload (stored in Supabase storage)
+- Form validation via react-hook-form + zod
 
+### 6. CSV Export
+- Generates CSV from filtered records
+- Triggers browser download
+- Columns match the table display
+
+### Technical Notes
+- Generated columns in Postgres ensure `total_cost` and `partner_share_amount` are always consistent
+- Follows the same design patterns as the existing Payments/Audit tab
+- No changes to the Payments module or any ledger integration
+- File attachments stored in a new `maintenance-attachments` storage bucket
