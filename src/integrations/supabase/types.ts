@@ -596,6 +596,7 @@ export type Database = {
           full_name: string | null
           id: string
           phone: string | null
+          telegram_chat_id: number | null
           telegram_id: string | null
           updated_at: string
         }
@@ -606,6 +607,7 @@ export type Database = {
           full_name?: string | null
           id: string
           phone?: string | null
+          telegram_chat_id?: number | null
           telegram_id?: string | null
           updated_at?: string
         }
@@ -616,6 +618,7 @@ export type Database = {
           full_name?: string | null
           id?: string
           phone?: string | null
+          telegram_chat_id?: number | null
           telegram_id?: string | null
           updated_at?: string
         }
@@ -810,6 +813,119 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      telegram_notification_deliveries: {
+        Row: {
+          attempts: number
+          created_at: string
+          id: string
+          idempotency_key: string | null
+          last_error: string | null
+          message_text: string
+          metadata: Json | null
+          status: string
+          telegram_chat_id: number | null
+          topic_key: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          idempotency_key?: string | null
+          last_error?: string | null
+          message_text: string
+          metadata?: Json | null
+          status?: string
+          telegram_chat_id?: number | null
+          topic_key: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          idempotency_key?: string | null
+          last_error?: string | null
+          message_text?: string
+          metadata?: Json | null
+          status?: string
+          telegram_chat_id?: number | null
+          topic_key?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "telegram_notification_deliveries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      telegram_notification_prefs: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          id: string
+          topic_key: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          topic_key: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          topic_key?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "telegram_notification_prefs_topic_key_fkey"
+            columns: ["topic_key"]
+            isOneToOne: false
+            referencedRelation: "telegram_notification_topics"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "telegram_notification_prefs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      telegram_notification_topics: {
+        Row: {
+          description: string
+          key: string
+          role_scope: string
+        }
+        Insert: {
+          description: string
+          key: string
+          role_scope: string
+        }
+        Update: {
+          description?: string
+          key?: string
+          role_scope?: string
+        }
+        Relationships: []
       }
       tenant_properties: {
         Row: {
@@ -1062,6 +1178,17 @@ export type Database = {
       }
       process_late_fees: { Args: never; Returns: Json }
       process_monthly_rent: { Args: never; Returns: Json }
+      queue_telegram_notification: {
+        Args: {
+          _entity_id?: string
+          _idempotency_source?: string
+          _message: string
+          _metadata?: Json
+          _topic_key: string
+          _user_id: string
+        }
+        Returns: undefined
+      }
       revoke_tenant_role: { Args: { _user_id: string }; Returns: undefined }
       waive_rent_late_fee: {
         Args: { _rent_charge_id: string; _waived_by?: string }

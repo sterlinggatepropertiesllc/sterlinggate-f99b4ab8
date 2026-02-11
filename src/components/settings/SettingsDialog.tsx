@@ -1,4 +1,4 @@
-import { Settings, Bell, Webhook, DollarSign } from 'lucide-react';
+import { Settings, Bell, Webhook, DollarSign, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNotificationSettings } from '@/hooks/useNotificationSettings';
 import { DiscordSettings } from './DiscordSettings';
 import { FeesSettings } from './FeesSettings';
+import { TelegramNotificationSettings } from './TelegramNotificationSettings';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
@@ -47,10 +48,14 @@ export function SettingsDialog() {
           </div>
         ) : settings ? (
           <Tabs defaultValue="fees" className="mt-4">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="fees" className="gap-1.5 text-xs sm:text-sm">
                 <DollarSign className="h-4 w-4 shrink-0" />
                 <span className="hidden sm:inline">Fees</span>
+              </TabsTrigger>
+              <TabsTrigger value="telegram" className="gap-1.5 text-xs sm:text-sm">
+                <Bot className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">Telegram</span>
               </TabsTrigger>
               <TabsTrigger value="discord" className="gap-1.5 text-xs sm:text-sm">
                 <Webhook className="h-4 w-4 shrink-0" />
@@ -64,6 +69,10 @@ export function SettingsDialog() {
 
             <TabsContent value="fees" className="mt-4 max-h-[55vh] overflow-y-auto pr-1">
               <FeesSettings />
+            </TabsContent>
+
+            <TabsContent value="telegram" className="mt-4 max-h-[55vh] overflow-y-auto pr-1">
+              <TelegramNotificationSettings />
             </TabsContent>
 
             <TabsContent value="discord" className="mt-4 max-h-[55vh] overflow-y-auto pr-1">
