@@ -1,28 +1,39 @@
 
 
-## Fix Telegram Mini App Top Header Overlap
+## Enhance Global Telegram Safe-Area System
 
-### Problem
-When the app runs inside a Telegram Mini App, Telegram's native header controls (Close button, notification badge, collapse arrow, three-dot menu) overlap with the app's own top header bar (hamburger menu, title, notification bell, settings). This makes the top of the app unusable.
+### What's Already Done
+- `telegram-webapp` class is added to `<html>` when in Telegram
+- `tg.expand()` and `tg.requestFullscreen()` are called
+- CSS rule exists: `html.telegram-webapp body { padding-top: max(env(safe-area-inset-top, 0px), 48px); }`
 
-### Solution
-Add a CSS class that applies top padding only when running inside a Telegram Mini App, using the safe-area inset values provided by Telegram's WebApp environment. This ensures the app content starts below Telegram's native controls.
+### What Needs to Change
 
-### Changes
+The current 48px fallback is not always sufficient (Dynamic Island devices need more), and Telegram provides its own `safeAreaInset` values that should be used when available.
 
-#### 1. Add Telegram safe-area class to the root element (`src/contexts/TelegramContext.tsx`)
-- When Telegram is detected, add a CSS class (e.g., `telegram-webapp`) to the `<html>` element
-- This allows global CSS to apply Telegram-specific padding without affecting normal browser usage
+#### 1. Read Telegram's safe area values and set CSS variables (`src/contexts/TelegramContext.tsx`)
+- After `tg.ready()`, read `tg.safeAreaInset` and `tg.contentSafeAreaInset` (available in newer Telegram clients)
+- Set CSS custom properties on `<html>`: `--tg-safe-top`, `--tg-safe-bottom`
+- These values give the exact pixel offset needed for that device and Telegram version
+- Fall back gracefully when these APIs are not available
 
-#### 2. Add Telegram-specific top padding (`src/index.css`)
-- Add a CSS rule that applies top padding when the `telegram-webapp` class is present on the `<html>` element
-- Use `env(safe-area-inset-top, 48px)` as padding, with a fallback of 48px (approximate height of Telegram's header controls)
+#### 2. Update global CSS rule (`src/index.css`)
+- Replace the current Telegram padding rule with a more robust one:
+  - Use `calc(var(--tg-safe-top, 0px) + env(safe-area-inset-top, 0px) + 8px)` for top padding
+  - The extra `8px` ensures content never touches the Dynamic Island edge
+  - Use `max()` with a 48px minimum fallback for older Telegram clients that don't report safe area
+  - Add `padding-bottom` using the same pattern for bottom safe area
+- Remove the `telegram-sticky-header` class approach in favor of the global body padding (sticky headers will naturally respect body padding)
 
-#### 3. Adjust sticky header in Dashboard (`src/pages/Dashboard.tsx`)
-- Update the sticky top header bar's `top` value to account for Telegram's safe area so it doesn't slide under Telegram's controls when scrolling
+#### 3. Clean up Dashboard sticky header (`src/pages/Dashboard.tsx`)
+- Remove the `telegram-sticky-header` class from the sticky header div (no longer needed since global body padding handles positioning)
 
 ### Files to Change
-- `src/contexts/TelegramContext.tsx` -- add `telegram-webapp` class to `<html>` element when in Telegram
-- `src/index.css` -- add `.telegram-webapp` padding-top rule
-- `src/pages/Dashboard.tsx` -- no changes needed if global padding handles it, but may need minor sticky header adjustment
+- `src/contexts/TelegramContext.tsx` -- read Telegram safe area insets and set CSS variables
+- `src/index.css` -- enhanced padding-top rule with +8px and proper fallbacks
+- `src/pages/Dashboard.tsx` -- remove unnecessary `telegram-sticky-header` class
 
+### What Stays the Same
+- Dark theme, card spacing, dashboard layout, buttons -- all untouched
+- No per-page modifications -- everything handled at root CSS level
+- No scroll containers or position:fixed hacks introduced
