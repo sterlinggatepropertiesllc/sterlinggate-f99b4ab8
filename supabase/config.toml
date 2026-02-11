@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.stripe-webhook]
 verify_jwt = false
+
+[functions.reconcile-ach-payments]
+verify_jwt = false
