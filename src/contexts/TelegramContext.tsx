@@ -63,6 +63,16 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         tg.isVerticalSwipesEnabled = false;
       }
 
+      // Set viewport stable height CSS variable dynamically
+      const updateViewportHeight = () => {
+        const height = tg.viewportStableHeight;
+        if (height) {
+          root.style.setProperty('--tg-viewport-stable-height', `${height}px`);
+        }
+      };
+      updateViewportHeight();
+      tg.onEvent('viewportChanged', updateViewportHeight);
+
       // Read Telegram safe area insets and set CSS variables
       const root = document.documentElement;
       
@@ -110,6 +120,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
 
       return () => {
         window.removeEventListener('popstate', updateBackButton);
+        tg.offEvent('viewportChanged', updateViewportHeight);
         document.documentElement.classList.remove('telegram-webapp');
       };
     }

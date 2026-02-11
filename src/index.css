@@ -165,6 +165,7 @@ html, #root {
 
   /* Telegram Mini App: push content below native header controls */
   html.telegram-webapp body {
+    min-height: var(--tg-viewport-stable-height, 100dvh);
     padding-top: calc(
       max(
         var(--tg-safe-top, 0px) + var(--tg-content-safe-top, 0px),
@@ -176,8 +177,13 @@ html, #root {
       max(
         var(--tg-safe-bottom, 0px) + var(--tg-content-safe-bottom, 0px),
         env(safe-area-inset-bottom, 0px)
-      )
+      ) + 16px
     );
+  }
+
+  /* Override min-h-screen globally inside Telegram */
+  html.telegram-webapp .min-h-screen {
+    min-height: var(--tg-viewport-stable-height, 100dvh) !important;
   }
 
   h1, h2, h3, h4, h5, h6 {

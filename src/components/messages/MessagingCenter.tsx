@@ -154,7 +154,7 @@ export function MessagingCenter() {
   if (isMobile) {
     if (selectedConversation && selectedConv) {
       return (
-        <div className="flex flex-col h-[calc(100vh-180px)] rounded-lg border border-border overflow-hidden bg-card">
+        <div className="flex flex-col h-[calc(100dvh-180px)] rounded-lg border border-border overflow-hidden bg-card">
           {/* Header with back button */}
           <div className="p-3 border-b border-border flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={() => setSelectedConversation(null)} className="min-h-[44px] min-w-[44px]">
@@ -209,7 +209,7 @@ export function MessagingCenter() {
 
     // Conversation list
     return (
-      <div className="flex flex-col h-[calc(100vh-180px)] rounded-lg border border-border overflow-hidden bg-card">
+      <div className="flex flex-col h-[calc(100dvh-180px)] rounded-lg border border-border overflow-hidden bg-card">
         <div className="p-4 border-b border-border">
           <h3 className="font-semibold text-foreground">Messages</h3>
         </div>
