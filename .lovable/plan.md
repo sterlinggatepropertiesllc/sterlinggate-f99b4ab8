@@ -1,50 +1,42 @@
 
 
-## Fix: Telegram Mini App Stuck on Loading Screen
+## Fix: Telegram Mini App Blank Black Screen
 
-### Root Cause
+The app renders nothing when an uncaught error occurs during initialization because there is no error boundary. Additionally, `TelegramContext` accesses several Telegram WebApp APIs that can throw without being caught, and the auth failure state is never surfaced to the user.
 
-The app gets stuck on "Loading..." because of a silent failure in the role-fetching logic:
+### Changes
 
-1. When a Telegram user authenticates, the backend creates the user and inserts a `tenant` role in `user_roles`
-2. The `AuthContext` then tries to fetch this role via `fetchUserRole()`
-3. If the query returns no data (race condition -- role not yet inserted) or errors (RLS), `role` stays `null` forever
-4. Both Dashboard and TenantPortal have a guard: `if (user && role === null)` = show loading spinner
-5. There is no retry, no timeout, no fallback -- the app is permanently stuck
+#### 1. Add Global Error Boundary (`src/components/ErrorBoundary.tsx` -- NEW FILE)
 
-### Fix
+Create a class-based React Error Boundary component that:
+- Catches any uncaught rendering error in the entire app tree
+- Renders a centered message: "Something went wrong loading the app. Please refresh or reopen from Telegram."
+- Logs the error to `console.error`
+- Includes a "Retry" button that reloads the page
 
-**File: `src/contexts/AuthContext.tsx`**
+#### 2. Wrap App in Error Boundary (`src/App.tsx`)
 
-1. Add retry logic to `fetchUserRole` -- if the first attempt returns no data, retry up to 3 times with a short delay (500ms). This handles the race condition where the edge function hasn't finished inserting the role yet.
+- Import and wrap the entire `<QueryClientProvider>` tree inside the new `<ErrorBoundary>`
+- This ensures even provider-level crashes are caught
 
-2. Add a fallback: if after all retries the role is still not found, default to `'tenant'` for Telegram users (since the edge function always assigns tenant role). For non-Telegram users, set a sensible fallback or stop blocking the UI.
+#### 3. Harden Telegram Init (`src/contexts/TelegramContext.tsx`)
 
-3. Add error handling: if the query itself throws an error, log it and stop blocking the loading screen.
+- Add comprehensive `console.log` statements at each stage: app init, Telegram detected, auth request sent, auth response received, auth failure
+- Wrap all Telegram API calls (`BackButton.onClick`, `BackButton.show/hide`, `requestFullscreen`, `onEvent`, `safeAreaInset` access) in try/catch so a single API failure doesn't crash the entire provider
+- When `authError` is set, render a visible error screen instead of silently passing `children` through: "Session expired. Please reopen from Telegram."
+- When `isAuthenticating` is true, render a centered "Loading Sterling Gate..." screen so the user never sees a blank screen during auth
+- When not in Telegram and not otherwise authenticated, the app continues to render normally (non-Telegram users use email login)
 
-**File: `src/pages/Dashboard.tsx` and `src/pages/TenantPortal.tsx`**
+#### 4. Add `_headers` rule (`public/_headers`)
 
-4. Add a safety timeout: if the loading state persists for more than 10 seconds, show an error message with a retry button instead of an infinite spinner. This prevents the app from appearing broken even if something unexpected fails.
+- Add `X-Frame-Options: ALLOWALL` to prevent iframe blocking (Telegram loads mini apps in iframes)
 
-### Technical Details
+### Files
 
-```text
-Current flow (broken):
-  AuthContext.fetchUserRole() --> query fails silently --> role = null forever
-  Dashboard/TenantPortal: (user && role === null) --> "Loading..." forever
-
-Fixed flow:
-  AuthContext.fetchUserRole() --> no data? retry 3x with 500ms delay
-                               --> still no data? default to 'tenant'
-                               --> query error? log + set role to 'tenant' fallback
-  Dashboard/TenantPortal: add 10s safety timeout with retry button
-```
-
-### Changes Summary
-
-| File | Change |
+| File | Action |
 |------|--------|
-| `src/contexts/AuthContext.tsx` | Add retry logic (3 attempts, 500ms delay) and fallback role for `fetchUserRole`. Handle query errors gracefully. |
-| `src/pages/Dashboard.tsx` | Add 10-second timeout on loading state with error message and retry button |
-| `src/pages/TenantPortal.tsx` | Same timeout safety net as Dashboard |
+| `src/components/ErrorBoundary.tsx` | Create -- React Error Boundary class component |
+| `src/App.tsx` | Edit -- wrap root in ErrorBoundary |
+| `src/contexts/TelegramContext.tsx` | Edit -- try/catch all TG API calls, add logging, render loading/error states during auth |
+| `public/_headers` | Edit -- add permissive X-Frame-Options |
 
