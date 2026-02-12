@@ -12,7 +12,7 @@ import { useMaintenance, useDeleteMaintenance } from '@/hooks/useMaintenance';
 import { useManagerProperties } from '@/hooks/useProperties';
 import { useAuth } from '@/contexts/AuthContext';
 import { AddMaintenanceDialog } from './AddMaintenanceDialog';
-import { Plus, Download, Trash2, Pencil, CalendarIcon, X, FileText, DollarSign, Users } from 'lucide-react';
+import { Plus, Download, Trash2, Pencil, CalendarIcon, X, FileText, DollarSign, Users, Paperclip } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { MaintenanceRecord } from '@/hooks/useMaintenance';
 import type { DateRange } from 'react-day-picker';
@@ -20,7 +20,7 @@ import type { DateRange } from 'react-day-picker';
 const formatCurrency = (value: number) =>
   value.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
-const categoryLabel = (c: string) => c.charAt(0).toUpperCase() + c.slice(1);
+const capitalise = (c: string) => c.charAt(0).toUpperCase() + c.slice(1);
 
 export function MaintenanceDashboard() {
   const { user } = useAuth();
@@ -91,14 +91,13 @@ export function MaintenanceDashboard() {
   }, []);
 
   const exportCSV = (rows: MaintenanceRecord[]) => {
-    const headers = ['Property', 'Title', 'Category', 'Total Cost', 'Partner Share', 'Performed By', 'Performed Date', 'Status'];
+    const headers = ['Property', 'Title', 'Total Cost', 'Partner Share', 'Performed By', 'Performed Date', 'Status'];
     const csvRows = rows.map((r) => [
       propertyMap[r.property_id] || r.property_id,
       r.title,
-      r.category,
       (r.total_cost || 0).toFixed(2),
       (r.partner_share_amount || 0).toFixed(2),
-      r.performed_by_name ? `${r.performed_by} (${r.performed_by_name})` : r.performed_by,
+      r.performed_by_name || r.performed_by,
       r.performed_date,
       r.status,
     ]);
@@ -240,7 +239,6 @@ export function MaintenanceDashboard() {
                 </TableHead>
                 <TableHead>Property</TableHead>
                 <TableHead>Title</TableHead>
-                <TableHead>Category</TableHead>
                 <TableHead className="text-right">Total Cost</TableHead>
                 <TableHead className="text-right">Partner Share</TableHead>
                 <TableHead>Performed By</TableHead>
@@ -259,11 +257,10 @@ export function MaintenanceDashboard() {
                     {propertyMap[r.property_id] || '—'}
                   </TableCell>
                   <TableCell className="py-4 font-medium">{r.title}</TableCell>
-                  <TableCell className="py-4">{categoryLabel(r.category)}</TableCell>
                   <TableCell className="py-4 text-right font-medium">{formatCurrency(r.total_cost || 0)}</TableCell>
                   <TableCell className="py-4 text-right text-accent font-medium">{formatCurrency(r.partner_share_amount || 0)}</TableCell>
                   <TableCell className="py-4">
-                    {r.performed_by_name ? `${categoryLabel(r.performed_by)} — ${r.performed_by_name}` : categoryLabel(r.performed_by)}
+                    {r.performed_by_name || capitalise(r.performed_by)}
                   </TableCell>
                   <TableCell className="py-4">{format(new Date(r.performed_date), 'MMM d, yyyy')}</TableCell>
                   <TableCell className="py-4">
@@ -274,7 +271,7 @@ export function MaintenanceDashboard() {
                           ? 'bg-success/15 text-success'
                           : 'bg-warning/15 text-warning'
                       )}>
-                      {categoryLabel(r.status)}
+                      {capitalise(r.status)}
                     </Badge>
                   </TableCell>
                   <TableCell className="py-4">
