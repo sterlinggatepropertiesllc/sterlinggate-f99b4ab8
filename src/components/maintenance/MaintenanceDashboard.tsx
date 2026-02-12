@@ -54,6 +54,12 @@ export function MaintenanceDashboard() {
     return map;
   }, [properties]);
 
+  const propertiesWithRecords = useMemo(() => {
+    if (!properties || !records) return [];
+    const idsWithRecords = new Set(records.map((r) => r.property_id));
+    return properties.filter((p) => idsWithRecords.has(p.id));
+  }, [properties, records]);
+
   const filtered = useMemo(() => {
     if (!records) return [];
     return records.filter((r) => {
@@ -164,7 +170,7 @@ export function MaintenanceDashboard() {
           <SelectTrigger className="w-[200px]"><SelectValue placeholder="All Properties" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Properties</SelectItem>
-            {properties?.map((p) => (
+            {propertiesWithRecords.map((p) => (
               <SelectItem key={p.id} value={p.id}>{p.address}, {p.city}</SelectItem>
             ))}
           </SelectContent>
