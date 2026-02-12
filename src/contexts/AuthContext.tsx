@@ -54,16 +54,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const fetchUserRole = async (userId: string) => {
-    const { data } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .single();
-    
-    if (data) {
-      setRole(data.role);
+  const fetchUserRole = async (userId: string, retries = 3) => {
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        const { data, error } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', userId)
+          .single();
+
+        if (error) {
+          console.error(`fetchUserRole attempt ${attempt + 1} error:`, error.message);
+        }
+
+        if (data) {
+          setRole(data.role);
+          return;
+        }
+
+        // Wait before retrying (skip wait on last attempt)
+        if (attempt < retries - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } catch (err) {
+        console.error(`fetchUserRole attempt ${attempt + 1} exception:`, err);
+      }
     }
+
+    // All retries exhausted — fallback to 'tenant' to unblock the UI
+    console.warn('fetchUserRole: role not found after retries, defaulting to tenant');
+    setRole('tenant');
   };
 
   const signUp = async (email: string, password: string, fullName: string, selectedRole: AppRole) => {
