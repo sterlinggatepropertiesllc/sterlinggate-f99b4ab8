@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { TelegramProvider } from "@/contexts/TelegramContext";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useAppVersion } from "@/hooks/useAppVersion";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
@@ -22,7 +23,7 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const AppContent = () => {
-  useAppVersion(); // Check version immediately on load
+  useAppVersion();
   
   return (
     <TooltipProvider>
@@ -49,13 +50,15 @@ const AppContent = () => {
 };
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <TelegramProvider>
-        <AppContent />
-      </TelegramProvider>
-    </AuthProvider>
-  </QueryClientProvider>
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <TelegramProvider>
+          <AppContent />
+        </TelegramProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;
