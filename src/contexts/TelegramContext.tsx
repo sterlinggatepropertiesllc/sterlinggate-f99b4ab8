@@ -77,10 +77,27 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     let cleanupViewport: (() => void) | undefined;
     try {
       const updateViewportHeight = () => {
-        const height = tg.viewportStableHeight;
-        if (height) {
-          root.style.setProperty('--tg-viewport-stable-height', `${height}px`);
+        const stableHeight = tg.viewportStableHeight;
+        const currentHeight = tg.viewportHeight;
+        if (stableHeight) {
+          root.style.setProperty('--tg-viewport-stable-height', `${stableHeight}px`);
         }
+        if (currentHeight) {
+          root.style.setProperty('--tg-viewport-height', `${currentHeight}px`);
+        }
+        // Re-read safe area insets on every viewport change
+        try {
+          const safeArea = tg.safeAreaInset;
+          const contentSafeArea = tg.contentSafeAreaInset;
+          if (safeArea) {
+            root.style.setProperty('--tg-safe-top', `${safeArea.top || 0}px`);
+            root.style.setProperty('--tg-safe-bottom', `${safeArea.bottom || 0}px`);
+          }
+          if (contentSafeArea) {
+            root.style.setProperty('--tg-content-safe-top', `${contentSafeArea.top || 0}px`);
+            root.style.setProperty('--tg-content-safe-bottom', `${contentSafeArea.bottom || 0}px`);
+          }
+        } catch (e) { console.warn('[TG] safe area insets update failed:', e); }
       };
       updateViewportHeight();
       tg.onEvent('viewportChanged', updateViewportHeight);
@@ -88,20 +105,6 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         try { tg.offEvent('viewportChanged', updateViewportHeight); } catch {}
       };
     } catch (e) { console.warn('[TG] viewport height setup failed:', e); }
-
-    // Safe area insets
-    try {
-      const safeArea = tg.safeAreaInset;
-      const contentSafeArea = tg.contentSafeAreaInset;
-      if (safeArea) {
-        root.style.setProperty('--tg-safe-top', `${safeArea.top || 0}px`);
-        root.style.setProperty('--tg-safe-bottom', `${safeArea.bottom || 0}px`);
-      }
-      if (contentSafeArea) {
-        root.style.setProperty('--tg-content-safe-top', `${contentSafeArea.top || 0}px`);
-        root.style.setProperty('--tg-content-safe-bottom', `${contentSafeArea.bottom || 0}px`);
-      }
-    } catch (e) { console.warn('[TG] safe area insets failed:', e); }
 
     // Theme
     try {
@@ -216,7 +219,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       <TelegramContext.Provider value={{ isTelegram, telegramUser, isAuthenticating, authError }}>
         <div
           style={{
-            minHeight: '100vh',
+            minHeight: 'var(--tg-viewport-stable-height, 100dvh)',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -238,7 +241,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       <TelegramContext.Provider value={{ isTelegram, telegramUser, isAuthenticating, authError }}>
         <div
           style={{
-            minHeight: '100vh',
+            minHeight: 'var(--tg-viewport-stable-height, 100dvh)',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
