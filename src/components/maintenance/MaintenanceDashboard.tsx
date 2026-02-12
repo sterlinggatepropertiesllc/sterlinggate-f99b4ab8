@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -101,13 +101,28 @@ export function MaintenanceDashboard() {
     }
   }, [allVisibleSelected, filtered]);
 
-  const toggleOne = useCallback((id: string) => {
+  const lastClickedIndex = useRef<number | null>(null);
+
+  const handleRowClick = useCallback((index: number, shiftKey: boolean) => {
+    const id = filtered[index]?.id;
+    if (!id) return;
+
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
+      if (shiftKey && lastClickedIndex.current !== null) {
+        const start = Math.min(index, lastClickedIndex.current);
+        const end = Math.max(index, lastClickedIndex.current);
+        for (let i = start; i <= end; i++) {
+          const rid = filtered[i]?.id;
+          if (rid) next.add(rid);
+        }
+      } else {
+        if (next.has(id)) next.delete(id); else next.add(id);
+      }
       return next;
     });
-  }, []);
+    lastClickedIndex.current = index;
+  }, [filtered]);
 
   const exportCSV = (rows: MaintenanceRecord[]) => {
     const headers = ['Property', 'Title', 'Total Cost', 'Partner Share', 'Performed By', 'Performed Date', 'Status'];
@@ -268,10 +283,14 @@ export function MaintenanceDashboard() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((r) => (
+              {filtered.map((r, i) => (
                 <TableRow key={r.id} className="hover:bg-muted/50 transition-colors">
                   <TableCell className="py-4">
-                    <Checkbox checked={selectedIds.has(r.id)} onCheckedChange={() => toggleOne(r.id)} />
+                    <Checkbox
+                      checked={selectedIds.has(r.id)}
+                      onClick={(e) => handleRowClick(i, e.shiftKey)}
+                      onCheckedChange={() => {}}
+                    />
                   </TableCell>
                   <TableCell className="py-4 max-w-[180px] truncate" title={propertyMap[r.property_id]}>
                     {propertyMap[r.property_id] || '—'}
