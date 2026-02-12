@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface TelegramContextType {
@@ -25,7 +25,6 @@ const TelegramContext = createContext<TelegramContextType>({
 
 function isTelegramWebApp(): boolean {
   try {
-    // Check for Telegram WebApp object
     const tg = (window as any).Telegram?.WebApp;
     return !!tg?.initData && tg.initData.length > 0;
   } catch {
@@ -40,30 +39,43 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
   const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
-    const inTelegram = isTelegramWebApp();
+    console.log('[TelegramContext] Initializing...');
+    let inTelegram = false;
+    try {
+      inTelegram = isTelegramWebApp();
+    } catch (e) {
+      console.warn('[TelegramContext] Error checking Telegram environment:', e);
+    }
     setIsTelegram(inTelegram);
+    console.log('[TelegramContext] isTelegram:', inTelegram);
 
-    if (inTelegram) {
-      const tg = (window as any).Telegram.WebApp;
-      
-      // Tell Telegram the app is ready
-      tg.ready();
-      
-      // Expand to full height
-      tg.expand();
-      
-      // Request fullscreen if available (newer clients)
-      tg.requestFullscreen?.();
+    if (!inTelegram) return;
 
-      // Add telegram-webapp class to html element for global CSS targeting
+    const tg = (window as any).Telegram?.WebApp;
+    if (!tg) {
+      console.warn('[TelegramContext] Telegram.WebApp object not available despite initData check');
+      return;
+    }
+
+    // --- Safe Telegram API calls ---
+    try { tg.ready(); } catch (e) { console.warn('[TG] ready() failed:', e); }
+    try { tg.expand(); } catch (e) { console.warn('[TG] expand() failed:', e); }
+    try { tg.requestFullscreen?.(); } catch (e) { console.warn('[TG] requestFullscreen() failed:', e); }
+
+    try {
       document.documentElement.classList.add('telegram-webapp');
-      
-      // Prevent accidental close on scroll
+    } catch (e) { console.warn('[TG] classList add failed:', e); }
+
+    try {
       if ('isVerticalSwipesEnabled' in tg) {
         tg.isVerticalSwipesEnabled = false;
       }
+    } catch (e) { console.warn('[TG] disable vertical swipes failed:', e); }
 
-      // Set viewport stable height CSS variable dynamically
+    // Viewport height
+    const root = document.documentElement;
+    let cleanupViewport: (() => void) | undefined;
+    try {
       const updateViewportHeight = () => {
         const height = tg.viewportStableHeight;
         if (height) {
@@ -72,14 +84,15 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       };
       updateViewportHeight();
       tg.onEvent('viewportChanged', updateViewportHeight);
+      cleanupViewport = () => {
+        try { tg.offEvent('viewportChanged', updateViewportHeight); } catch {}
+      };
+    } catch (e) { console.warn('[TG] viewport height setup failed:', e); }
 
-      // Read Telegram safe area insets and set CSS variables
-      const root = document.documentElement;
-      
-      // tg.safeAreaInset and tg.contentSafeAreaInset available in newer clients
+    // Safe area insets
+    try {
       const safeArea = tg.safeAreaInset;
       const contentSafeArea = tg.contentSafeAreaInset;
-      
       if (safeArea) {
         root.style.setProperty('--tg-safe-top', `${safeArea.top || 0}px`);
         root.style.setProperty('--tg-safe-bottom', `${safeArea.bottom || 0}px`);
@@ -88,8 +101,10 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         root.style.setProperty('--tg-content-safe-top', `${contentSafeArea.top || 0}px`);
         root.style.setProperty('--tg-content-safe-bottom', `${contentSafeArea.bottom || 0}px`);
       }
+    } catch (e) { console.warn('[TG] safe area insets failed:', e); }
 
-      // Apply Telegram theme colors to CSS variables
+    // Theme
+    try {
       if (tg.themeParams) {
         if (tg.themeParams.bg_color) {
           root.style.setProperty('--background', hexToHsl(tg.themeParams.bg_color));
@@ -98,32 +113,38 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
           root.style.setProperty('--foreground', hexToHsl(tg.themeParams.text_color));
         }
       }
+    } catch (e) { console.warn('[TG] theme params failed:', e); }
 
-      // Dynamic back button visibility
+    // Back button
+    let cleanupBackButton: (() => void) | undefined;
+    try {
       const updateBackButton = () => {
-        if (window.location.pathname === '/' || window.location.pathname === '') {
-          tg.BackButton.hide();
-        } else {
-          tg.BackButton.show();
-        }
+        try {
+          if (window.location.pathname === '/' || window.location.pathname === '') {
+            tg.BackButton.hide();
+          } else {
+            tg.BackButton.show();
+          }
+        } catch {}
       };
 
-      tg.BackButton.onClick(() => {
-        window.history.back();
-      });
-
+      try { tg.BackButton.onClick(() => { window.history.back(); }); } catch {}
       window.addEventListener('popstate', updateBackButton);
       updateBackButton();
-
-      // Auto-authenticate
-      authenticateWithTelegram(tg.initData);
-
-      return () => {
+      cleanupBackButton = () => {
         window.removeEventListener('popstate', updateBackButton);
-        tg.offEvent('viewportChanged', updateViewportHeight);
-        document.documentElement.classList.remove('telegram-webapp');
       };
-    }
+    } catch (e) { console.warn('[TG] back button setup failed:', e); }
+
+    // Auth
+    console.log('[TelegramContext] Starting authentication with initData');
+    authenticateWithTelegram(tg.initData);
+
+    return () => {
+      cleanupViewport?.();
+      cleanupBackButton?.();
+      try { document.documentElement.classList.remove('telegram-webapp'); } catch {}
+    };
   }, []);
 
   const authenticateWithTelegram = async (initData: string) => {
@@ -131,10 +152,10 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     setAuthError(null);
 
     try {
-      // Check if already logged in
+      // Check existing session
       const { data: { session: existingSession } } = await supabase.auth.getSession();
       if (existingSession) {
-        // Already authenticated, extract telegram user from initData
+        console.log('[TelegramContext] Existing session found, skipping auth');
         try {
           const params = new URLSearchParams(initData);
           const userStr = params.get('user');
@@ -144,6 +165,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      console.log('[TelegramContext] Sending auth request...');
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/telegram-auth`,
         {
@@ -156,15 +178,17 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         }
       );
 
+      console.log('[TelegramContext] Auth response status:', response.status);
+
       if (!response.ok) {
         const err = await response.json();
         throw new Error(err.error || 'Authentication failed');
       }
 
       const data = await response.json();
+      console.log('[TelegramContext] Auth successful, user:', data.telegram_user?.first_name);
       setTelegramUser(data.telegram_user);
 
-      // Set the session directly using the tokens from the server
       if (data.access_token && data.refresh_token) {
         const { error: sessionError } = await supabase.auth.setSession({
           access_token: data.access_token,
@@ -172,19 +196,85 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
         });
 
         if (sessionError) {
-          console.error('Session set error:', sessionError);
+          console.error('[TelegramContext] Session set error:', sessionError);
           throw new Error('Failed to establish session');
         }
       } else {
         throw new Error('No session tokens received');
       }
     } catch (err) {
-      console.error('Telegram auth error:', err);
+      console.error('[TelegramContext] Auth error:', err);
       setAuthError(err instanceof Error ? err.message : 'Authentication failed');
     } finally {
       setIsAuthenticating(false);
     }
   };
+
+  // Render loading screen during Telegram auth
+  if (isTelegram && isAuthenticating) {
+    return (
+      <TelegramContext.Provider value={{ isTelegram, telegramUser, isAuthenticating, authError }}>
+        <div
+          style={{
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#111',
+            color: '#fff',
+            fontFamily: 'system-ui, sans-serif',
+          }}
+        >
+          <p style={{ fontSize: '1.1rem' }}>Loading Sterling Gate...</p>
+        </div>
+      </TelegramContext.Provider>
+    );
+  }
+
+  // Render error screen if Telegram auth failed
+  if (isTelegram && authError) {
+    return (
+      <TelegramContext.Provider value={{ isTelegram, telegramUser, isAuthenticating, authError }}>
+        <div
+          style={{
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '2rem',
+            backgroundColor: '#111',
+            color: '#fff',
+            textAlign: 'center',
+            fontFamily: 'system-ui, sans-serif',
+          }}
+        >
+          <p style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>⚠️</p>
+          <p style={{ fontSize: '1rem', marginBottom: '0.25rem' }}>
+            Session expired or authentication failed.
+          </p>
+          <p style={{ fontSize: '0.85rem', opacity: 0.7, marginBottom: '1.5rem' }}>
+            Please reopen the app from Telegram.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              padding: '0.6rem 1.5rem',
+              fontSize: '0.95rem',
+              borderRadius: '8px',
+              border: 'none',
+              backgroundColor: '#3b82f6',
+              color: '#fff',
+              cursor: 'pointer',
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      </TelegramContext.Provider>
+    );
+  }
 
   return (
     <TelegramContext.Provider value={{ isTelegram, telegramUser, isAuthenticating, authError }}>
@@ -197,7 +287,6 @@ export function useTelegram() {
   return useContext(TelegramContext);
 }
 
-// Helper to convert hex color to HSL string for CSS variables
 function hexToHsl(hex: string): string {
   hex = hex.replace('#', '');
   const r = parseInt(hex.substring(0, 2), 16) / 255;
