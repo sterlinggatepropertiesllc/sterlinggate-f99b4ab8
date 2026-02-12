@@ -286,11 +286,28 @@ export default function TenantPortal() {
     }
   }, [searchParams, setSearchParams]);
 
+  // Safety timeout for loading state
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
+  useEffect(() => {
+    if (loading || (user && role === null)) {
+      const timer = setTimeout(() => setLoadingTimedOut(true), 10000);
+      return () => clearTimeout(timer);
+    }
+    setLoadingTimedOut(false);
+  }, [loading, user, role]);
+
   // Wait for both auth and role to be fully loaded before redirecting
   if (loading || (user && role === null)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
+        {loadingTimedOut ? (
+          <div className="text-center space-y-4">
+            <p className="text-muted-foreground">Something took longer than expected.</p>
+            <Button onClick={() => window.location.reload()}>Retry</Button>
+          </div>
+        ) : (
+          <div className="animate-pulse text-muted-foreground">Loading...</div>
+        )}
       </div>
     );
   }
