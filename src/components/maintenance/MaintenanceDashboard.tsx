@@ -8,11 +8,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Card } from '@/components/ui/card';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useMaintenance, useDeleteMaintenance } from '@/hooks/useMaintenance';
+import { useAllMaintenanceAttachments, useMaintenanceAttachments } from '@/hooks/useMaintenanceAttachments';
 import { useManagerProperties } from '@/hooks/useProperties';
 import { useAuth } from '@/contexts/AuthContext';
 import { AddMaintenanceDialog } from './AddMaintenanceDialog';
-import { Plus, Download, Trash2, Pencil, CalendarIcon, X, FileText, DollarSign, Users, Paperclip } from 'lucide-react';
+import { AttachmentGallery } from './AttachmentGallery';
+import { Plus, Download, Trash2, Pencil, CalendarIcon, X, FileText, DollarSign, Users, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { MaintenanceRecord } from '@/hooks/useMaintenance';
 import type { DateRange } from 'react-day-picker';
@@ -27,6 +30,15 @@ export function MaintenanceDashboard() {
   const { data: records, isLoading } = useMaintenance();
   const { data: properties } = useManagerProperties(user?.id);
   const deleteMaintenance = useDeleteMaintenance();
+  const { data: allAttachments = [] } = useAllMaintenanceAttachments();
+
+  const attachmentCountMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    allAttachments.forEach((a) => {
+      map[a.maintenance_id] = (map[a.maintenance_id] || 0) + 1;
+    });
+    return map;
+  }, [allAttachments]);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editRecord, setEditRecord] = useState<MaintenanceRecord | null>(null);
@@ -34,6 +46,7 @@ export function MaintenanceDashboard() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [viewAttachmentsFor, setViewAttachmentsFor] = useState<string | null>(null);
 
   const propertyMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -97,7 +110,7 @@ export function MaintenanceDashboard() {
       r.title,
       (r.total_cost || 0).toFixed(2),
       (r.partner_share_amount || 0).toFixed(2),
-      r.performed_by_name || r.performed_by,
+      r.performed_by_name || (r.performed_by === 'partner' ? 'Partner' : '—'),
       r.performed_date,
       r.status,
     ]);
@@ -244,6 +257,7 @@ export function MaintenanceDashboard() {
                 <TableHead>Performed By</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="w-[50px]">Proof</TableHead>
                 <TableHead className="w-[80px]"></TableHead>
               </TableRow>
             </TableHeader>
@@ -256,11 +270,11 @@ export function MaintenanceDashboard() {
                   <TableCell className="py-4 max-w-[180px] truncate" title={propertyMap[r.property_id]}>
                     {propertyMap[r.property_id] || '—'}
                   </TableCell>
-                  <TableCell className="py-4 font-medium">{r.title}</TableCell>
+                  <TableCell className="py-4 font-medium max-w-[240px] truncate" title={r.title}>{r.title}</TableCell>
                   <TableCell className="py-4 text-right font-medium">{formatCurrency(r.total_cost || 0)}</TableCell>
                   <TableCell className="py-4 text-right text-accent font-medium">{formatCurrency(r.partner_share_amount || 0)}</TableCell>
                   <TableCell className="py-4">
-                    {r.performed_by_name || capitalise(r.performed_by)}
+                    {r.performed_by_name || (r.performed_by === 'partner' ? 'Partner' : '—')}
                   </TableCell>
                   <TableCell className="py-4">{format(new Date(r.performed_date), 'MMM d, yyyy')}</TableCell>
                   <TableCell className="py-4">
@@ -273,6 +287,13 @@ export function MaintenanceDashboard() {
                       )}>
                       {capitalise(r.status)}
                     </Badge>
+                  </TableCell>
+                  <TableCell className="py-4">
+                    {attachmentCountMap[r.id] ? (
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setViewAttachmentsFor(r.id)}>
+                        <Eye className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    ) : null}
                   </TableCell>
                   <TableCell className="py-4">
                     <div className="flex items-center gap-1">
@@ -329,6 +350,24 @@ export function MaintenanceDashboard() {
         properties={properties || []}
         editRecord={editRecord}
       />
+
+      {/* Proof Viewer Dialog */}
+      <ProofViewerDialog
+        maintenanceId={viewAttachmentsFor}
+        onClose={() => setViewAttachmentsFor(null)}
+      />
     </div>
+  );
+}
+
+function ProofViewerDialog({ maintenanceId, onClose }: { maintenanceId: string | null; onClose: () => void }) {
+  const { data: attachments = [] } = useMaintenanceAttachments(maintenanceId || undefined);
+
+  return (
+    <Dialog open={!!maintenanceId} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[var(--tg-viewport-stable-height,90vh)] overflow-y-auto">
+        <AttachmentGallery attachments={attachments} />
+      </DialogContent>
+    </Dialog>
   );
 }

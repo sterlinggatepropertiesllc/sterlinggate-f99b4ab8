@@ -70,6 +70,21 @@ export function useUploadMaintenanceAttachment() {
   });
 }
 
+export function useAllMaintenanceAttachments() {
+  return useQuery({
+    queryKey: ['maintenance-attachments-all'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('maintenance_attachments')
+        .select('*')
+        .order('created_at');
+
+      if (error) throw error;
+      return data as MaintenanceAttachment[];
+    },
+  });
+}
+
 export function useDeleteMaintenanceAttachment() {
   const queryClient = useQueryClient();
 

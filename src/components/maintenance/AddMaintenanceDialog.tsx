@@ -312,20 +312,42 @@ export function AddMaintenanceDialog({ open, onOpenChange, properties, editRecor
                 </Button>
               </div>
             ) : (
-              <Select value={performedByDisplayValue} onValueChange={handlePerformedByChange}>
-                <SelectTrigger className="text-base"><SelectValue placeholder="Select person" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="partner">Partner</SelectItem>
-                  {people.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                  ))}
-                  <SelectItem value="__add_person__">
-                    <span className="flex items-center gap-1.5 text-primary">
-                      <Plus className="h-3.5 w-3.5" /> Add Person
-                    </span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="flex flex-wrap gap-2 mt-1.5">
+                <button
+                  type="button"
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-sm font-medium transition-colors border",
+                    performedBy === 'partner'
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-muted text-muted-foreground border-border hover:border-primary/50"
+                  )}
+                  onClick={() => handlePerformedByChange('partner')}
+                >
+                  Partner
+                </button>
+                {people.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={cn(
+                      "px-3 py-1.5 rounded-full text-sm font-medium transition-colors border",
+                      performedBy === p.id
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-muted text-muted-foreground border-border hover:border-primary/50"
+                    )}
+                    onClick={() => handlePerformedByChange(p.id)}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-full text-sm font-medium transition-colors border border-dashed border-primary/50 text-primary hover:bg-primary/10"
+                  onClick={() => setAddingPerson(true)}
+                >
+                  <Plus className="h-3.5 w-3.5 inline mr-1" />Add
+                </button>
+              </div>
             )}
           </div>
 
