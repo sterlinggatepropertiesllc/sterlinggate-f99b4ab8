@@ -217,6 +217,27 @@ export type Database = {
           },
         ]
       }
+      expense_people: {
+        Row: {
+          created_at: string | null
+          created_by: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       inquiries: {
         Row: {
           created_at: string | null
@@ -385,6 +406,41 @@ export type Database = {
           },
         ]
       }
+      maintenance_attachments: {
+        Row: {
+          created_at: string | null
+          file_name: string | null
+          file_type: string
+          file_url: string
+          id: string
+          maintenance_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          file_name?: string | null
+          file_type: string
+          file_url: string
+          id?: string
+          maintenance_id: string
+        }
+        Update: {
+          created_at?: string | null
+          file_name?: string | null
+          file_type?: string
+          file_url?: string
+          id?: string
+          maintenance_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_attachments_maintenance_id_fkey"
+            columns: ["maintenance_id"]
+            isOneToOne: false
+            referencedRelation: "maintenance_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       maintenance_records: {
         Row: {
           attachments: Json
@@ -392,9 +448,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
-          labor_cost: number
           manager_id: string
-          material_cost: number
           ownership_split_percentage: number
           partner_share_amount: number | null
           performed_by: string
@@ -403,7 +457,7 @@ export type Database = {
           property_id: string
           status: string
           title: string
-          total_cost: number | null
+          total_cost: number
         }
         Insert: {
           attachments?: Json
@@ -411,9 +465,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
-          labor_cost?: number
           manager_id: string
-          material_cost?: number
           ownership_split_percentage?: number
           partner_share_amount?: number | null
           performed_by?: string
@@ -422,7 +474,7 @@ export type Database = {
           property_id: string
           status?: string
           title: string
-          total_cost?: number | null
+          total_cost?: number
         }
         Update: {
           attachments?: Json
@@ -430,9 +482,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
-          labor_cost?: number
           manager_id?: string
-          material_cost?: number
           ownership_split_percentage?: number
           partner_share_amount?: number | null
           performed_by?: string
@@ -441,7 +491,7 @@ export type Database = {
           property_id?: string
           status?: string
           title?: string
-          total_cost?: number | null
+          total_cost?: number
         }
         Relationships: [
           {

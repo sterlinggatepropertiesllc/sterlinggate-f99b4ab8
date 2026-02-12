@@ -9,13 +9,11 @@ export interface MaintenanceRecord {
   title: string;
   description: string | null;
   category: string;
-  material_cost: number;
-  labor_cost: number;
   total_cost: number;
-  performed_by: string;
-  performed_by_name: string | null;
   ownership_split_percentage: number;
   partner_share_amount: number;
+  performed_by: string;
+  performed_by_name: string | null;
   status: string;
   performed_date: string;
   attachments: any[];
@@ -27,23 +25,18 @@ interface MaintenanceInsert {
   manager_id: string;
   title: string;
   description?: string;
-  category?: string;
-  material_cost?: number;
-  labor_cost?: number;
+  total_cost?: number;
   performed_by?: string;
   performed_by_name?: string;
   ownership_split_percentage?: number;
   status?: string;
   performed_date: string;
-  attachments?: any[];
 }
 
 interface MaintenanceUpdate {
   title?: string;
   description?: string | null;
-  category?: string;
-  material_cost?: number;
-  labor_cost?: number;
+  total_cost?: number;
   performed_by?: string;
   performed_by_name?: string | null;
   ownership_split_percentage?: number;
