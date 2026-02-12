@@ -1,112 +1,104 @@
 
 
-## Refactor Maintenance/Expense Form — Simplified, Mobile-First
+## Maintenance Module — Final Polish
 
-This is a significant refactor touching the database schema, a new table for custom people, file uploads with proof viewing, and a complete form UI overhaul.
+### Root Cause Analysis
 
-### Database Changes (Migration)
+**Storage Upload RLS Error (Part 4):** The storage policy expects the folder path to start with the user's `auth.uid()`, but the upload code uses `maintenanceId` as the folder name. This mismatch causes every upload to fail. Additionally, the bucket is private, so `getPublicUrl()` returns URLs that won't load -- need to either make the bucket public or use signed URLs.
 
-**1. Alter `maintenance_records` table:**
-- Drop generated columns `total_cost` and `partner_share_amount`
-- Drop `material_cost` and `labor_cost` columns
-- Add `total_cost NUMERIC NOT NULL DEFAULT 0` as a regular (non-generated) column
-- Recreate `partner_share_amount` as a generated column: `total_cost * ownership_split_percentage / 100`
-- Change default for `status` from `'pending'` to `'completed'`
-- Keep `category` column in the database (default `'other'`) but remove it from the form UI -- avoids a destructive migration on existing data
+**UUID in Table (Part 2):** The `performed_by` column stores the UUID of the person from `expense_people`, and the dashboard renders `performed_by_name || performed_by` -- when `performed_by_name` is null (for older records), the raw UUID shows.
 
-**2. Create `expense_people` table:**
-- `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
-- `name TEXT NOT NULL`
-- `created_by UUID NOT NULL REFERENCES auth.users(id)`
-- `created_at TIMESTAMPTZ DEFAULT now()`
-- RLS: users can only see/manage their own people
+### Changes
 
-**3. Create `maintenance_attachments` table:**
-- `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
-- `maintenance_id UUID NOT NULL REFERENCES maintenance_records(id) ON DELETE CASCADE`
-- `file_url TEXT NOT NULL`
-- `file_type TEXT NOT NULL`
-- `file_name TEXT`
-- `created_at TIMESTAMPTZ DEFAULT now()`
-- RLS: accessible by the manager who owns the parent maintenance record
+#### 1. Replace Dropdown with Pill Buttons (`AddMaintenanceDialog.tsx`)
 
-### Frontend Changes
+Replace the `<Select>` dropdown for "Paid / Performed By" with a row of clickable pill buttons:
+- `[ Partner ]` -- always present
+- `[ {person.name} ]` -- one per entry in `expense_people`
+- `[ + Add ]` -- triggers inline name input (existing behavior, just triggered from pill instead of dropdown)
 
-**File: `src/hooks/useMaintenance.ts`**
-- Update `MaintenanceRecord` interface: remove `material_cost`, `labor_cost`, `category`; keep `total_cost`
-- Update `MaintenanceInsert`: remove `material_cost`, `labor_cost`, `category`; add `total_cost`
-- Update `MaintenanceUpdate`: same removals/additions
+Selected pill gets `bg-primary text-primary-foreground`; unselected gets `bg-muted`. Store the `performed_by` value (either `'partner'` or the person's UUID) and `performed_by_name` as before.
 
-**File: `src/hooks/useExpensePeople.ts` (NEW)**
-- `useExpensePeople()` -- fetch all people for current user
-- `useCreateExpensePerson()` -- insert new person
-- Simple CRUD hook following existing patterns
+#### 2. Fix UUID Display in Table (`MaintenanceDashboard.tsx`)
 
-**File: `src/hooks/useMaintenanceAttachments.ts` (NEW)**
-- `useMaintenanceAttachments(maintenanceId)` -- fetch attachments for a record
-- `useUploadMaintenanceAttachment()` -- upload file to `maintenance-attachments` bucket, insert row
-- `useDeleteMaintenanceAttachment()` -- delete file and row
+The `performed_by_name` field is sometimes null for records where `performed_by` is a UUID. Fix:
+- In the table cell, display `performed_by_name` if available
+- If `performed_by` is `'partner'`, display "Partner"  
+- Otherwise fall back to "—" (never show a UUID)
 
-**File: `src/components/maintenance/AddMaintenanceDialog.tsx` (REWRITE)**
-- Remove Category dropdown entirely
-- Remove Material Cost and Labor Cost fields
-- Add single "Total Cost ($)" number input
-- Replace "Performed By" pill toggles with a dropdown: "Partner" + all custom people from `expense_people` + "+ Add Person" option
-- When "+ Add Person" selected, open inline input (not a separate modal) to type name and save
-- Default status changed to "Completed"
-- Add "Upload Proof (Optional)" section at the bottom with file input accepting images and PDFs
-- Show thumbnail previews of selected files before save
-- Mobile optimizations: full-width inputs, `text-base` (16px) font size, safe-area padding, dynamic height for dialog
+Also in CSV export: same logic.
 
-**File: `src/components/maintenance/AttachmentGallery.tsx` (NEW)**
-- Display uploaded proof thumbnails in a grid
-- Tap to open fullscreen image viewer modal
-- Swipe between images in fullscreen mode
-- Lazy load images with placeholder
-- PDF files shown as file icon with name
+#### 3. Fix Title Wrapping (`MaintenanceDashboard.tsx`)
 
-**File: `src/components/maintenance/MaintenanceDashboard.tsx`**
-- Remove "Category" column from the table
-- Update CSV export to exclude category, material_cost, labor_cost
-- Show attachment count indicator on rows that have proof
+Add `max-w-[240px] truncate` to the Title `<TableCell>` so long titles get ellipsis instead of wrapping.
+
+#### 4. Fix Storage Upload RLS (`migration + useMaintenanceAttachments.ts`)
+
+**Database migration:**
+- Drop and recreate the 3 storage policies for `maintenance-attachments` bucket to use the maintenance record's ID path (matching what the code uploads) instead of `auth.uid()`. The new policy will join through `maintenance_records` to verify the uploader is the manager.
+- Make the bucket public so uploaded file URLs are accessible without signed URLs.
+
+**Hook update (`useMaintenanceAttachments.ts`):**
+- Keep existing path pattern `${maintenanceId}/${uuid}.${ext}` (it's logical and correct)
+- The storage policies will now match this pattern
+
+#### 5. Add Proof Column with Eye Icon (`MaintenanceDashboard.tsx`)
+
+- Fetch attachment counts per record by adding a lightweight query or by fetching all attachments grouped by maintenance_id
+- Add a new "Proof" column in the table header
+- For rows with attachments: render an `Eye` icon button
+- Clicking the eye opens the `AttachmentGallery` in a read-only dialog (no delete buttons)
+- For rows without attachments: render nothing
+
+This requires:
+- A new hook `useAllMaintenanceAttachments()` that fetches all attachments for the current user's records (or a count query)
+- A state variable for which record's attachments to view
+- Reuse `AttachmentGallery` component in read-only mode (no `onDelete` prop)
+
+#### 6. UI Cleanup
+
+- Remove extra spacing in the performer column
+- Ensure consistent `py-4` padding on all table cells
+- Verify responsive behavior (table already has horizontal scroll via Card overflow)
+
+### Files
+
+| File | Action |
+|------|--------|
+| Database migration | Fix storage policies, make bucket public |
+| `src/hooks/useMaintenanceAttachments.ts` | Add `useAllMaintenanceAttachments()` hook for fetching all attachment records |
+| `src/components/maintenance/AddMaintenanceDialog.tsx` | Replace dropdown with pill buttons for "Paid / Performed By" |
+| `src/components/maintenance/MaintenanceDashboard.tsx` | Fix UUID display, add title truncation, add Proof column with eye icon + viewer dialog |
+| `src/components/maintenance/AttachmentGallery.tsx` | No changes needed -- already supports read-only mode (omit `onDelete` prop) |
 
 ### Technical Details
 
 ```text
-Schema migration:
+Storage policy fix:
 
-  maintenance_records:
-    DROP total_cost (generated)
-    DROP partner_share_amount (generated)
-    DROP material_cost
-    DROP labor_cost
-    ADD total_cost NUMERIC NOT NULL DEFAULT 0
-    ADD partner_share_amount NUMERIC GENERATED ALWAYS AS (total_cost * ownership_split_percentage / 100)
-    ALTER status DEFAULT 'completed'
+  Current (broken): auth.uid()::text = (storage.foldername(name))[1]
+  Upload path:      {maintenanceId}/{uuid}.{ext}
+  
+  Fix: Change storage policies to verify ownership through maintenance_records table:
+    EXISTS (
+      SELECT 1 FROM public.maintenance_records mr
+      WHERE mr.id::text = (storage.foldername(name))[1]
+      AND mr.manager_id = auth.uid()
+    )
 
-  NEW TABLE expense_people:
-    id, name, created_by (FK auth.users), created_at
-    RLS: created_by = auth.uid()
+  Also: UPDATE storage.buckets SET public = true WHERE id = 'maintenance-attachments'
+  (so getPublicUrl() works for viewing)
 
-  NEW TABLE maintenance_attachments:
-    id, maintenance_id (FK maintenance_records CASCADE), file_url, file_type, file_name, created_at
-    RLS: via maintenance_records.manager_id = auth.uid()
+Pill button UI:
+  <div className="flex flex-wrap gap-2 mt-1">
+    <button className={cn("px-3 py-1.5 rounded-full text-sm ...", selected && "bg-primary text-primary-foreground")}>
+      Partner
+    </button>
+    {people.map(p => <button ...>{p.name}</button>)}
+    <button>+ Add</button>
+  </div>
 
-  Storage: uses existing 'maintenance-attachments' bucket (already created, private)
-
-Data migration for existing rows:
-  UPDATE maintenance_records SET total_cost = material_cost + labor_cost
-  (run before dropping old columns -- handled in single migration)
+UUID display fix:
+  Current:  r.performed_by_name || capitalise(r.performed_by)
+  Fixed:    r.performed_by_name || (r.performed_by === 'partner' ? 'Partner' : '—')
 ```
-
-### Files Summary
-
-| File | Action |
-|------|--------|
-| Database migration | Alter maintenance_records, create expense_people, create maintenance_attachments |
-| `src/hooks/useMaintenance.ts` | Update interfaces to remove material/labor cost, add total_cost |
-| `src/hooks/useExpensePeople.ts` | New -- CRUD for custom expense people |
-| `src/hooks/useMaintenanceAttachments.ts` | New -- upload/fetch/delete proof files |
-| `src/components/maintenance/AddMaintenanceDialog.tsx` | Major rewrite -- simplified form, new people dropdown, proof upload |
-| `src/components/maintenance/AttachmentGallery.tsx` | New -- thumbnail grid with fullscreen viewer |
-| `src/components/maintenance/MaintenanceDashboard.tsx` | Remove category column, add attachment indicators |
