@@ -1,42 +1,35 @@
 
 
-## Fix: Telegram Mini App Blank Black Screen
+## Fix Telegram iOS Layout — Remove 100vh and Properly Handle Viewport
 
-The app renders nothing when an uncaught error occurs during initialization because there is no error boundary. Additionally, `TelegramContext` accesses several Telegram WebApp APIs that can throw without being caught, and the auth failure state is never surfaced to the user.
+### Problem
+On iPhone inside Telegram, the top content is cramped/overlapping because `100vh` doesn't account for the Telegram native header, and safe-area insets are only read once (not updated dynamically).
 
 ### Changes
 
-#### 1. Add Global Error Boundary (`src/components/ErrorBoundary.tsx` -- NEW FILE)
+#### 1. Update Telegram viewport handler (`src/contexts/TelegramContext.tsx`)
+- In the `updateViewportHeight` callback, also set `--tg-viewport-height` (in addition to the existing `--tg-viewport-stable-height`)
+- Re-read safe area insets on every `viewportChanged` event (currently they're only read once at init)
 
-Create a class-based React Error Boundary component that:
-- Catches any uncaught rendering error in the entire app tree
-- Renders a centered message: "Something went wrong loading the app. Please refresh or reopen from Telegram."
-- Logs the error to `console.error`
-- Includes a "Retry" button that reloads the page
+#### 2. Fix body CSS (`src/index.css`)
+- Replace the bare `min-height: 100vh` fallback on `body` with `min-height: 100dvh` (dynamic viewport height, which works correctly on iOS Safari)
+- Keep the `var(--tg-viewport-stable-height, 100dvh)` override for Telegram
 
-#### 2. Wrap App in Error Boundary (`src/App.tsx`)
+#### 3. Replace inline `100vh` in ErrorBoundary and TelegramContext
+- In `src/components/ErrorBoundary.tsx`: change `minHeight: '100vh'` to `minHeight: 'var(--tg-viewport-stable-height, 100dvh)'`
+- In `src/contexts/TelegramContext.tsx` (loading and error screens): same replacement for all three inline `minHeight: '100vh'` usages
 
-- Import and wrap the entire `<QueryClientProvider>` tree inside the new `<ErrorBoundary>`
-- This ensures even provider-level crashes are caught
+#### 4. Global Telegram override for `min-h-screen` (already exists, verify correct)
+- The existing rule at line 185 (`html.telegram-webapp .min-h-screen`) already overrides `min-height` to use the Telegram variable — this stays as-is
+- This means all pages using Tailwind `min-h-screen` (Dashboard, TenantPortal, Auth, etc.) are automatically handled
 
-#### 3. Harden Telegram Init (`src/contexts/TelegramContext.tsx`)
+#### 5. No fixed headers found
+- Search confirmed no `position: fixed` usage in the project. Existing headers already use `sticky top-0`. No changes needed.
 
-- Add comprehensive `console.log` statements at each stage: app init, Telegram detected, auth request sent, auth response received, auth failure
-- Wrap all Telegram API calls (`BackButton.onClick`, `BackButton.show/hide`, `requestFullscreen`, `onEvent`, `safeAreaInset` access) in try/catch so a single API failure doesn't crash the entire provider
-- When `authError` is set, render a visible error screen instead of silently passing `children` through: "Session expired. Please reopen from Telegram."
-- When `isAuthenticating` is true, render a centered "Loading Sterling Gate..." screen so the user never sees a blank screen during auth
-- When not in Telegram and not otherwise authenticated, the app continues to render normally (non-Telegram users use email login)
+### Summary of Files
 
-#### 4. Add `_headers` rule (`public/_headers`)
-
-- Add `X-Frame-Options: ALLOWALL` to prevent iframe blocking (Telegram loads mini apps in iframes)
-
-### Files
-
-| File | Action |
+| File | Change |
 |------|--------|
-| `src/components/ErrorBoundary.tsx` | Create -- React Error Boundary class component |
-| `src/App.tsx` | Edit -- wrap root in ErrorBoundary |
-| `src/contexts/TelegramContext.tsx` | Edit -- try/catch all TG API calls, add logging, render loading/error states during auth |
-| `public/_headers` | Edit -- add permissive X-Frame-Options |
-
+| `src/contexts/TelegramContext.tsx` | Set `--tg-viewport-height` alongside existing variable; move safe-area inset reading into the `viewportChanged` callback; replace 3x inline `100vh` with dynamic fallback |
+| `src/index.css` | Change `min-height: 100vh` to `min-height: 100dvh` on body |
+| `src/components/ErrorBoundary.tsx` | Replace inline `minHeight: '100vh'` with dynamic variable fallback |
