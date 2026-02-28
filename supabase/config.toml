@@ -1,43 +1,33 @@
 project_id = "nmibwtbrbpqfvseeflep"
 
-[functions.send-discord-notification]
-verify_jwt = false
-
-[functions.generate-lease-pdf]
-verify_jwt = false
-
-[functions.create-payment-checkout]
-verify_jwt = false
-
-[functions.verify-payment]
-verify_jwt = false
-
-[functions.generate-lease-document]
-verify_jwt = false
-
-[functions.create-payment-intent]
-verify_jwt = false
-
-[functions.verify-payment-intent]
-verify_jwt = false
-
-[functions.get-stripe-publishable-key]
-verify_jwt = false
-
-[functions.process-rent-charge]
-verify_jwt = false
-
-[functions.stripe-webhook]
-verify_jwt = false
-
-[functions.reconcile-ach-payments]
-verify_jwt = false
-
-[functions.telegram-auth]
-verify_jwt = false
-
-[functions.send-telegram-notification]
-verify_jwt = false
-
-[functions.telegram-webhook]
-verify_jwt = false
+[functions]
+  [functions.auth-email-hook]
+    verify_jwt = false
+  [functions.create-payment-checkout]
+    verify_jwt = false
+  [functions.create-payment-intent]
+    verify_jwt = false
+  [functions.generate-lease-document]
+    verify_jwt = false
+  [functions.generate-lease-pdf]
+    verify_jwt = false
+  [functions.get-stripe-publishable-key]
+    verify_jwt = false
+  [functions.process-rent-charge]
+    verify_jwt = false
+  [functions.reconcile-ach-payments]
+    verify_jwt = false
+  [functions.send-discord-notification]
+    verify_jwt = false
+  [functions.send-telegram-notification]
+    verify_jwt = false
+  [functions.stripe-webhook]
+    verify_jwt = false
+  [functions.telegram-auth]
+    verify_jwt = false
+  [functions.telegram-webhook]
+    verify_jwt = false
+  [functions.verify-payment]
+    verify_jwt = false
+  [functions.verify-payment-intent]
+    verify_jwt = false
