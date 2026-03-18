@@ -1,35 +1,34 @@
-## ACH Payment Pipeline Fix — Completed
 
-All long-term fixes have been implemented:
 
-### ✅ 1. Webhook Secret Updated
-- `STRIPE_WEBHOOK_SECRET` set to the correct signing secret from Stripe dashboard
+## Fix Travis Boyd's Balance to $0
 
-### ✅ 2. Stripe Webhook Hardened (`stripe-webhook/index.ts`)
-- Removed hardcoded `apiVersion` — accepts whatever version Stripe sends
-- Switched to `constructEventAsync` for robust signature verification in Deno
-- Added detailed diagnostic logging (secret prefix, signature prefix, body length)
-- Replaced manual balance math with centralized `apply_balance_adjustment` RPC
+### Current State
+- `current_balance`: $1,050
+- March rent charged: $1,050 (only one of two properties)
+- 2 stuck ACH payments: $1,050 each (both succeeded in Stripe)
 
-### ✅ 3. API Versions Aligned Across All Stripe Functions
-- Removed pinned `apiVersion: "2025-08-27.basil"` from:
-  - `create-payment-checkout`
-  - `create-payment-intent`
-  - `verify-payment-intent`
-  - `verify-payment`
-  - `reconcile-ach-payments`
+### What Needs to Happen
 
-### ✅ 4. Overdue Alert False Positives Fixed (`useOverdueTenants.ts`)
-- Now queries pending ACH payments per tenant before marking overdue
-- Computes effective balance (current_balance - pending ACH)
-- Skips tenants whose effective balance is ≤ 0
-- Also subscribes to `payments` table changes for real-time updates
+**Step 1: Database data updates (using insert/update tool)**
 
-### ✅ 5. Reconciliation Expanded (`reconcile-ach-payments/index.ts`)
-- Now supports system-wide sweep when no `tenant_id` is provided
-- Serves as a safety net for any missed webhook events
+1. **Update both stuck payments** from `processing` → `completed`
+   - Payment `9dbf5b5a-2bde-41aa-8d54-decbd4eeb198`
+   - Payment `a5bb02b0-b922-4d2d-8e66-634c4e43ce6e`
 
-### Stuck Payments
-- Travis Boyd: 2 payments × $1,050 (processing)
-- John Robinson: 1 payment × $1.76 (processing)
-- Use the "Reconcile Stuck Payments" button on each tenant's detail page to clear them
+2. **Apply two payment balance adjustments** via `apply_balance_adjustment` RPC:
+   - Payment 1: -$1,050 → balance goes from $1,050 to $0
+   - Payment 2: -$1,050 → balance goes from $0 to -$1,050
+
+3. **Charge missing March rent** for second property (2006 N Ashley St) via `apply_balance_adjustment`:
+   - +$1,050 charge → balance goes from -$1,050 to $0
+
+4. **Insert missing rent_charge record** for the second property's March 2026 rent
+
+### Final Result
+- Balance: **$0**
+- Both payments: `completed`
+- Both properties charged for March
+
+### Why Auto-Charge Missed the Second Property
+The `process_monthly_rent` function charges per-tenant (not per-property). It uses the tenant's single `rent_amount` field ($1,050) rather than summing all `tenant_properties`. This is a separate bug to fix later — the rent charge function should iterate over all tenant_properties and charge total rent.
+
