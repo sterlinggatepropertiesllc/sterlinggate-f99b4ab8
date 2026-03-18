@@ -42,9 +42,7 @@ serve(async (req) => {
     console.log("[VERIFY-PAYMENT] Verifying session:", session_id);
 
     // Initialize Stripe
-    const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
-      apiVersion: "2025-08-27.basil",
-    });
+    const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "");
 
     // Retrieve checkout session
     const session = await stripe.checkout.sessions.retrieve(session_id, {

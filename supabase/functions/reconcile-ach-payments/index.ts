@@ -71,9 +71,7 @@ serve(async (req) => {
 
     logStep(`Found ${processingPayments.length} processing payments to check`);
 
-    const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
-      apiVersion: "2025-08-27.basil",
-    });
+    const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "");
 
     let updated = 0;
     let failed = 0;

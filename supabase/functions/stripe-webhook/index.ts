@@ -38,34 +38,41 @@ serve(async (req) => {
       throw new Error("STRIPE_WEBHOOK_SECRET is not set");
     }
 
-    const stripe = new Stripe(stripeKey, {
-      apiVersion: "2025-08-27.basil",
-    });
+    logStep("Secrets loaded", { webhookSecretPrefix: webhookSecret.substring(0, 10) + "..." });
+
+    // No hardcoded apiVersion — accept whatever Stripe sends
+    const stripe = new Stripe(stripeKey);
 
     // Get the raw body and signature
     const body = await req.text();
     const signature = req.headers.get("stripe-signature");
 
     if (!signature) {
+      logStep("ERROR: No stripe-signature header present");
       throw new Error("No Stripe signature found");
     }
 
-    logStep("Verifying webhook signature");
+    logStep("Verifying webhook signature", { signaturePrefix: signature.substring(0, 30) + "..." });
 
     // Verify the webhook signature
     let event: Stripe.Event;
     try {
-      event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+      event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
-      logStep("Webhook signature verification failed", { error: message });
+      logStep("SIGNATURE VERIFICATION FAILED", { 
+        error: message,
+        bodyLength: body.length,
+        signaturePresent: !!signature,
+        webhookSecretPrefix: webhookSecret.substring(0, 10) + "...",
+      });
       return new Response(JSON.stringify({ error: `Webhook Error: ${message}` }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 400,
       });
     }
 
-    logStep("Event type received", { type: event.type, id: event.id });
+    logStep("Signature verified successfully", { type: event.type, id: event.id });
 
     // Handle the event
     switch (event.type) {
@@ -109,7 +116,6 @@ async function sendDiscordNotificationIfEnabled(
   }
 ) {
   try {
-    // Get manager's notification settings
     const { data: settings, error: settingsError } = await supabaseAdmin
       .from("notification_settings")
       .select("discord_webhook_url, discord_enabled, notify_rent_received")
@@ -128,7 +134,6 @@ async function sendDiscordNotificationIfEnabled(
 
     logStep("Sending Discord notification", { title: notification.title });
 
-    // Send to Discord via edge function
     const response = await fetch(
       `${Deno.env.get("SUPABASE_URL")}/functions/v1/send-discord-notification`,
       {
@@ -167,7 +172,6 @@ async function handlePaymentSucceeded(
   const amountPaid = paymentIntent.amount || 0;
   const amountInDollars = amountPaid / 100;
   
-  // Calculate base amount (excluding convenience fee for card payments)
   const convenienceFee = parseInt(convenienceFeeStr || '0', 10);
   const convenienceFeeInDollars = convenienceFee / 100;
   const baseAmountInDollars = convenienceFee > 0 ? (amountInDollars - convenienceFeeInDollars) : amountInDollars;
@@ -183,12 +187,12 @@ async function handlePaymentSucceeded(
 
   if (existingPayment) {
     if (existingPayment.status === "completed") {
-      logStep("Payment already completed", { id: existingPayment.id });
+      logStep("Payment already completed, skipping", { id: existingPayment.id });
       return;
     }
 
-    // Payment exists but was processing - this is an ACH payment clearing!
-    logStep("Updating processing payment to completed (ACH cleared)", { id: existingPayment.id });
+    // Payment exists but was processing — ACH payment clearing
+    logStep("ACH payment clearing — updating processing → completed", { id: existingPayment.id });
 
     const { error: updateError } = await supabaseAdmin
       .from("payments")
@@ -216,7 +220,7 @@ async function handlePaymentSucceeded(
       tenantName = profileData?.full_name || "tenant";
     }
 
-    // Send Discord notification for ACH payment cleared
+    // Discord notification for ACH cleared
     if (tenantData?.manager_id) {
       await sendDiscordNotificationIfEnabled(supabaseAdmin, tenantData.manager_id, {
         title: "ACH Payment Cleared",
@@ -231,19 +235,17 @@ async function handlePaymentSucceeded(
       });
     }
 
-    // Now update tenant balance for balance/rent payments (use base amount, not total with fee)
+    // Update tenant balance using centralized RPC
     if ((payment_type === "balance" || payment_type === "rent") && existingPayment.tenant_id) {
-      await updateTenantBalance(supabaseAdmin, existingPayment.tenant_id, baseAmountInDollars, payment_type, user_id, convenienceFee);
+      await applyBalanceViaRPC(supabaseAdmin, existingPayment.tenant_id, baseAmountInDollars, payment_type, user_id, convenienceFee);
     }
 
     return;
   }
 
-  // No existing payment record - this might be a direct webhook call
-  // Handle similar to verify-payment-intent logic
+  // No existing payment record — direct webhook call (e.g. card payment)
   logStep("No existing payment found, creating new record");
 
-  // Resolve tenant and property IDs
   let resolvedTenantId = tenant_id;
   let resolvedPropertyId = property_id;
 
@@ -272,7 +274,6 @@ async function handlePaymentSucceeded(
   }
 
   if (!resolvedTenantId || !resolvedPropertyId) {
-    // Fallback: Check tenant_properties table for multi-property tenants
     if (resolvedTenantId && !resolvedPropertyId) {
       logStep("Checking tenant_properties table...");
       const { data: tenantProperty } = await supabaseAdmin
@@ -290,12 +291,12 @@ async function handlePaymentSucceeded(
     }
     
     if (!resolvedTenantId || !resolvedPropertyId) {
-      logStep("Cannot resolve tenant or property", { resolvedTenantId, resolvedPropertyId });
+      logStep("Cannot resolve tenant or property, skipping", { resolvedTenantId, resolvedPropertyId });
       return;
     }
   }
 
-  // Insert completed payment record with base amount
+  // Insert completed payment record
   const { error: insertError } = await supabaseAdmin
     .from("payments")
     .insert({
@@ -321,9 +322,9 @@ async function handlePaymentSucceeded(
 
   logStep("Payment recorded via webhook");
 
-  // Update tenant balance for balance/rent payments (use base amount)
+  // Update tenant balance using centralized RPC
   if (payment_type === "balance" || payment_type === "rent") {
-    await updateTenantBalance(supabaseAdmin, resolvedTenantId, baseAmountInDollars, payment_type, user_id, convenienceFee);
+    await applyBalanceViaRPC(supabaseAdmin, resolvedTenantId, baseAmountInDollars, payment_type, user_id, convenienceFee);
   }
 }
 
@@ -337,7 +338,6 @@ async function handlePaymentFailed(
   const lastError = paymentIntent.last_payment_error?.message || "Payment failed";
   logStep("Payment failure reason", { reason: lastError });
 
-  // Find the pending payment
   const { data: existingPayment } = await supabaseAdmin
     .from("payments")
     .select("id, tenant_id, amount")
@@ -349,7 +349,6 @@ async function handlePaymentFailed(
     return;
   }
 
-  // Update payment status to failed
   const { error: updateError } = await supabaseAdmin
     .from("payments")
     .update({ 
@@ -365,7 +364,6 @@ async function handlePaymentFailed(
 
   logStep("Payment marked as failed", { id: existingPayment.id });
 
-  // Create a notification and send Discord alert for the manager
   if (existingPayment.tenant_id) {
     const { data: tenantData } = await supabaseAdmin
       .from("tenants")
@@ -382,10 +380,9 @@ async function handlePaymentFailed(
 
       const tenantName = profileData?.full_name || "A tenant";
 
-      // Create notification for manager (in-app)
       await supabaseAdmin.from("notifications").insert({
         user_id: tenantData.manager_id,
-        type: "rent_received", // Using existing type, message indicates failure
+        type: "rent_received",
         title: "Payment Failed",
         message: `${tenantName}'s ACH payment has failed. Please follow up.`,
         metadata: {
@@ -397,7 +394,6 @@ async function handlePaymentFailed(
 
       logStep("Manager notification created");
 
-      // Also send Discord notification for failed payment
       await sendDiscordNotificationIfEnabled(supabaseAdmin, tenantData.manager_id, {
         title: "⚠️ ACH Payment Failed",
         message: `${tenantName}'s payment of $${existingPayment.amount} has failed: ${lastError}`,
@@ -410,7 +406,6 @@ async function handlePaymentFailed(
         },
       });
 
-      // Check if we should apply late fee (if past grace period)
       await applyLateFeeIfApplicable(supabaseAdmin, existingPayment.tenant_id, tenantData.manager_id, tenantName);
     }
   }
@@ -428,7 +423,6 @@ async function applyLateFeeIfApplicable(
   const today = new Date();
   const currentDay = today.getDate();
 
-  // Get tenant's property assignments with late fee configuration
   const { data: tenantProperties, error: tpError } = await supabaseAdmin
     .from("tenant_properties")
     .select(`
@@ -457,15 +451,6 @@ async function applyLateFeeIfApplicable(
     const gracePeriodDays = tp.grace_period_days || 5;
     const graceEndDay = rentDueDay + gracePeriodDays;
 
-    logStep("Checking property for late fee", {
-      propertyId: tp.property_id,
-      rentDueDay,
-      gracePeriodDays,
-      graceEndDay,
-      currentDay,
-    });
-
-    // Only apply late fee if we're past the grace period
     if (currentDay > graceEndDay) {
       const rentAmount = tp.rent_amount || 0;
       let lateFee = 0;
@@ -473,14 +458,10 @@ async function applyLateFeeIfApplicable(
       if (tp.late_fee_type === "percentage") {
         const percentage = tp.late_fee_percentage || 5;
         lateFee = rentAmount * (percentage / 100);
-        logStep("Calculated percentage late fee", { percentage, rentAmount, lateFee });
       } else if (tp.late_fee_type === "flat") {
         lateFee = tp.late_fee_flat_amount || 0;
-        logStep("Using flat late fee", { lateFee });
       } else {
-        // Default to 5% if not configured
         lateFee = rentAmount * 0.05;
-        logStep("Using default 5% late fee", { rentAmount, lateFee });
       }
 
       if (lateFee > 0) {
@@ -489,15 +470,12 @@ async function applyLateFeeIfApplicable(
         const propertyAddress = (tp.property as any)?.address || "Unknown property";
         lateFeeDetails.push(`$${lateFee.toFixed(2)} for ${propertyAddress}`);
       }
-    } else {
-      logStep("Not past grace period yet, skipping late fee", { currentDay, graceEndDay });
     }
   }
 
   if (totalLateFee > 0) {
-    logStep("Applying total late fee", { totalLateFee, details: lateFeeDetails });
+    logStep("Applying total late fee via RPC", { totalLateFee, details: lateFeeDetails });
 
-    // Apply the late fee using the RPC function
     const { error: rpcError } = await supabaseAdmin.rpc("apply_balance_adjustment", {
       _tenant_id: tenantId,
       _adjustment_type: "late_fee",
@@ -512,7 +490,6 @@ async function applyLateFeeIfApplicable(
 
     logStep("Late fee applied successfully", { totalLateFee });
 
-    // Notify manager about the late fee
     await supabaseAdmin.from("notifications").insert({
       user_id: managerId,
       type: "rent_received",
@@ -525,7 +502,6 @@ async function applyLateFeeIfApplicable(
       },
     });
 
-    // Discord notification for late fee
     await sendDiscordNotificationIfEnabled(supabaseAdmin, managerId, {
       title: "💰 Late Fee Applied",
       message: `$${totalLateFee.toFixed(2)} late fee added to ${tenantName}'s balance`,
@@ -539,7 +515,11 @@ async function applyLateFeeIfApplicable(
   }
 }
 
-async function updateTenantBalance(
+/**
+ * Centralized balance update using the apply_balance_adjustment RPC.
+ * This replaces manual balance math to prevent drift.
+ */
+async function applyBalanceViaRPC(
   // deno-lint-ignore no-explicit-any
   supabaseAdmin: SupabaseClient<any>,
   tenantId: string,
@@ -548,55 +528,24 @@ async function updateTenantBalance(
   userId?: string,
   convenienceFee?: number
 ) {
-  logStep("Updating tenant balance", { tenantId, baseAmountInDollars, convenienceFee });
-
-  const { data: tenantData, error: tenantFetchError } = await supabaseAdmin
-    .from("tenants")
-    .select("current_balance")
-    .eq("id", tenantId)
-    .single();
-
-  if (tenantFetchError) {
-    logStep("Failed to fetch tenant balance", { error: tenantFetchError.message });
-    return;
-  }
-
-  const previousBalance = tenantData?.current_balance || 0;
-  const newBalance = previousBalance - baseAmountInDollars;
-
-  logStep("Balance update calculation", { previousBalance, baseAmountInDollars, newBalance });
-
-  const { error: updateError } = await supabaseAdmin
-    .from("tenants")
-    .update({ current_balance: newBalance })
-    .eq("id", tenantId);
-
-  if (updateError) {
-    logStep("Failed to update balance", { error: updateError.message });
-    return;
-  }
-
-  logStep("Balance updated successfully");
-
-  // Insert balance adjustment record
   const convenienceFeeInDollars = (convenienceFee || 0) / 100;
-  const { error: adjustmentError } = await supabaseAdmin
-    .from("balance_adjustments")
-    .insert({
-      tenant_id: tenantId,
-      adjustment_type: "payment",
-      amount: baseAmountInDollars,
-      previous_balance: previousBalance,
-      new_balance: newBalance,
-      description: convenienceFee && convenienceFee > 0
-        ? `Stripe ${paymentType} payment - base amount, card fee: $${convenienceFeeInDollars.toFixed(2)}`
-        : `Stripe ${paymentType} payment`,
-      created_by: userId || null,
-    });
+  const description = convenienceFee && convenienceFee > 0
+    ? `Stripe ${paymentType} payment - base amount, card fee: $${convenienceFeeInDollars.toFixed(2)}`
+    : `Stripe ${paymentType} payment`;
 
-  if (adjustmentError) {
-    logStep("Failed to insert balance adjustment", { error: adjustmentError.message });
+  logStep("Applying balance via RPC", { tenantId, baseAmountInDollars, description });
+
+  const { data, error } = await supabaseAdmin.rpc("apply_balance_adjustment", {
+    _tenant_id: tenantId,
+    _adjustment_type: "payment",
+    _amount: baseAmountInDollars,
+    _description: description,
+    _created_by: userId || null,
+  });
+
+  if (error) {
+    logStep("RPC apply_balance_adjustment failed", { error: error.message });
   } else {
-    logStep("Balance adjustment recorded");
+    logStep("Balance updated via RPC", { result: data });
   }
 }
