@@ -42,18 +42,23 @@ serve(async (req) => {
 
     if (!roleData) throw new Error("Only property managers can reconcile payments");
 
-    const { tenant_id } = await req.json();
-    if (!tenant_id) throw new Error("tenant_id is required");
+    const body = await req.json().catch(() => ({}));
+    const { tenant_id } = body;
 
-    logStep("Starting reconciliation", { tenant_id, requested_by: userData.user.id });
+    logStep("Starting reconciliation", { tenant_id: tenant_id || "ALL", requested_by: userData.user.id });
 
-    // Find all "processing" payments for this tenant with stripe payment intent IDs
-    const { data: processingPayments, error: fetchError } = await supabaseAdmin
+    // Build query: either per-tenant or system-wide
+    let query = supabaseAdmin
       .from("payments")
       .select("id, amount, stripe_payment_intent_id, payment_type, tenant_id, convenience_fee")
-      .eq("tenant_id", tenant_id)
       .eq("status", "processing")
       .not("stripe_payment_intent_id", "is", null);
+
+    if (tenant_id) {
+      query = query.eq("tenant_id", tenant_id);
+    }
+
+    const { data: processingPayments, error: fetchError } = await query;
 
     if (fetchError) throw new Error(`Failed to fetch payments: ${fetchError.message}`);
 
@@ -106,13 +111,13 @@ serve(async (req) => {
             continue;
           }
 
-          // Apply balance adjustment (payment reduces balance)
+          // Apply balance adjustment via centralized RPC
           const convenienceFee = payment.convenience_fee || 0;
           const convenienceFeeInDollars = convenienceFee / 100;
           const baseAmount = convenienceFee > 0 ? (payment.amount - convenienceFeeInDollars) : payment.amount;
 
           const { error: rpcError } = await supabaseAdmin.rpc("apply_balance_adjustment", {
-            _tenant_id: tenant_id,
+            _tenant_id: payment.tenant_id,
             _adjustment_type: "payment",
             _amount: baseAmount,
             _description: `ACH payment reconciled (was stuck in processing) - $${baseAmount.toFixed(2)}`,
@@ -121,7 +126,6 @@ serve(async (req) => {
 
           if (rpcError) {
             logStep("Balance adjustment failed", { error: rpcError.message });
-            // Payment status was already updated, note the balance issue
             details.push({ 
               payment_id: payment.id, 
               amount: payment.amount, 
@@ -141,7 +145,6 @@ serve(async (req) => {
           logStep("Payment reconciled", { payment_id: payment.id, amount: payment.amount });
 
         } else if (pi.status === "canceled" || pi.status === "requires_payment_method") {
-          // Mark as failed
           await supabaseAdmin
             .from("payments")
             .update({ status: "failed", notes: `Reconciled: Stripe status was ${pi.status}` })
@@ -155,7 +158,6 @@ serve(async (req) => {
           });
           failed++;
         } else {
-          // Still processing or other status - skip
           details.push({ 
             payment_id: payment.id, 
             amount: payment.amount, 

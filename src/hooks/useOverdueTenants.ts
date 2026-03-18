@@ -55,6 +55,20 @@ export function useOverdueTenants(managerId: string | undefined) {
       const overdueTenants: OverdueTenant[] = [];
 
       for (const tenant of tenants || []) {
+        // Fetch pending ACH payments for this tenant to compute effective balance
+        const { data: pendingPayments } = await supabase
+          .from('payments')
+          .select('amount')
+          .eq('tenant_id', tenant.id)
+          .eq('status', 'processing')
+          .eq('payment_method_type', 'ach');
+
+        const totalPendingACH = (pendingPayments || []).reduce((sum, p) => sum + p.amount, 0);
+        const effectiveBalance = (tenant.current_balance || 0) - totalPendingACH;
+
+        // Skip if effective balance is zero or negative (pending ACH covers the balance)
+        if (effectiveBalance <= 0) continue;
+
         const { data: profile } = await supabase
           .from('profiles')
           .select('full_name, email')
@@ -108,7 +122,7 @@ export function useOverdueTenants(managerId: string | undefined) {
             name: profile?.full_name || 'Unknown Tenant',
             email: profile?.email || '',
             propertyAddress,
-            amountOwed: tenant.current_balance || 0,
+            amountOwed: effectiveBalance,
             daysOverdue,
             rentDueDay,
           });
@@ -130,6 +144,9 @@ export function useOverdueTenants(managerId: string | undefined) {
         queryClient.invalidateQueries({ queryKey: ['overdue-tenants', managerId] });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'balance_adjustments' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['overdue-tenants', managerId] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
         queryClient.invalidateQueries({ queryKey: ['overdue-tenants', managerId] });
       })
       .subscribe();
