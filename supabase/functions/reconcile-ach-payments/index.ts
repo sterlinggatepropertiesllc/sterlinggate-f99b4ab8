@@ -92,7 +92,7 @@ serve(async (req) => {
         const pi = await stripe.paymentIntents.retrieve(payment.stripe_payment_intent_id!);
         logStep("Stripe status", { pi_id: pi.id, status: pi.status });
 
-        if (pi.status === "succeeded") {
+      if (pi.status === "succeeded") {
           // Update payment to completed
           const { error: updateError } = await supabaseAdmin
             .from("payments")
@@ -111,16 +111,10 @@ serve(async (req) => {
             continue;
           }
 
-          // Apply balance adjustment via centralized RPC
-          const convenienceFee = payment.convenience_fee || 0;
-          const convenienceFeeInDollars = convenienceFee / 100;
-          const baseAmount = convenienceFee > 0 ? (payment.amount - convenienceFeeInDollars) : payment.amount;
-
-          const { error: rpcError } = await supabaseAdmin.rpc("apply_balance_adjustment", {
-            _tenant_id: payment.tenant_id,
-            _adjustment_type: "payment",
-            _amount: baseAmount,
-            _description: `ACH payment reconciled (was stuck in processing) - $${baseAmount.toFixed(2)}`,
+          // Apply balance adjustment via the idempotent payment source-of-truth RPC.
+          const { error: rpcError } = await supabaseAdmin.rpc("record_payment_balance_adjustment", {
+            _payment_id: payment.id,
+            _description: `ACH payment reconciled (was stuck in processing) - PI ${payment.stripe_payment_intent_id}`,
             _created_by: userData.user.id,
           });
 

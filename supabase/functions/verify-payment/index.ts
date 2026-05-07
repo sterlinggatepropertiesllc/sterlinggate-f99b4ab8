@@ -11,6 +11,34 @@ interface VerifyRequest {
   session_id: string;
 }
 
+async function applyCompletedPaymentToBalance(
+  supabaseAdmin: any,
+  paymentId: string,
+  paymentType: string | undefined,
+  userId: string | undefined,
+  convenienceFeeInDollars: number
+) {
+  if (paymentType !== 'balance' && paymentType !== 'rent') {
+    return null;
+  }
+
+  const description = convenienceFeeInDollars > 0
+    ? `Stripe ${paymentType} payment - base amount, card fee: $${convenienceFeeInDollars.toFixed(2)}`
+    : `Stripe ${paymentType} payment`;
+
+  const { data, error } = await supabaseAdmin.rpc('record_payment_balance_adjustment', {
+    _payment_id: paymentId,
+    _description: description,
+    _created_by: userId || null,
+  });
+
+  if (error) {
+    throw new Error(`Failed to apply payment to balance: ${error.message}`);
+  }
+
+  return data;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -21,11 +49,6 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     { auth: { persistSession: false } }
-  );
-
-  const supabaseClient = createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_ANON_KEY") ?? ""
   );
 
   try {
@@ -56,6 +79,10 @@ serve(async (req) => {
       throw new Error("Payment not completed");
     }
 
+    const paymentIntentId = typeof session.payment_intent === 'string'
+      ? session.payment_intent
+      : session.payment_intent?.id || null;
+
     // Get user_id from session metadata (set during checkout creation by authenticated user)
     const userId = session.metadata?.user_id;
     if (!userId) {
@@ -65,31 +92,68 @@ serve(async (req) => {
     
     console.log("[VERIFY-PAYMENT] User from metadata:", userId);
 
+    // Extract metadata
+    const { payment_type, property_id, lease_id, tenant_id, convenience_fee: convenienceFeeStr, base_amount: baseAmountStr, payment_method_type } = session.metadata || {};
+    const amountPaid = session.amount_total || 0;
+    const amountInDollars = amountPaid / 100;
+    const convenienceFeeCents = parseInt(convenienceFeeStr || '0', 10) || 0;
+    const convenienceFeeInDollars = convenienceFeeCents / 100;
+    const baseAmountInDollars = baseAmountStr
+      ? (parseInt(baseAmountStr, 10) || 0) / 100
+      : amountInDollars - convenienceFeeInDollars;
+
+    console.log("[VERIFY-PAYMENT] Payment details:", { payment_type, property_id, lease_id, tenant_id, amountInDollars, baseAmountInDollars, convenienceFeeInDollars, paymentIntentId });
+
     // Check if payment already recorded (idempotency)
     const { data: existingPayment } = await supabaseAdmin
       .from('payments')
-      .select('id')
-      .eq('stripe_session_id', session_id)
-      .single();
+      .select('id, status, payment_type, balance_adjustment_id')
+      .or(`stripe_session_id.eq.${session_id}${paymentIntentId ? `,stripe_payment_intent_id.eq.${paymentIntentId}` : ''}`)
+      .limit(1)
+      .maybeSingle();
 
     if (existingPayment) {
       console.log("[VERIFY-PAYMENT] Payment already recorded:", existingPayment.id);
+
+      if (existingPayment.status !== 'completed') {
+        const paymentUpdate: Record<string, unknown> = {
+          status: 'completed',
+          stripe_session_id: session_id,
+        };
+
+        if (paymentIntentId) {
+          paymentUpdate.stripe_payment_intent_id = paymentIntentId;
+        }
+
+        const { error: updateError } = await supabaseAdmin
+          .from('payments')
+          .update(paymentUpdate)
+          .eq('id', existingPayment.id);
+
+        if (updateError) {
+          throw new Error(`Failed to mark payment completed: ${updateError.message}`);
+        }
+      }
+
+      const balanceResult = await applyCompletedPaymentToBalance(
+        supabaseAdmin,
+        existingPayment.id,
+        payment_type || existingPayment.payment_type,
+        userId,
+        convenienceFeeInDollars
+      );
+
       return new Response(JSON.stringify({ 
         success: true, 
         payment_id: existingPayment.id,
-        already_recorded: true 
+        already_recorded: true,
+        balanceResult,
+        amount: amountInDollars,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
     }
-
-    // Extract metadata
-    const { payment_type, property_id, lease_id, tenant_id } = session.metadata || {};
-    const amountPaid = session.amount_total || 0;
-    const amountInDollars = amountPaid / 100;
-
-    console.log("[VERIFY-PAYMENT] Payment details:", { payment_type, property_id, lease_id, tenant_id, amountInDollars });
 
     // Resolve tenant_id and property_id based on payment type
     let resolvedTenantId = tenant_id;
@@ -201,81 +265,93 @@ serve(async (req) => {
         tenant_id: resolvedTenantId,
         property_id: resolvedPropertyId,
         lease_id: lease_id || null,
-        amount: amountInDollars,
+        amount: baseAmountInDollars,
+        convenience_fee: convenienceFeeInDollars || 0,
         payment_date: new Date().toISOString().split('T')[0],
         payment_method: 'stripe',
+        payment_method_type: payment_method_type || null,
         status: 'completed',
         stripe_session_id: session_id,
+        stripe_payment_intent_id: paymentIntentId,
         payment_type: payment_type,
-        notes: `${payment_type?.replace(/_/g, ' ')} via Stripe`,
+        notes: convenienceFeeInDollars > 0
+          ? `${payment_type?.replace(/_/g, ' ')} via Stripe - card fee: $${convenienceFeeInDollars.toFixed(2)}`
+          : `${payment_type?.replace(/_/g, ' ')} via Stripe`,
       })
       .select()
       .single();
 
     if (insertError) {
       console.error("[VERIFY-PAYMENT] Insert error:", insertError);
+      if (insertError.code === '23505') {
+        const { data: racedPayment } = await supabaseAdmin
+          .from('payments')
+          .select('id, status, payment_type')
+          .or(`stripe_session_id.eq.${session_id}${paymentIntentId ? `,stripe_payment_intent_id.eq.${paymentIntentId}` : ''}`)
+          .limit(1)
+          .maybeSingle();
+
+        if (racedPayment) {
+          if (racedPayment.status !== 'completed') {
+            const paymentUpdate: Record<string, unknown> = {
+              status: 'completed',
+              stripe_session_id: session_id,
+            };
+
+            if (paymentIntentId) {
+              paymentUpdate.stripe_payment_intent_id = paymentIntentId;
+            }
+
+            const { error: updateError } = await supabaseAdmin
+              .from('payments')
+              .update(paymentUpdate)
+              .eq('id', racedPayment.id);
+
+            if (updateError) {
+              throw new Error(`Failed to mark payment completed: ${updateError.message}`);
+            }
+          }
+
+          const balanceResult = await applyCompletedPaymentToBalance(
+            supabaseAdmin,
+            racedPayment.id,
+            payment_type || racedPayment.payment_type,
+            userId,
+            convenienceFeeInDollars
+          );
+
+          return new Response(JSON.stringify({
+            success: true,
+            payment_id: racedPayment.id,
+            already_recorded: true,
+            payment_type,
+            amount: amountInDollars,
+            balanceResult,
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
+          });
+        }
+      }
       throw new Error(`Failed to record payment: ${insertError.message}`);
     }
 
     console.log("[VERIFY-PAYMENT] Payment recorded:", newPayment.id);
 
-    // Update tenant balance for balance and rent payments
-    if (payment_type === 'balance' || payment_type === 'rent') {
-      console.log("[VERIFY-PAYMENT] Updating tenant balance for:", resolvedTenantId);
-
-      // Get current balance
-      const { data: tenantData, error: tenantFetchError } = await supabaseAdmin
-        .from('tenants')
-        .select('current_balance')
-        .eq('id', resolvedTenantId)
-        .single();
-
-      if (tenantFetchError) {
-        console.error("[VERIFY-PAYMENT] Failed to fetch tenant balance:", tenantFetchError);
-      } else {
-        const previousBalance = tenantData?.current_balance || 0;
-        const newBalance = previousBalance - amountInDollars;
-
-        console.log("[VERIFY-PAYMENT] Balance update:", { previousBalance, amountInDollars, newBalance });
-
-        // Update tenant balance
-        const { error: updateError } = await supabaseAdmin
-          .from('tenants')
-          .update({ current_balance: newBalance })
-          .eq('id', resolvedTenantId);
-
-        if (updateError) {
-          console.error("[VERIFY-PAYMENT] Failed to update balance:", updateError);
-        } else {
-          console.log("[VERIFY-PAYMENT] Balance updated successfully");
-
-          // Insert balance adjustment record
-          const { error: adjustmentError } = await supabaseAdmin
-            .from('balance_adjustments')
-            .insert({
-              tenant_id: resolvedTenantId,
-              adjustment_type: 'payment',
-              amount: amountInDollars,
-              previous_balance: previousBalance,
-              new_balance: newBalance,
-              description: `Stripe ${payment_type} payment`,
-              created_by: userId,
-            });
-
-          if (adjustmentError) {
-            console.error("[VERIFY-PAYMENT] Failed to insert balance adjustment:", adjustmentError);
-          } else {
-            console.log("[VERIFY-PAYMENT] Balance adjustment recorded");
-          }
-        }
-      }
-    }
+    const balanceResult = await applyCompletedPaymentToBalance(
+      supabaseAdmin,
+      newPayment.id,
+      payment_type,
+      userId,
+      convenienceFeeInDollars
+    );
 
     return new Response(JSON.stringify({ 
       success: true, 
       payment_id: newPayment.id,
       payment_type,
       amount: amountInDollars,
+      balanceResult,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

@@ -120,14 +120,17 @@ export function AuditDashboard() {
 
   // Calculate summary stats
   const summary = useMemo(() => {
-    const totalCollected = filteredPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const transactionCount = filteredPayments.length;
+    const completedPayments = filteredPayments.filter((p) => p.status === 'completed');
+    const pendingPayments = filteredPayments.filter((p) => p.status === 'processing');
+    const totalCollected = completedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const pendingACH = pendingPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const transactionCount = completedPayments.length;
     const avgTransaction = transactionCount > 0 ? totalCollected / transactionCount : 0;
 
     // Group by property or tenant
     const groupedData = viewMode === 'property'
       ? properties.map(property => {
-          const propertyPayments = filteredPayments.filter(p => p.property_id === property.id);
+          const propertyPayments = completedPayments.filter(p => p.property_id === property.id);
           const amount = propertyPayments.reduce((sum, p) => sum + Number(p.amount), 0);
           return {
             id: property.id,
@@ -138,7 +141,7 @@ export function AuditDashboard() {
         }).filter(item => item.count > 0).sort((a, b) => b.amount - a.amount)
       : tenants.map(tenant => {
           // Compare payment.tenant_id to tenant.id (the tenant record ID)
-          const tenantPayments = filteredPayments.filter(p => p.tenant_id === tenant.id);
+          const tenantPayments = completedPayments.filter(p => p.tenant_id === tenant.id);
           const amount = tenantPayments.reduce((sum, p) => sum + Number(p.amount), 0);
           const property = properties.find(p => p.id === tenant.property_id);
           return {
@@ -151,6 +154,7 @@ export function AuditDashboard() {
 
     return {
       totalCollected,
+      pendingACH,
       transactionCount,
       avgTransaction,
       groupedData,
@@ -304,7 +308,7 @@ export function AuditDashboard() {
       </Card>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card className="relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-transparent" />
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -342,6 +346,17 @@ export function AuditDashboard() {
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(summary.avgTransaction)}</div>
             <p className="text-xs text-muted-foreground mt-1">Per payment</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Pending ACH</CardTitle>
+            <TrendingDown className="h-4 w-4 text-amber-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-500">{formatCurrency(summary.pendingACH)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Submitted, not yet cleared</p>
           </CardContent>
         </Card>
       </div>

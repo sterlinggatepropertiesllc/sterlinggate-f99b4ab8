@@ -640,6 +640,8 @@ export type Database = {
       payments: {
         Row: {
           amount: number
+          balance_adjustment_id: string | null
+          balance_applied_at: string | null
           convenience_fee: number | null
           created_at: string
           id: string
@@ -657,6 +659,8 @@ export type Database = {
         }
         Insert: {
           amount: number
+          balance_adjustment_id?: string | null
+          balance_applied_at?: string | null
           convenience_fee?: number | null
           created_at?: string
           id?: string
@@ -674,6 +678,8 @@ export type Database = {
         }
         Update: {
           amount?: number
+          balance_adjustment_id?: string | null
+          balance_applied_at?: string | null
           convenience_fee?: number | null
           created_at?: string
           id?: string
@@ -690,6 +696,13 @@ export type Database = {
           tenant_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "payments_balance_adjustment_id_fkey"
+            columns: ["balance_adjustment_id"]
+            isOneToOne: false
+            referencedRelation: "balance_adjustments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "payments_lease_id_fkey"
             columns: ["lease_id"]
@@ -1236,6 +1249,14 @@ export type Database = {
           _created_by?: string
           _description?: string
           _tenant_id: string
+        }
+        Returns: Json
+      }
+      record_payment_balance_adjustment: {
+        Args: {
+          _created_by?: string
+          _description?: string
+          _payment_id: string
         }
         Returns: Json
       }
