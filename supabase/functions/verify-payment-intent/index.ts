@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
+type SupabaseAdminClient = ReturnType<typeof createClient>;
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -12,7 +14,7 @@ interface VerifyRequest {
 }
 
 async function applyCompletedPaymentToBalance(
-  supabaseAdmin: any,
+  supabaseAdmin: SupabaseAdminClient,
   paymentId: string,
   paymentType: string | undefined,
   userId: string | undefined,
@@ -41,7 +43,7 @@ async function applyCompletedPaymentToBalance(
 
 // Helper function to send Discord notification if enabled
 async function sendDiscordNotificationIfEnabled(
-  supabaseAdmin: any,
+  supabaseAdmin: SupabaseAdminClient,
   managerId: string,
   notification: {
     title: string;

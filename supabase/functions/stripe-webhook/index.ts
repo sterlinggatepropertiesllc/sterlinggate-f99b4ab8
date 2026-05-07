@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+
+type SupabaseAdminClient = ReturnType<typeof createClient>;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,8 +19,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // deno-lint-ignore no-explicit-any
-  const supabaseAdmin: SupabaseClient<any> = createClient(
+  const supabaseAdmin = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     { auth: { persistSession: false } }
@@ -120,8 +121,7 @@ serve(async (req) => {
 });
 
 async function sendDiscordNotificationIfEnabled(
-  // deno-lint-ignore no-explicit-any
-  supabaseAdmin: SupabaseClient<any>,
+  supabaseAdmin: SupabaseAdminClient,
   managerId: string,
   notification: {
     title: string;
@@ -189,8 +189,7 @@ function getPaymentAmounts(paymentIntent: Stripe.PaymentIntent) {
 
 async function handleCheckoutSessionCompleted(
   stripe: Stripe,
-  // deno-lint-ignore no-explicit-any
-  supabaseAdmin: SupabaseClient<any>,
+  supabaseAdmin: SupabaseAdminClient,
   session: Stripe.Checkout.Session
 ) {
   logStep("Processing checkout.session.completed", {
@@ -228,8 +227,7 @@ async function handleCheckoutSessionCompleted(
 }
 
 async function ensureApplicantTenant(
-  // deno-lint-ignore no-explicit-any
-  supabaseAdmin: SupabaseClient<any>,
+  supabaseAdmin: SupabaseAdminClient,
   propertyId: string,
   userId: string
 ) {
@@ -274,8 +272,7 @@ async function ensureApplicantTenant(
 }
 
 async function resolvePaymentContext(
-  // deno-lint-ignore no-explicit-any
-  supabaseAdmin: SupabaseClient<any>,
+  supabaseAdmin: SupabaseAdminClient,
   metadata: Stripe.Metadata
 ) {
   const { payment_type, property_id, lease_id, tenant_id, user_id } = metadata || {};
@@ -344,8 +341,7 @@ async function resolvePaymentContext(
 }
 
 async function handlePaymentProcessing(
-  // deno-lint-ignore no-explicit-any
-  supabaseAdmin: SupabaseClient<any>,
+  supabaseAdmin: SupabaseAdminClient,
   paymentIntent: Stripe.PaymentIntent,
   checkoutSessionId?: string
 ) {
@@ -401,8 +397,7 @@ async function handlePaymentProcessing(
 }
 
 async function handlePaymentSucceeded(
-  // deno-lint-ignore no-explicit-any
-  supabaseAdmin: SupabaseClient<any>,
+  supabaseAdmin: SupabaseAdminClient,
   paymentIntent: Stripe.PaymentIntent,
   checkoutSessionId?: string
 ) {
@@ -550,8 +545,7 @@ async function handlePaymentSucceeded(
 }
 
 async function notifyPaymentCleared(
-  // deno-lint-ignore no-explicit-any
-  supabaseAdmin: SupabaseClient<any>,
+  supabaseAdmin: SupabaseAdminClient,
   tenantId: string,
   paymentId: string,
   amountInDollars: number,
@@ -589,8 +583,7 @@ async function notifyPaymentCleared(
 }
 
 async function handlePaymentFailed(
-  // deno-lint-ignore no-explicit-any
-  supabaseAdmin: SupabaseClient<any>,
+  supabaseAdmin: SupabaseAdminClient,
   paymentIntent: Stripe.PaymentIntent,
   fallbackReason = "Payment failed"
 ) {
@@ -673,8 +666,7 @@ async function handlePaymentFailed(
 }
 
 async function applyLateFeeIfApplicable(
-  // deno-lint-ignore no-explicit-any
-  supabaseAdmin: SupabaseClient<any>,
+  supabaseAdmin: SupabaseAdminClient,
   tenantId: string,
   managerId: string,
   tenantName: string
@@ -727,8 +719,7 @@ async function applyLateFeeIfApplicable(
 
       if (lateFee > 0) {
         totalLateFee += lateFee;
-        // deno-lint-ignore no-explicit-any
-        const propertyAddress = (tp.property as any)?.address || "Unknown property";
+        const propertyAddress = (tp.property as { address?: string } | null)?.address || "Unknown property";
         lateFeeDetails.push(`$${lateFee.toFixed(2)} for ${propertyAddress}`);
       }
     }
@@ -781,8 +772,7 @@ async function applyLateFeeIfApplicable(
  * The RPC locks the payment row and refuses to apply the same payment twice.
  */
 async function applyBalanceViaRPC(
-  // deno-lint-ignore no-explicit-any
-  supabaseAdmin: SupabaseClient<any>,
+  supabaseAdmin: SupabaseAdminClient,
   paymentId: string,
   paymentType: string,
   userId?: string,
