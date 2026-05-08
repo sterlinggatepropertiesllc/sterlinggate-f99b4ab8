@@ -75,14 +75,15 @@ interface PriorityAction {
   action: () => void;
 }
 
-const currency = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  maximumFractionDigits: 0,
-});
-
 function formatCurrency(value: number) {
-  return currency.format(Number.isFinite(value) ? value : 0);
+  const amount = Number.isFinite(value) ? value : 0;
+  const hasCents = Math.abs(amount % 1) > 0.001;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
+  }).format(amount);
 }
 
 function formatPercent(value: number) {
@@ -666,14 +667,14 @@ export function AdminCommandCenter({
             </div>
           </div>
           <div className="grid grid-cols-4 gap-1.5">
-            <QuickAction label="Create Invoice" icon={FilePlus2} onClick={() => onNavigateTab('audit')} />
-            <QuickAction label="Record Payment" icon={DollarSign} onClick={() => onNavigateTab('audit', { paymentFilter: 'all' as PaymentControlFilter })} />
-            <QuickAction label="Add Work Order" icon={Wrench} onClick={() => onNavigateTab('maintenance')} />
-            <QuickAction label="New Application" icon={UserPlus} onClick={() => onNavigateTab('applications')} />
+            <QuickAction label="Payments" icon={FilePlus2} onClick={() => onNavigateTab('audit')} />
+            <QuickAction label="Ledger Review" icon={DollarSign} onClick={() => onNavigateTab('audit', { paymentFilter: 'all' as PaymentControlFilter })} />
+            <QuickAction label="Work Orders" icon={Wrench} onClick={() => onNavigateTab('maintenance')} />
+            <QuickAction label="Applications" icon={UserPlus} onClick={() => onNavigateTab('applications')} />
             <QuickAction label="Create Lease" icon={FilePlus2} onClick={onCreateLease} />
             <QuickAction label="Add Tenant" icon={UserPlus} onClick={onAddTenant} />
             <QuickAction label="Add Property" icon={Home} onClick={onAddProperty} />
-            <QuickAction label="Bulk Message" icon={MessageSquare} onClick={() => onNavigateTab('messages')} />
+            <QuickAction label="Messages" icon={MessageSquare} onClick={() => onNavigateTab('messages')} />
           </div>
         </div>
       </section>

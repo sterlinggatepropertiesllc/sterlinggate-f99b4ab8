@@ -59,6 +59,17 @@ function shortId(value: string | null | undefined) {
   return value.length > 14 ? `${value.slice(0, 8)}...${value.slice(-4)}` : value;
 }
 
+function formatCurrency(value: number) {
+  const amount = Number.isFinite(value) ? value : 0;
+  const hasCents = Math.abs(amount % 1) > 0.001;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
+  }).format(amount);
+}
+
 export function AdminGlobalSearch({
   properties,
   tenants,
@@ -90,7 +101,7 @@ export function AdminGlobalSearch({
         type: 'Tenant' as const,
         title: tenant.user?.full_name || tenant.user?.email || 'Unnamed tenant',
         detail: tenant.primary_property?.address || tenant.user?.email || 'No property assigned',
-        meta: Number(tenant.current_balance || 0) > 0 ? `$${Number(tenant.current_balance).toLocaleString()} due` : 'Current',
+        meta: Number(tenant.current_balance || 0) > 0 ? `${formatCurrency(Number(tenant.current_balance))} due` : 'Current',
         icon: Users,
         action: () => onOpenTenant(tenant.id),
       })),
@@ -109,7 +120,7 @@ export function AdminGlobalSearch({
         return {
           id: `payment-${payment.id}`,
           type: 'Payment' as const,
-          title: `$${Number(payment.amount).toLocaleString()} ${payment.status}`,
+          title: `${formatCurrency(Number(payment.amount))} ${payment.status}`,
           detail: tenant?.user?.full_name || property?.address || payment.stripe_payment_intent_id || payment.id,
           meta: shortId(payment.stripe_payment_intent_id || payment.stripe_session_id || payment.id),
           icon: Banknote,

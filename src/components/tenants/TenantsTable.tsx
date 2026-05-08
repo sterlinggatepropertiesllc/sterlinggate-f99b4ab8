@@ -6,8 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  Filter,
-  LayoutGrid,
   MessageSquare,
   MoreHorizontal,
   Phone,
@@ -51,11 +49,14 @@ type LeaseStatus = 'active' | 'pending' | 'expired' | 'unassigned';
 type SortMode = 'name' | 'balance' | 'payment' | 'due';
 
 function formatCurrency(value: number) {
+  const amount = Number.isFinite(value) ? value : 0;
+  const hasCents = Math.abs(amount % 1) > 0.001;
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(Number.isFinite(value) ? value : 0);
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
+  }).format(amount);
 }
 
 function formatDate(value?: string | null) {
@@ -359,10 +360,6 @@ export function TenantsTable({
             className="h-9 rounded-md border-border/70 bg-card pl-9 text-xs"
           />
         </div>
-          <Button variant="outline" className="h-9 gap-2 border-border/70 bg-card text-xs text-muted-foreground">
-            <Filter className="h-3.5 w-3.5" />
-            Filters
-          </Button>
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as 'all' | LeaseStatus)}
@@ -398,9 +395,6 @@ export function TenantsTable({
             <option value="payment">Sort by: Last payment</option>
             <option value="due">Sort by: Next due</option>
           </select>
-          <Button variant="outline" size="icon" className="h-9 w-9 border-border/70 bg-card text-muted-foreground">
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
         </div>
       </div>
 
@@ -421,17 +415,18 @@ export function TenantsTable({
           <tbody className="divide-y divide-border/45">
             {visibleTenants.map(({ tenant, health, status }) => {
               const lastPayment = health.lastCompletedPayment;
-              const balanceTone = health.hasBalanceDue ? 'text-destructive' : health.hasCredit ? 'text-primary' : health.needsSetupReview ? 'text-warning' : 'text-success';
+              const needsSetup = health.needsSetupReview || status === 'unassigned';
+              const balanceTone = health.hasBalanceDue ? 'text-destructive' : health.hasCredit ? 'text-primary' : needsSetup ? 'text-warning' : 'text-success';
               const totalRent = Number(tenant.assignment_rent_total || tenant.primary_rent_amount || 0);
-              const nextDueAmount = health.needsSetupReview ? 0 : Math.max(totalRent, health.hasBalanceDue ? health.effectiveBalance : 0);
-              const financialStatus = health.needsSetupReview
+              const nextDueAmount = needsSetup ? 0 : Math.max(totalRent, health.hasBalanceDue ? health.effectiveBalance : 0);
+              const financialStatus = needsSetup
                 ? 'Setup review'
                 : health.hasBalanceDue
                   ? 'Balance due'
                   : health.pendingACH > 0
                     ? 'ACH pending'
                     : 'Healthy';
-              const financialClass = health.needsSetupReview
+              const financialClass = needsSetup
                 ? 'border-warning/30 bg-warning/10 text-warning'
                 : health.hasBalanceDue
                   ? 'border-destructive/30 bg-destructive/10 text-destructive'
@@ -476,7 +471,7 @@ export function TenantsTable({
                       {financialStatus}
                     </Badge>
                     <p className={`mt-1 text-[10px] ${balanceTone}`}>
-                      {health.needsSetupReview ? `${formatCurrency(health.currentBalance)} ledger balance` : balanceLabel(health.effectiveBalance)}
+                      {needsSetup ? 'No active billing source' : balanceLabel(health.effectiveBalance)}
                     </p>
                   </td>
                   <td className="px-4 py-3">
@@ -493,7 +488,7 @@ export function TenantsTable({
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-primary">{health.needsSetupReview ? '--' : tenant.primary_lease_end ? formatDate(tenant.primary_lease_end) : 'May 1, 2026'}</p>
+                    <p className="text-primary">{needsSetup ? '--' : tenant.primary_lease_end ? formatDate(tenant.primary_lease_end) : 'May 1, 2026'}</p>
                     <p className={health.hasBalanceDue ? 'font-medium text-destructive' : 'font-medium text-primary'}>{nextDueAmount ? formatCurrency(nextDueAmount) : '--'}</p>
                   </td>
                   <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
@@ -501,7 +496,14 @@ export function TenantsTable({
                       <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md border border-border/60 bg-card/40 text-muted-foreground hover:text-primary" onClick={() => onNavigate(tenant.id)}>
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md border border-border/60 bg-card/40 text-muted-foreground hover:text-primary">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-md border border-border/60 bg-card/40 text-muted-foreground hover:text-primary"
+                        onClick={() => {
+                          window.location.href = '/dashboard?tab=messages';
+                        }}
+                      >
                         <MessageSquare className="h-3.5 w-3.5" />
                       </Button>
                       <DeleteTenantButton tenant={tenant} deletingTenantId={deletingTenantId} onDelete={handleDelete} />

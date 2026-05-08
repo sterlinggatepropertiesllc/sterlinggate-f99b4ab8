@@ -94,11 +94,14 @@ type PropertyStatusFilter = 'all' | 'occupied' | 'available' | 'off_market';
 type PropertySortMode = 'newest' | 'rent-high' | 'rent-low' | 'address';
 
 function formatAdminCurrency(value: number) {
+  const amount = Number.isFinite(value) ? value : 0;
+  const hasCents = Math.abs(amount % 1) > 0.001;
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(Number.isFinite(value) ? value : 0);
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
+  }).format(amount);
 }
 
 const AnalyticsDashboard = lazy(() =>

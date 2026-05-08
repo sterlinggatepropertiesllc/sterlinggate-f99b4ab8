@@ -46,6 +46,7 @@ import { useUnreadCount } from '@/hooks/useMessages';
 import { useUnreadPaymentNotifications } from '@/hooks/useUnreadPaymentNotifications';
 import { useUnreadInquiriesCount } from '@/hooks/useInquiries';
 import { useProfile } from '@/hooks/useProfiles';
+import { useApplyLateFee, useRentCharges } from '@/hooks/useRentCharges';
 import { computeTenantFinancialHealth } from '@/lib/paymentReliability';
 import type { AdminDashboardTab, TenantRecord } from '@/components/admin/adminTypes';
 import logo from '@/assets/logo.png';
@@ -53,11 +54,14 @@ import logo from '@/assets/logo.png';
 type DetailTab = 'overview' | 'properties' | 'balance' | 'history';
 
 function formatCurrency(value: number) {
+  const amount = Number.isFinite(value) ? value : 0;
+  const hasCents = Math.abs(amount % 1) > 0.001;
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(Number.isFinite(value) ? value : 0);
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
+  }).format(amount);
 }
 
 function formatDate(value?: string | null) {
@@ -103,6 +107,7 @@ function KpiTile({
   icon: Icon,
   tone,
   action,
+  onAction,
 }: {
   label: string;
   value: string;
@@ -110,6 +115,7 @@ function KpiTile({
   icon: typeof Wallet;
   tone: 'gold' | 'red' | 'green';
   action?: string;
+  onAction?: () => void;
 }) {
   const toneClass = tone === 'red' ? 'text-destructive border-destructive/30 bg-destructive/10' : tone === 'green' ? 'text-success border-success/30 bg-success/10' : 'text-primary border-primary/30 bg-primary/10';
 
@@ -125,7 +131,7 @@ function KpiTile({
           <p className="mt-1 text-[10px] text-muted-foreground">{detail}</p>
         </div>
         {action && (
-          <button className="text-[10px] text-primary">
+          <button type="button" onClick={onAction} className="text-[10px] text-primary hover:text-primary/80">
             {action} <ArrowRight className="inline h-3 w-3" />
           </button>
         )}
@@ -137,10 +143,12 @@ function KpiTile({
 function InfoPanel({
   title,
   action,
+  onAction,
   children,
 }: {
   title: string;
   action?: string;
+  onAction?: () => void;
   children: React.ReactNode;
 }) {
   return (
@@ -148,7 +156,7 @@ function InfoPanel({
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="ops-label text-foreground">{title}</p>
         {action && (
-          <Button variant="outline" size="sm" className="h-7 border-border/70 bg-card px-2 text-[10px]">
+          <Button variant="outline" size="sm" onClick={onAction} className="h-7 border-border/70 bg-card px-2 text-[10px]">
             {action}
           </Button>
         )}
@@ -285,6 +293,8 @@ export default function TenantDetail() {
   const { unreadPaymentCount } = useUnreadPaymentNotifications();
   const { data: unreadInquiriesCount = 0 } = useUnreadInquiriesCount(user?.id);
   const { data: tenantPayments = [] } = usePayments(undefined, tenantId);
+  const { data: rentCharges = [] } = useRentCharges(tenantId);
+  const applyLateFee = useApplyLateFee();
 
   const { data: tenant, isLoading, refetch } = useQuery({
     queryKey: ['tenant-detail', tenantId],
@@ -317,6 +327,7 @@ export default function TenantDetail() {
       const { data: tenantProperties } = await supabase
         .from('tenant_properties')
         .select(`
+          id,
           tenant_id,
           is_primary,
           rent_amount,
@@ -334,10 +345,16 @@ export default function TenantDetail() {
         .eq('tenant_id', tenantId);
 
       const primary = tenantProperties?.find((item) => item.is_primary) || tenantProperties?.[0];
+      const assignmentRentTotal = (tenantProperties || []).reduce(
+        (sum, item) => sum + Number(item.rent_amount || item.property?.rent_amount || 0),
+        0
+      );
       return {
         ...data,
         primary_property: primary?.property || data.property || null,
         primary_rent_amount: primary?.rent_amount || data.rent_amount || null,
+        assignment_rent_total: assignmentRentTotal || primary?.rent_amount || null,
+        active_assignment_count: tenantProperties?.length || 0,
         primary_lease_start: primary?.lease_start_date || data.lease_start_date || null,
         primary_lease_end: primary?.lease_end_date || data.lease_end_date || null,
         additional_properties_count: Math.max(0, (tenantProperties?.length || 0) - 1),
@@ -396,22 +413,75 @@ export default function TenantDetail() {
 
   const managerName = managerProfile?.full_name || managerProfile?.email || user.email || 'Alex Morgan';
   const managerEmail = managerProfile?.email || user.email || '';
-  const activeLease = leases.find((lease) => lease.tenant_id === tenant.user_id);
+  const now = new Date();
+  const tenantLeases = leases
+    .filter((lease) => lease.tenant_id === tenant.user_id)
+    .sort((a, b) => new Date(b.created_at || b.start_date).getTime() - new Date(a.created_at || a.start_date).getTime());
+  const activeLease = tenantLeases.find(
+    (lease) =>
+      lease.status === 'completed' &&
+      new Date(lease.start_date) <= now &&
+      new Date(lease.end_date) >= now
+  );
+  const displayLease = activeLease || tenantLeases.find((lease) => ['pending_manager_signature', 'pending_tenant_signature'].includes(lease.status));
   const tenantHealth = computeTenantFinancialHealth(tenant, allPayments);
   const completedPayments = tenantPayments.filter((payment) => payment.status === 'completed');
   const lastPayment = completedPayments[0] as Payment | undefined;
   const paymentHistoryLabel = completedPayments.length > 0
     ? `${completedPayments.length} completed payment${completedPayments.length === 1 ? '' : 's'}`
     : 'No completed payments';
-  const monthlyRent = Number(tenant.primary_rent_amount || activeLease?.monthly_rent || tenant.rent_amount || 0);
-  const currentBalance = Number(tenant.current_balance || 0);
-  const leaseMonths = monthsBetween(tenant.primary_lease_start || activeLease?.start_date, tenant.primary_lease_end || activeLease?.end_date);
+  const assignmentCount = Number(tenant.active_assignment_count || 0);
+  const assignmentRentTotal = Number(tenant.assignment_rent_total || 0);
+  const monthlyRent = Number(assignmentRentTotal || tenant.primary_rent_amount || activeLease?.monthly_rent || tenant.rent_amount || 0);
+  const ledgerBalance = Number(tenant.current_balance || 0);
+  const effectiveBalance = tenantHealth.needsSetupReview ? 0 : tenantHealth.effectiveBalance;
+  const displayBalance = Math.abs(effectiveBalance) < 0.01 ? 0 : effectiveBalance;
+  const hasBalanceDue = displayBalance > 0;
+  const hasCredit = displayBalance < 0;
+  const needsSetupReview = tenantHealth.needsSetupReview || (!assignmentCount && Boolean(displayLease && displayLease.status !== 'completed'));
+  const balanceDetail = tenantHealth.pendingACH > 0
+    ? `${formatCurrency(ledgerBalance)} official minus pending ACH`
+    : needsSetupReview && ledgerBalance > 0
+      ? `${formatCurrency(ledgerBalance)} held for setup review`
+      : hasBalanceDue
+        ? `${formatCurrency(ledgerBalance)} official ledger`
+        : hasCredit
+          ? 'Credit on account'
+          : 'No collectible balance';
+  const leaseMonths = monthsBetween(tenant.primary_lease_start || displayLease?.start_date, tenant.primary_lease_end || displayLease?.end_date);
+  const lateFeeCandidate = rentCharges.find((charge) => charge.status === 'pending' && !charge.late_fee_applied && !charge.late_fee_waived);
+  const primaryPropertyLabel = tenant.primary_property?.address || activeLease?.properties?.address || 'No active assignment';
+  const tenantStatusLabel = needsSetupReview ? 'Setup Review' : assignmentCount || activeLease ? 'Active' : 'Unassigned';
+  const leaseStartDate = tenant.primary_lease_start || displayLease?.start_date || null;
+  const leaseEndDate = tenant.primary_lease_end || displayLease?.end_date || null;
+  const leaseDetail = leaseEndDate ? `Ends ${formatDate(leaseEndDate)}` : displayLease ? 'Lease setup in progress' : 'No lease selected';
+  const nextRentChargeLabel = monthlyRent > 0 ? `${formatCurrency(monthlyRent)} on the 1st` : 'No active billing source';
+  const paymentDayLabel = monthlyRent > 0 ? '1st of each month' : '--';
+  const lateFeeLabel = monthlyRent > 0 ? '5% after 5 days' : 'Inactive until billing source exists';
   const navCounts = {
     applications: applications.filter((application) => ['pending', 'under_review'].includes(application.status)).length,
     leases: leases.filter((lease) => lease.status !== 'completed').length,
     messages: unreadCount,
     inquiries: unreadInquiriesCount,
     audit: unreadPaymentCount,
+  };
+
+  const handleOpenLease = () => {
+    if (displayLease?.id) {
+      navigate(`/sign-lease/${displayLease.id}`);
+      return;
+    }
+    setActiveTab('properties');
+  };
+
+  const handleApplyLateFee = async () => {
+    if (!lateFeeCandidate) return;
+    await applyLateFee.mutateAsync({
+      rent_charge_id: lateFeeCandidate.id,
+      tenant_id: tenant.id,
+      created_by: user.id,
+    });
+    refetch();
   };
 
   return (
@@ -476,22 +546,33 @@ export default function TenantDetail() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-3">
                       <h1 className="truncate text-2xl font-semibold tracking-tight">{tenantName(tenant)}</h1>
-                      <Badge variant="outline" className="border-success/30 bg-success/10 text-success">Active</Badge>
+                      <Badge
+                        variant="outline"
+                        className={
+                          needsSetupReview
+                            ? 'border-primary/30 bg-primary/10 text-primary'
+                            : assignmentCount || activeLease
+                              ? 'border-success/30 bg-success/10 text-success'
+                              : 'border-muted-foreground/25 bg-muted/20 text-muted-foreground'
+                        }
+                      >
+                        {tenantStatusLabel}
+                      </Badge>
                     </div>
                     <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-cyan-300" />{tenant.user?.email || 'No email'}</span>
                       <span className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-cyan-300" />{tenant.user?.phone || 'No phone'}</span>
-                      <span className="flex items-center gap-1.5"><Home className="h-3.5 w-3.5 text-muted-foreground" />{tenant.primary_property?.address || 'No assigned property'}</span>
-                      <span className="flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />Resident since {formatDate(tenant.primary_lease_start || tenant.created_at)}</span>
+                      <span className="flex items-center gap-1.5"><Home className="h-3.5 w-3.5 text-muted-foreground" />{primaryPropertyLabel}</span>
+                      <span className="flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />{assignmentCount ? `Resident since ${formatDate(tenant.primary_lease_start || tenant.created_at)}` : 'Assignment required before billing'}</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="grid gap-3 sm:min-w-[360px] md:grid-cols-2">
-                  <KpiTile label="Current Balance" value={formatCurrency(currentBalance)} detail={currentBalance > 0 ? 'Open ledger balance' : 'No balance due'} icon={Wallet} tone={currentBalance > 0 ? 'red' : 'green'} />
-                  <KpiTile label="Monthly Rent" value={formatCurrency(monthlyRent)} detail="Due on the 1st" icon={Home} tone="gold" />
+                  <KpiTile label="Current Balance" value={formatCurrency(displayBalance)} detail={balanceDetail} icon={Wallet} tone={hasBalanceDue ? 'red' : 'green'} />
+                  <KpiTile label="Monthly Rent" value={formatCurrency(monthlyRent)} detail={assignmentCount > 1 ? `${assignmentCount} assigned units` : assignmentCount === 1 ? '1 assigned unit' : 'No active billing source'} icon={Home} tone="gold" />
                   <KpiTile label="Last Payment" value={lastPayment ? formatCurrency(Number(lastPayment.amount)) : '--'} detail={lastPayment ? formatDate(lastPayment.payment_date) : 'No payment recorded'} icon={CheckCircle2} tone="green" />
-                  <KpiTile label="Lease Term / Renewal" value={leaseMonths ? `${leaseMonths} mo` : '--'} detail={`Renews ${formatDate(tenant.primary_lease_end || activeLease?.end_date)}`} icon={CalendarDays} tone="gold" action="View Lease" />
+                  <KpiTile label="Lease / Setup" value={leaseMonths ? `${leaseMonths} mo` : tenantStatusLabel} detail={leaseDetail} icon={CalendarDays} tone="gold" action={displayLease ? 'Open Lease' : 'Manage'} onAction={handleOpenLease} />
                 </div>
               </div>
             </section>
@@ -514,7 +595,7 @@ export default function TenantDetail() {
 
               <TabsContent value="overview" className="mt-3 animate-fade-in">
                 <div className="grid gap-3 lg:grid-cols-[1.1fr_1fr_1.15fr]">
-                  <InfoPanel title="Profile & Contact" action="Edit">
+                  <InfoPanel title="Profile & Contact">
                     <DetailRow icon={UserRound} label="Full Name" value={tenantName(tenant)} />
                     <DetailRow icon={Mail} label="Email" value={tenant.user?.email || 'No email'} />
                     <DetailRow icon={Phone} label="Phone" value={tenant.user?.phone || 'No phone'} />
@@ -523,30 +604,30 @@ export default function TenantDetail() {
                     <DetailRow icon={ShieldCheck} label="ID / Notes" value="Not on file" />
                   </InfoPanel>
 
-                  <InfoPanel title="Lease & Property" action="View Lease">
-                    <DetailRow icon={Home} label="Property" value={tenant.primary_property?.address || '--'} />
-                    <DetailRow icon={Building2} label="Unit" value={`Unit ${shortId(tenant.primary_property?.id)}`} />
-                    <DetailRow icon={CalendarDays} label="Lease Start" value={formatDate(tenant.primary_lease_start || activeLease?.start_date)} />
-                    <DetailRow icon={CalendarDays} label="Lease End" value={formatDate(tenant.primary_lease_end || activeLease?.end_date)} />
-                    <DetailRow icon={Users} label="Occupancy" value="Not tracked" />
-                    <DetailRow icon={Receipt} label="Payment Day" value="1st of each month" />
+                  <InfoPanel title="Lease & Property" action={displayLease ? 'Open Lease' : 'Manage'} onAction={handleOpenLease}>
+                    <DetailRow icon={Home} label="Property" value={primaryPropertyLabel} />
+                    <DetailRow icon={Building2} label="Units Assigned" value={assignmentCount ? `${assignmentCount}` : 'None'} />
+                    <DetailRow icon={CalendarDays} label="Lease Start" value={formatDate(leaseStartDate)} />
+                    <DetailRow icon={CalendarDays} label="Lease End" value={formatDate(leaseEndDate)} />
+                    <DetailRow icon={Users} label="Billing Source" value={assignmentCount ? 'Tenant-property assignment' : displayLease?.status === 'completed' ? 'Completed lease' : 'Setup review'} />
+                    <DetailRow icon={Receipt} label="Payment Day" value={paymentDayLabel} />
                     <DetailRow icon={Wallet} label="Rent Amount" value={formatCurrency(monthlyRent)} />
                     <DetailRow icon={ShieldCheck} label="Security Deposit" value="Not tracked" />
                   </InfoPanel>
 
-                  <InfoPanel title="Financial Summary" action="View Ledger">
-                    <DetailRow icon={Wallet} label="Current Balance" value={formatCurrency(currentBalance)} tone={currentBalance > 0 ? 'text-destructive' : 'text-success'} />
-                    <DetailRow icon={Receipt} label="Next Rent Charge" value={`${formatCurrency(monthlyRent)} on the 1st`} />
+                  <InfoPanel title="Financial Summary" action="Open Ledger" onAction={() => setActiveTab('balance')}>
+                    <DetailRow icon={Wallet} label="Current Balance" value={formatCurrency(displayBalance)} tone={hasBalanceDue ? 'text-destructive' : 'text-success'} />
+                    <DetailRow icon={Receipt} label="Next Rent Charge" value={nextRentChargeLabel} />
                     <DetailRow icon={BanknoteIcon} label="Pending ACH" value={tenantHealth.pendingACH ? `${formatCurrency(tenantHealth.pendingACH)} pending` : '--'} tone="text-primary" />
-                    <DetailRow icon={ShieldCheck} label="Available Credit" value={tenantHealth.hasCredit ? formatCurrency(Math.abs(tenantHealth.effectiveBalance)) : '$0'} />
+                    <DetailRow icon={ShieldCheck} label="Available Credit" value={hasCredit ? formatCurrency(Math.abs(displayBalance)) : '$0'} />
                     <DetailRow icon={CheckCircle2} label="Autopay" value="Not configured" />
-                    <DetailRow icon={ShieldCheck} label="Credit Health" value={tenantHealth.hasBalanceDue ? 'Needs review' : 'Healthy'} tone={tenantHealth.hasBalanceDue ? 'text-warning' : 'text-success'} />
+                    <DetailRow icon={ShieldCheck} label="Credit Health" value={needsSetupReview ? 'Setup review' : hasBalanceDue ? 'Balance due' : 'Healthy'} tone={needsSetupReview || hasBalanceDue ? 'text-warning' : 'text-success'} />
                     <DetailRow icon={Receipt} label="Payment History" value={paymentHistoryLabel} tone={completedPayments.length > 0 ? 'text-success' : undefined} />
                   </InfoPanel>
                 </div>
 
-                <div className="mt-3 grid gap-3 lg:grid-cols-[1.1fr_0.95fr_0.95fr_0.65fr]">
-                  <InfoPanel title="Recent Activity" action="View All">
+                <div className="mt-3 grid gap-3 lg:grid-cols-[1.1fr_1fr_0.9fr]">
+                  <InfoPanel title="Recent Activity" action="Open Ledger" onAction={() => setActiveTab('balance')}>
                     <div className="space-y-3">
                       {(tenantPayments.length ? tenantPayments.slice(0, 4) : allPayments.slice(0, 4)).map((payment) => (
                         <div key={payment.id} className="grid grid-cols-[28px_1fr_auto] items-center gap-3 text-xs">
@@ -566,32 +647,38 @@ export default function TenantDetail() {
                     </div>
                   </InfoPanel>
 
-                  <InfoPanel title="Notes" action="Add Note">
-                    <div className="space-y-2 text-xs">
-                      <div className="rounded-lg border border-dashed border-border/70 bg-muted/10 p-3">
-                        <p>No internal notes recorded yet.</p>
-                        <p className="mt-2 text-[10px] text-muted-foreground">Use Add Note when the next tenant interaction needs context.</p>
-                      </div>
-                    </div>
-                  </InfoPanel>
-
-                  <InfoPanel title="Automation / Billing Settings" action="Manage">
+                  <InfoPanel title="Automation / Billing Settings" action="Manage" onAction={() => setActiveTab('properties')}>
                     <DetailRow icon={CheckCircle2} label="Autopay" value="Not configured" />
                     <DetailRow icon={Receipt} label="Payment Method" value="Not on file" />
-                    <DetailRow icon={Wallet} label="Rent Charge" value={`${formatCurrency(monthlyRent)} on the 1st`} />
-                    <DetailRow icon={Bell} label="Late Fee" value="$50 after 5 days" />
+                    <DetailRow icon={Wallet} label="Rent Charge" value={nextRentChargeLabel} />
+                    <DetailRow icon={Bell} label="Late Fee" value={lateFeeLabel} />
                     <DetailRow icon={MessageSquare} label="Reminders" value="Standard due-date reminders" />
                     <DetailRow icon={CalendarDays} label="Grace Period" value="5 days" />
                   </InfoPanel>
 
                   <InfoPanel title="Quick Actions">
                     <div className="grid gap-2">
-                      {['Send Message', 'Send Rent Reminder', 'Charge Late Fee', 'Add Work Order', 'Add Payment', 'Upload Document'].map((label) => (
-                        <Button key={label} variant="outline" className="h-8 justify-between border-border/70 bg-card/45 px-3 text-[11px] text-muted-foreground hover:text-primary">
-                          {label}
-                          <ArrowRight className="h-3 w-3" />
-                        </Button>
-                      ))}
+                      <Button variant="outline" onClick={() => setActiveTab('balance')} className="h-8 justify-between border-border/70 bg-card/45 px-3 text-[11px] text-muted-foreground hover:text-primary">
+                        Open ledger
+                        <ArrowRight className="h-3 w-3" />
+                      </Button>
+                      <Button variant="outline" onClick={() => setActiveTab('properties')} className="h-8 justify-between border-border/70 bg-card/45 px-3 text-[11px] text-muted-foreground hover:text-primary">
+                        Manage units
+                        <ArrowRight className="h-3 w-3" />
+                      </Button>
+                      <Button variant="outline" onClick={() => navigate('/dashboard?tab=messages')} className="h-8 justify-between border-border/70 bg-card/45 px-3 text-[11px] text-muted-foreground hover:text-primary">
+                        Open messages
+                        <ArrowRight className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={handleApplyLateFee}
+                        disabled={!lateFeeCandidate || applyLateFee.isPending}
+                        className="h-8 justify-between border-border/70 bg-card/45 px-3 text-[11px] text-muted-foreground hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {lateFeeCandidate ? 'Apply late fee' : 'Late fee current'}
+                        <ArrowRight className="h-3 w-3" />
+                      </Button>
                     </div>
                   </InfoPanel>
                 </div>
