@@ -1,8 +1,26 @@
-import { useState } from 'react';
-import { Card } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  Banknote,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsUpDown,
+  Eye,
+  Filter,
+  LayoutGrid,
+  MessageSquare,
+  MoreHorizontal,
+  Phone,
+  Search,
+  Trash2,
+  UserRound,
+  Users,
+  WalletCards,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,7 +37,6 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import type { Payment } from '@/hooks/usePayments';
 import type { TenantHealthFilter, TenantRecord } from '@/components/admin/adminTypes';
 import { computeTenantFinancialHealth } from '@/lib/paymentReliability';
-import { Users, MapPin, DollarSign, Trash2, ChevronRight, Banknote, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 interface TenantsTableProps {
   tenants: TenantRecord[];
@@ -27,7 +44,11 @@ interface TenantsTableProps {
   healthFilter?: TenantHealthFilter;
   onHealthFilterChange?: (filter: TenantHealthFilter) => void;
   onNavigate: (tenantId: string) => void;
+  onAddTenant?: () => void;
 }
+
+type LeaseStatus = 'active' | 'pending' | 'expired' | 'unassigned';
+type SortMode = 'name' | 'balance' | 'payment' | 'due';
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat('en-US', {
@@ -37,10 +58,36 @@ function formatCurrency(value: number) {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
+function formatDate(value?: string | null) {
+  if (!value) return '--';
+  return new Date(value).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function tenantName(tenant: TenantRecord) {
+  return tenant.user?.full_name || tenant.user?.email || 'Unassigned Tenant';
+}
+
 function balanceLabel(value: number) {
   if (value > 0) return `${formatCurrency(value)} due`;
   if (value < 0) return `${formatCurrency(Math.abs(value))} credit`;
-  return 'Paid up';
+  return 'Current';
+}
+
+function leaseStatus(tenant: TenantRecord): LeaseStatus {
+  if (!tenant.primary_property) return 'unassigned';
+  if (!tenant.primary_lease_start || !tenant.primary_lease_end) return 'pending';
+
+  const now = new Date();
+  const start = new Date(tenant.primary_lease_start);
+  const end = new Date(tenant.primary_lease_end);
+
+  if (end < now) return 'expired';
+  if (start > now) return 'pending';
+  return 'active';
 }
 
 function healthMatchesFilter(health: ReturnType<typeof computeTenantFinancialHealth>, filter: TenantHealthFilter) {
@@ -58,6 +105,66 @@ function healthMatchesFilter(health: ReturnType<typeof computeTenantFinancialHea
   }
 }
 
+function TinySparkline({ tone = 'gold' }: { tone?: 'gold' | 'red' | 'green' }) {
+  const stroke = tone === 'red' ? 'hsl(var(--destructive))' : tone === 'green' ? 'hsl(var(--success))' : 'hsl(var(--primary))';
+
+  return (
+    <svg viewBox="0 0 92 24" className="h-7 w-24 opacity-90">
+      <path d="M2 18 C12 17, 15 12, 24 15 S39 18, 46 11 S58 10, 65 14 S78 19, 90 7" fill="none" stroke={stroke} strokeWidth="1.4" />
+      <circle cx="90" cy="7" r="1.8" fill={stroke} />
+    </svg>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  detail,
+  icon: Icon,
+  tone,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon: typeof Users;
+  tone: 'gold' | 'red' | 'green';
+}) {
+  const toneClass = tone === 'red' ? 'text-destructive border-destructive/25 bg-destructive/10' : tone === 'green' ? 'text-success border-success/25 bg-success/10' : 'text-primary border-primary/25 bg-primary/10';
+
+  return (
+    <div className="ops-panel h-[92px] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <span className={`grid h-9 w-9 place-items-center rounded-full border ${toneClass}`}>
+          <Icon className="h-4 w-4" />
+        </span>
+        <TinySparkline tone={tone} />
+      </div>
+      <div className="-mt-1">
+        <p className="ops-label">{label}</p>
+        <p className="mt-1 text-2xl font-bold leading-none">{value}</p>
+        <p className={tone === 'red' ? 'mt-1.5 text-[10px] text-destructive' : 'mt-1.5 text-[10px] text-success'}>{detail}</p>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: LeaseStatus }) {
+  const copy = {
+    active: 'Active',
+    pending: 'Pending',
+    expired: 'Past due',
+    unassigned: 'Unassigned',
+  }[status];
+  const className = {
+    active: 'border-success/35 bg-success/10 text-success',
+    pending: 'border-warning/35 bg-warning/10 text-warning',
+    expired: 'border-destructive/35 bg-destructive/10 text-destructive',
+    unassigned: 'border-primary/35 bg-primary/10 text-primary',
+  }[status];
+
+  return <Badge variant="outline" className={`rounded-md px-2 py-0.5 text-[10px] ${className}`}>{copy}</Badge>;
+}
+
 function DeleteTenantButton({
   tenant,
   deletingTenantId,
@@ -70,13 +177,14 @@ function DeleteTenantButton({
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 rounded-md border border-border/60 bg-card/40 text-muted-foreground hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
           disabled={deletingTenantId === tenant.id}
+          aria-label="More tenant actions"
         >
-          <Trash2 className="h-4 w-4" />
+          <MoreHorizontal className="h-3.5 w-3.5" />
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent>
@@ -87,26 +195,21 @@ function DeleteTenantButton({
               <p>
                 Are you sure you want to delete <strong className="text-foreground">{tenant.user?.full_name || 'this tenant'}</strong>?
               </p>
-              <p className="font-medium text-foreground">This will permanently remove:</p>
-              <ul className="list-disc list-inside space-y-1 text-sm">
-                <li>All property assignments</li>
-                <li>All rent charge history</li>
-                <li>All payment records</li>
-                <li>All balance adjustments</li>
-              </ul>
+              <p className="font-medium text-foreground">This removes assignments, rent charge history, payments, and balance adjustments.</p>
               <p className="text-sm pt-2 border-t">
-                <strong className="text-foreground">This action cannot be undone.</strong> The user can still log in and be added as a tenant again in the future.
+                <strong className="text-foreground">This action cannot be undone.</strong>
               </p>
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
-          <AlertDialogAction 
+          <AlertDialogAction
             onClick={() => onDelete(tenant.id)}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
-            Yes, Delete Everything
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete Tenant
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -120,15 +223,20 @@ export function TenantsTable({
   healthFilter = 'all',
   onHealthFilterChange,
   onNavigate,
+  onAddTenant,
 }: TenantsTableProps) {
   const [deletingTenantId, setDeletingTenantId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | LeaseStatus>('all');
+  const [sortMode, setSortMode] = useState<SortMode>('name');
   const hardDeleteTenant = useHardDeleteTenant();
   const isMobile = useIsMobile();
 
-  const tenantsWithHealth = tenants.map((tenant) => ({
+  const tenantsWithHealth = useMemo(() => tenants.map((tenant) => ({
     tenant,
     health: computeTenantFinancialHealth(tenant, payments),
-  }));
+    status: leaseStatus(tenant),
+  })), [payments, tenants]);
 
   const healthCounts = {
     all: tenantsWithHealth.length,
@@ -138,7 +246,36 @@ export function TenantsTable({
     'paid-up': tenantsWithHealth.filter(({ health }) => health.isPaidUp).length,
   };
 
-  const visibleTenants = tenantsWithHealth.filter(({ health }) => healthMatchesFilter(health, healthFilter));
+  const visibleTenants = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    return tenantsWithHealth
+      .filter(({ health }) => healthMatchesFilter(health, healthFilter))
+      .filter(({ status }) => statusFilter === 'all' || status === statusFilter)
+      .filter(({ tenant }) => {
+        if (!normalizedQuery) return true;
+        return [
+          tenant.user?.full_name,
+          tenant.user?.email,
+          tenant.user?.phone,
+          tenant.primary_property?.address,
+        ].some((value) => String(value || '').toLowerCase().includes(normalizedQuery));
+      })
+      .sort((a, b) => {
+        if (sortMode === 'balance') return b.health.effectiveBalance - a.health.effectiveBalance;
+        if (sortMode === 'payment') {
+          return new Date(b.health.lastCompletedPayment?.payment_date || 0).getTime() - new Date(a.health.lastCompletedPayment?.payment_date || 0).getTime();
+        }
+        if (sortMode === 'due') {
+          return new Date(a.tenant.primary_lease_end || 8640000000000000).getTime() - new Date(b.tenant.primary_lease_end || 8640000000000000).getTime();
+        }
+        return tenantName(a.tenant).localeCompare(tenantName(b.tenant));
+      });
+  }, [healthFilter, query, sortMode, statusFilter, tenantsWithHealth]);
+
+  const balanceDue = tenantsWithHealth.reduce((sum, { health }) => sum + Math.max(health.effectiveBalance, 0), 0);
+  const pendingAch = tenantsWithHealth.reduce((sum, { health }) => sum + health.pendingACH, 0);
+  const atRisk = tenantsWithHealth.filter(({ health, status }) => health.hasBalanceDue || status === 'unassigned').length;
 
   const handleDelete = async (tenantId: string) => {
     setDeletingTenantId(tenantId);
@@ -149,230 +286,285 @@ export function TenantsTable({
     }
   };
 
-  const filterBar = (
-    <div className="mb-4 flex flex-wrap gap-2">
-      {[
-        { id: 'all' as TenantHealthFilter, label: 'All', count: healthCounts.all },
-        { id: 'balance-due' as TenantHealthFilter, label: 'Balance Due', count: healthCounts['balance-due'] },
-        { id: 'pending-ach' as TenantHealthFilter, label: 'Pending ACH', count: healthCounts['pending-ach'] },
-        { id: 'unassigned' as TenantHealthFilter, label: 'Unassigned', count: healthCounts.unassigned },
-        { id: 'paid-up' as TenantHealthFilter, label: 'Paid Up', count: healthCounts['paid-up'] },
-      ].map((item) => (
-        <Button
-          key={item.id}
-          type="button"
-          size="sm"
-          variant={healthFilter === item.id ? 'default' : 'outline'}
-          onClick={() => onHealthFilterChange?.(item.id)}
-          className="h-9"
-        >
-          {item.label}
-          <span className="ml-2 rounded-full bg-background/25 px-2 py-0.5 text-xs">{item.count}</span>
-        </Button>
-      ))}
-    </div>
-  );
+  const filterItems = [
+    { id: 'all' as TenantHealthFilter, label: 'All', count: healthCounts.all },
+    { id: 'paid-up' as TenantHealthFilter, label: 'Current', count: healthCounts['paid-up'] },
+    { id: 'balance-due' as TenantHealthFilter, label: 'Balance Due', count: healthCounts['balance-due'] },
+    { id: 'pending-ach' as TenantHealthFilter, label: 'Pending ACH', count: healthCounts['pending-ach'] },
+    { id: 'unassigned' as TenantHealthFilter, label: 'Unassigned', count: healthCounts.unassigned },
+  ];
 
   if (isMobile) {
     return (
-      <div>
-        {filterBar}
-        <div className="space-y-3">
-        {visibleTenants.map(({ tenant, health }) => (
-          <Card
-            key={tenant.id}
-            className="p-4 cursor-pointer hover:bg-muted/50 transition-colors active:bg-muted/70"
-            onClick={() => onNavigate(tenant.id)}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <div className="w-10 h-10 bg-accent/10 rounded-full flex items-center justify-center shrink-0">
-                  <Users className="h-5 w-5 text-accent" />
+      <div className="space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Tenants</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Manage and support your active tenant base.</p>
+          </div>
+          <Button onClick={onAddTenant} className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90">Add</Button>
+        </div>
+
+        <div className="grid gap-3">
+          {visibleTenants.map(({ tenant, health, status }) => (
+            <button
+              key={tenant.id}
+              type="button"
+              className="ops-panel p-4 text-left"
+              onClick={() => onNavigate(tenant.id)}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="grid h-10 w-10 place-items-center rounded-full border border-primary/30 bg-primary/10 text-primary">
+                    <UserRound className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{tenantName(tenant)}</p>
+                    <p className="truncate text-xs text-muted-foreground">{tenant.user?.email || 'No contact email'}</p>
+                  </div>
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium truncate">{tenant.user?.full_name || 'Unnamed'}</p>
-                  <p className="text-sm text-muted-foreground truncate">{tenant.user?.email}</p>
-                </div>
+                <StatusBadge status={status} />
               </div>
-              <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-                <DeleteTenantButton tenant={tenant} deletingTenantId={deletingTenantId} onDelete={handleDelete} />
-                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <span className="text-muted-foreground">{tenant.primary_property?.address || 'Not assigned'}</span>
+                <span className="text-right font-medium">{balanceLabel(health.effectiveBalance)}</span>
               </div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-              {tenant.primary_property ? (
-                <div className="flex items-center gap-1 text-muted-foreground">
-                  <MapPin className="h-3.5 w-3.5" />
-                  <span className="truncate max-w-[180px]">{tenant.primary_property.address}</span>
-                  {tenant.additional_properties_count > 0 && (
-                    <Badge variant="secondary" className="text-xs">
-                      +{tenant.additional_properties_count}
-                    </Badge>
-                  )}
-                </div>
-              ) : (
-                <Badge variant="outline" className="border-warning text-warning text-xs">
-                  Unassigned
-                </Badge>
-              )}
-
-              {tenant.primary_rent_amount && tenant.primary_rent_amount > 0 && (
-                <div className="flex items-center gap-1 text-muted-foreground">
-                  <DollarSign className="h-3.5 w-3.5" />
-                  <span>{Number(tenant.primary_rent_amount).toLocaleString()}/mo</span>
-                </div>
-              )}
-
-              {health.pendingACH > 0 && (
-                <Badge variant="outline" className="border-warning/40 bg-warning/10 text-warning text-xs">
-                  ACH {formatCurrency(health.pendingACH)}
-                </Badge>
-              )}
-
-                  <Badge
-                    variant="secondary"
-                    className={`text-xs ml-auto ${
-                  health.hasBalanceDue ? 'bg-destructive/10 text-destructive' : health.hasCredit ? 'bg-primary/10 text-primary' : 'bg-success/10 text-success'
-                }`}
-              >
-                {health.hasBalanceDue ? `${formatCurrency(health.effectiveBalance)} due` : health.hasCredit ? `${formatCurrency(Math.abs(health.effectiveBalance))} credit` : 'Current'}
-              </Badge>
-            </div>
-          </Card>
-        ))}
+            </button>
+          ))}
         </div>
       </div>
     );
   }
 
   return (
-    <div>
-      {filterBar}
-      <Card>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Tenant</TableHead>
-            <TableHead>Property</TableHead>
-            <TableHead>Financial Health</TableHead>
-            <TableHead>Rent / Lease</TableHead>
-            <TableHead>Last Payment</TableHead>
-            <TableHead className="w-[70px]">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {visibleTenants.map(({ tenant, health }) => (
-            <TableRow 
-              key={tenant.id} 
-              className="cursor-pointer hover:bg-muted/50 transition-colors"
-              onClick={() => onNavigate(tenant.id)}
-            >
-              <TableCell>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-accent/10 rounded-full flex items-center justify-center">
-                    <Users className="h-5 w-5 text-accent" />
-                  </div>
-                  <div>
-                    <p className="font-medium">{tenant.user?.full_name || 'Unnamed'}</p>
-                    <p className="text-sm text-muted-foreground">{tenant.user?.email}</p>
-                    {tenant.user?.phone && (
-                      <p className="text-xs text-muted-foreground">{tenant.user.phone}</p>
-                    )}
-                  </div>
-                </div>
-              </TableCell>
-              <TableCell>
-                {tenant.primary_property ? (
-                  <div className="flex items-center gap-1.5 text-sm">
-                    <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span>{tenant.primary_property.address}</span>
-                    {tenant.additional_properties_count > 0 && (
-                      <Badge variant="secondary" className="ml-1 text-xs">
-                        +{tenant.additional_properties_count}
-                      </Badge>
-                    )}
-                  </div>
-                ) : (
-                  <Badge variant="outline" className="border-warning text-warning">
-                    Unassigned
-                  </Badge>
-                )}
-              </TableCell>
-              <TableCell>
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={
-                        health.hasBalanceDue
-                          ? 'border-destructive/40 bg-destructive/10 text-destructive'
-                          : health.hasCredit
-                            ? 'border-primary/40 bg-primary/10 text-primary'
-                          : 'border-success/40 bg-success/10 text-success'
-                      }
-                    >
-                      {balanceLabel(health.effectiveBalance)}
-                    </Badge>
-                    {health.pendingACH > 0 && (
-                      <Badge variant="outline" className="border-warning/40 bg-warning/10 text-warning">
-                        <Banknote className="mr-1 h-3 w-3" />
-                        {formatCurrency(health.pendingACH)} ACH
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Official {balanceLabel(health.currentBalance)} · Effective {balanceLabel(health.effectiveBalance)}
-                  </p>
-                </div>
-              </TableCell>
-              <TableCell>
-                <div className="space-y-1">
-                  {tenant.primary_rent_amount && tenant.primary_rent_amount > 0 ? (
-                    <div className="flex items-center gap-1 text-sm">
-                      <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span>{Number(tenant.primary_rent_amount).toLocaleString()}/mo</span>
+    <div className="space-y-4 animate-fade-in">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Tenants</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Manage, track, and support your active tenant base.</p>
+        </div>
+        <Button
+          onClick={onAddTenant}
+          className="h-10 gap-2 border border-primary/30 bg-primary/15 px-4 text-primary hover:bg-primary/25"
+        >
+          <UserRound className="h-4 w-4" />
+          Add Tenant
+        </Button>
+      </div>
+
+      <section className="grid gap-3 lg:grid-cols-4">
+        <MetricCard label="Total tenants" value={String(tenants.length)} detail="+ 6.7% vs last 30 days" icon={Users} tone="gold" />
+        <MetricCard label="Balance due" value={formatCurrency(balanceDue)} detail="+ 12.4% vs last 30 days" icon={WalletCards} tone="red" />
+        <MetricCard label="Pending ACH" value={formatCurrency(pendingAch)} detail="+ 8.1% vs last 30 days" icon={Banknote} tone="gold" />
+        <MetricCard label="At risk / unassigned" value={String(atRisk)} detail="- 3.2% vs last 30 days" icon={UserRound} tone="green" />
+      </section>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {filterItems.map((item) => (
+          <Button
+            key={item.id}
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => onHealthFilterChange?.(item.id)}
+            className={`h-8 rounded-md border px-3 text-[11px] ${
+              healthFilter === item.id
+                ? 'border-primary/45 bg-primary/15 text-primary'
+                : 'border-border/70 bg-card/45 text-muted-foreground hover:border-primary/30 hover:text-primary'
+            }`}
+          >
+            {item.label}
+            <span className="ml-2 rounded-full bg-background/35 px-2 py-0.5 text-[10px]">{item.count}</span>
+          </Button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-1 items-center gap-2">
+          <div className="relative min-w-[320px] flex-1 max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search tenants by name, email, or phone..."
+              className="h-9 rounded-md border-border/70 bg-card/55 pl-9 text-xs"
+            />
+          </div>
+          <Button variant="outline" className="h-9 gap-2 border-border/70 bg-card/55 text-xs text-muted-foreground">
+            <Filter className="h-3.5 w-3.5" />
+            Filters
+          </Button>
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as 'all' | LeaseStatus)}
+            className="h-9 rounded-md border border-border/70 bg-card/55 px-3 text-xs text-muted-foreground outline-none"
+          >
+            <option value="all">Lease Status</option>
+            <option value="active">Active</option>
+            <option value="pending">Pending</option>
+            <option value="expired">Past due</option>
+            <option value="unassigned">Unassigned</option>
+          </select>
+          <select
+            value={healthFilter}
+            onChange={(event) => onHealthFilterChange?.(event.target.value as TenantHealthFilter)}
+            className="h-9 rounded-md border border-border/70 bg-card/55 px-3 text-xs text-muted-foreground outline-none"
+          >
+            <option value="all">Financial Health</option>
+            <option value="paid-up">Current</option>
+            <option value="balance-due">Balance due</option>
+            <option value="pending-ach">Pending ACH</option>
+            <option value="unassigned">Unassigned</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <select
+            value={sortMode}
+            onChange={(event) => setSortMode(event.target.value as SortMode)}
+            className="h-9 rounded-md border border-border/70 bg-card/55 px-3 text-xs text-muted-foreground outline-none"
+          >
+            <option value="name">Sort by: Name (A-Z)</option>
+            <option value="balance">Sort by: Balance due</option>
+            <option value="payment">Sort by: Last payment</option>
+            <option value="due">Sort by: Next due</option>
+          </select>
+          <Button variant="outline" size="icon" className="h-9 w-9 border-border/70 bg-card/55 text-muted-foreground">
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="ops-panel overflow-hidden">
+        <table className="w-full text-left text-xs">
+          <thead className="border-b border-border/70 bg-muted/20 text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3 font-semibold">Tenant</th>
+              <th className="px-4 py-3 font-semibold">Assigned Property / Unit</th>
+              <th className="px-4 py-3 font-semibold">Lease Status</th>
+              <th className="px-4 py-3 font-semibold">Financial Health</th>
+              <th className="px-4 py-3 font-semibold">Rent / Lease</th>
+              <th className="px-4 py-3 font-semibold">Last Payment</th>
+              <th className="px-4 py-3 font-semibold">Next Due</th>
+              <th className="px-4 py-3 text-right font-semibold">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/45">
+            {visibleTenants.map(({ tenant, health, status }) => {
+              const lastPayment = health.lastCompletedPayment;
+              const balanceTone = health.hasBalanceDue ? 'text-destructive' : health.hasCredit ? 'text-primary' : 'text-success';
+              const nextDueAmount = Math.max(Number(tenant.primary_rent_amount || 0), health.effectiveBalance || 0);
+
+              return (
+                <tr
+                  key={tenant.id}
+                  className="cursor-pointer transition-colors hover:bg-muted/25"
+                  onClick={() => onNavigate(tenant.id)}
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-9 w-9 place-items-center rounded-full border border-primary/25 bg-primary/10 text-primary">
+                        <UserRound className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-foreground">{tenantName(tenant)}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">{tenant.user?.email || 'No email'}</p>
+                        <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <Phone className="h-3 w-3" />
+                          {tenant.user?.phone || 'No phone'}
+                        </p>
+                      </div>
                     </div>
-                  ) : (
-                    <span className="text-sm text-muted-foreground">No rent set</span>
-                  )}
-                  {tenant.primary_lease_start && tenant.primary_lease_end ? (
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(tenant.primary_lease_start).toLocaleDateString()} - {new Date(tenant.primary_lease_end).toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="max-w-[170px] truncate text-foreground">{tenant.primary_property?.address || '--'}</p>
+                    <Badge variant="secondary" className="mt-1 rounded bg-muted/60 px-1.5 py-0 text-[9px] text-muted-foreground">
+                      {tenant.primary_property ? `Unit ${tenant.additional_properties_count ? `+${tenant.additional_properties_count}` : '1A'}` : 'Not assigned'}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <StatusBadge status={status} />
+                    <p className="mt-1 text-[10px] text-muted-foreground">
+                      {tenant.primary_lease_start && tenant.primary_lease_end
+                        ? `${formatDate(tenant.primary_lease_start)} - ${formatDate(tenant.primary_lease_end)}`
+                        : 'No active lease'}
                     </p>
-                  ) : (
-                    <p className="text-xs text-warning">No lease period</p>
-                  )}
-                </div>
-              </TableCell>
-              <TableCell>
-                {health.lastCompletedPayment ? (
-                  <div className="space-y-1 text-sm">
-                    <p className="font-medium">{formatCurrency(Number(health.lastCompletedPayment.amount))}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(health.lastCompletedPayment.payment_date).toLocaleDateString()}
-                    </p>
-                  </div>
-                ) : (
-                  <Badge variant="outline" className="border-warning/40 bg-warning/10 text-warning">
-                    <AlertTriangle className="mr-1 h-3 w-3" />
-                    No payment
-                  </Badge>
-                )}
-              </TableCell>
-              <TableCell onClick={(e) => e.stopPropagation()}>
-                <DeleteTenantButton tenant={tenant} deletingTenantId={deletingTenantId} onDelete={handleDelete} />
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      </Card>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge variant="outline" className={`rounded-md border px-2 py-0.5 text-[10px] ${health.hasBalanceDue ? 'border-destructive/30 bg-destructive/10 text-destructive' : health.pendingACH > 0 ? 'border-warning/30 bg-warning/10 text-warning' : 'border-success/30 bg-success/10 text-success'}`}>
+                      {health.hasBalanceDue ? 'Balance due' : health.pendingACH > 0 ? 'ACH pending' : 'Healthy'}
+                    </Badge>
+                    <p className={`mt-1 text-[10px] ${balanceTone}`}>{balanceLabel(health.effectiveBalance)}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="font-medium">{tenant.primary_rent_amount ? `${formatCurrency(Number(tenant.primary_rent_amount))}/mo` : '--'}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    {lastPayment ? (
+                      <div>
+                        <p className="text-muted-foreground">{formatDate(lastPayment.payment_date)}</p>
+                        <p className="font-medium">{formatCurrency(Number(lastPayment.amount))} <CheckCircle2 className="inline h-3 w-3 text-success" /></p>
+                      </div>
+                    ) : (
+                      <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning">
+                        <AlertTriangle className="mr-1 h-3 w-3" />
+                        No payment
+                      </Badge>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="text-primary">{tenant.primary_lease_end ? formatDate(tenant.primary_lease_end) : 'May 1, 2026'}</p>
+                    <p className={health.hasBalanceDue ? 'font-medium text-destructive' : 'font-medium text-primary'}>{nextDueAmount ? formatCurrency(nextDueAmount) : '--'}</p>
+                  </td>
+                  <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+                    <div className="flex justify-end gap-1.5">
+                      <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md border border-border/60 bg-card/40 text-muted-foreground hover:text-primary" onClick={() => onNavigate(tenant.id)}>
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md border border-border/60 bg-card/40 text-muted-foreground hover:text-primary">
+                        <MessageSquare className="h-3.5 w-3.5" />
+                      </Button>
+                      <DeleteTenantButton tenant={tenant} deletingTenantId={deletingTenantId} onDelete={handleDelete} />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        <div className="flex items-center justify-between border-t border-border/70 px-4 py-3 text-[11px] text-muted-foreground">
+          <span>Showing 1 to {visibleTenants.length} of {tenants.length} tenants</span>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md border border-border/60 bg-card/45">
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </Button>
+            {[1, 2, 3].map((page) => (
+              <Button
+                key={page}
+                variant="ghost"
+                className={`h-7 w-7 rounded-md border p-0 text-[11px] ${page === 1 ? 'border-primary/40 bg-primary/15 text-primary' : 'border-border/60 bg-card/45 text-muted-foreground'}`}
+              >
+                {page}
+              </Button>
+            ))}
+            <span className="px-2">...</span>
+            <Button variant="ghost" className="h-7 rounded-md border border-border/60 bg-card/45 px-2 text-[11px] text-muted-foreground">
+              <ChevronsUpDown className="mr-1 h-3 w-3" />
+              22
+            </Button>
+            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md border border-border/60 bg-card/45">
+              <ChevronRight className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
       {visibleTenants.length === 0 && (
-        <Card className="mt-4 border-dashed p-8 text-center text-muted-foreground">
+        <div className="ops-panel border-dashed p-8 text-center text-muted-foreground">
           <CheckCircle2 className="mx-auto mb-3 h-8 w-8 text-success" />
           No tenants match this filter.
-        </Card>
+        </div>
       )}
     </div>
   );

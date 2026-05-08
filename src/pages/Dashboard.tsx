@@ -756,16 +756,6 @@ export default function Dashboard() {
           {/* Tenants Tab */}
           {activeTab === 'tenants' && (
             <div className="animate-fade-in">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8">
-                <div>
-                  <h1 className="text-2xl md:text-3xl font-serif">Tenants</h1>
-                  <p className="text-muted-foreground text-sm md:text-base">Manage your current tenants</p>
-                </div>
-                <Button onClick={() => setIsAddTenantOpen(true)} className="w-full sm:w-auto min-h-[44px]">
-                  <Plus className="mr-2 h-4 w-4" /> Add Tenant
-                </Button>
-              </div>
-
               {tenantsLoading ? (
                 <Card>
                   <div className="p-4 space-y-3">
@@ -781,6 +771,7 @@ export default function Dashboard() {
                   healthFilter={tenantHealthFilter}
                   onHealthFilterChange={setTenantHealthFilter}
                   onNavigate={(tenantId) => navigate(`/dashboard/tenant/${tenantId}`)} 
+                  onAddTenant={() => setIsAddTenantOpen(true)}
                 />
               ) : (
                 <Card className="p-12 text-center border-dashed">
