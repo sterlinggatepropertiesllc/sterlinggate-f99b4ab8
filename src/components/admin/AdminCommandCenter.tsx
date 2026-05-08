@@ -169,13 +169,11 @@ function KpiCard({
     <button
       type="button"
       onClick={onClick}
-      className="ops-panel group h-[104px] p-3 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/45"
+      className="ops-panel group h-[104px] p-3.5 text-left transition-colors hover:border-primary/35"
     >
       <div className="flex items-start justify-between gap-3">
-        <p className="ops-label max-w-[92px] leading-tight">{label}</p>
-        <span className={`rounded-full border p-1.5 ${toneClass.border} ${toneClass.bg} ${toneClass.text}`}>
-          <Icon className="h-3.5 w-3.5" />
-        </span>
+        <p className="ops-label max-w-[116px] leading-tight">{label}</p>
+        <span className={`mt-1 h-1.5 w-8 rounded-full ${toneClass.bg.replace('bg-', 'bg-')}`} />
       </div>
       <p className="mt-2.5 truncate text-2xl font-bold leading-none tracking-tight text-foreground">{value}</p>
       <p className="mt-1.5 truncate text-[11px] text-muted-foreground">{detail}</p>
@@ -200,20 +198,16 @@ function PriorityCard({ item }: { item: PriorityAction }) {
     <button
       type="button"
       onClick={item.action}
-      className={`ops-panel-soft group min-h-[104px] p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/30 ${toneClass.glow}`}
+      className="ops-panel-soft group min-h-[104px] p-3 text-left transition-colors hover:border-primary/30"
     >
-      <div className="flex items-start gap-3">
-        <span className={`rounded-full border p-1.5 ${toneClass.border} ${toneClass.bg} ${toneClass.text}`}>
-          <item.icon className="h-3.5 w-3.5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className={`truncate text-[10px] font-bold uppercase tracking-[0.16em] ${toneClass.text}`}>{item.title}</p>
-          <p className="mt-1 truncate text-base font-bold leading-none">{item.value}</p>
-          <p className="mt-1 truncate text-[10px] text-muted-foreground">{item.detail}</p>
-          <div className={`mt-2 flex items-center justify-between rounded-md border px-2 py-1 text-[9px] ${toneClass.border} ${toneClass.bg}`}>
-            <span>{item.cta}</span>
-            <ArrowRight className={`h-3 w-3 transition-transform group-hover:translate-x-0.5 ${toneClass.text}`} />
-          </div>
+      <div className={`mb-2 h-1 w-10 rounded-full ${toneClass.bg}`} />
+      <div className="min-w-0">
+        <p className={`truncate text-[10px] font-bold uppercase tracking-[0.16em] ${toneClass.text}`}>{item.title}</p>
+        <p className="mt-1 truncate text-lg font-bold leading-none">{item.value}</p>
+        <p className="mt-1 truncate text-[10px] text-muted-foreground">{item.detail}</p>
+        <div className={`mt-2 flex items-center justify-between rounded-md border px-2 py-1 text-[9px] ${toneClass.border} ${toneClass.bg}`}>
+          <span>{item.cta}</span>
+          <ArrowRight className={`h-3 w-3 transition-transform group-hover:translate-x-0.5 ${toneClass.text}`} />
         </div>
       </div>
     </button>
@@ -235,13 +229,11 @@ function HealthItem({
 }) {
   const toneClass = toneStyle(tone);
   return (
-    <div className="flex min-w-0 items-start gap-2 border-r border-border/50 px-2 last:border-r-0">
-      <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${toneClass.text}`} />
-      <div className="min-w-0">
-        <p className="truncate text-[10px] text-muted-foreground">{label}</p>
-        <p className={`mt-1 text-sm font-semibold ${toneClass.text}`}>{value}</p>
-        <p className="mt-1 truncate text-[10px] text-muted-foreground">{detail}</p>
-      </div>
+    <div className="min-w-0 border-r border-border/50 px-3 last:border-r-0">
+      <div className={`mb-2 h-1 w-8 rounded-full ${toneClass.bg}`} />
+      <p className="truncate text-[10px] text-muted-foreground">{label}</p>
+      <p className={`mt-1 text-sm font-semibold ${toneClass.text}`}>{value}</p>
+      <p className="mt-1 truncate text-[10px] text-muted-foreground">{detail}</p>
     </div>
   );
 }
@@ -259,9 +251,8 @@ function QuickAction({
     <button
       type="button"
       onClick={onClick}
-      className="ops-mini-button flex h-[36px] flex-col items-center justify-center gap-0.5 overflow-hidden px-2 py-1 text-center text-[8px] leading-none"
+      className="ops-mini-button flex h-8 items-center justify-center overflow-hidden px-2 py-1 text-center text-[10px] leading-none"
     >
-      <Icon className="h-3.5 w-3.5 text-primary" />
       <span className="truncate">{label}</span>
     </button>
   );
@@ -426,7 +417,7 @@ export function AdminCommandCenter({
     const openMaintenance = maintenance.filter((record) => !['completed', 'paid', 'closed', 'resolved'].includes((record.status || '').toLowerCase()));
     const urgentMaintenance = openMaintenance.filter((record) => ['urgent', 'high', 'emergency'].some((word) => `${record.category} ${record.title} ${record.status}`.toLowerCase().includes(word)));
     const completedMaintenance = maintenance.filter((record) => ['completed', 'paid', 'closed', 'resolved'].includes((record.status || '').toLowerCase()));
-    const maintenanceSla = maintenance.length > 0 ? (completedMaintenance.length / maintenance.length) * 100 : 96;
+    const maintenanceSla = maintenance.length > 0 ? (completedMaintenance.length / maintenance.length) * 100 : 0;
     const leasePotential = leaseRenewals.reduce((sum, lease) => sum + Number(lease.monthly_rent || 0), 0);
     const last30Start = subDays(now, 30);
     const last30Collected = completedPayments
@@ -445,6 +436,7 @@ export function AdminCommandCenter({
     return {
       now,
       completedPayments,
+      currentMonthCompleted,
       currentMonthCollected,
       expectedMonthlyRent,
       collectionRate,
@@ -549,7 +541,7 @@ export function AdminCommandCenter({
           label="Collected this month"
           value={formatCurrency(model.currentMonthCollected)}
           detail={`${formatPercent(model.collectionRate)} of ${formatCurrency(model.expectedMonthlyRent)} goal`}
-          trend="+ 8.2% vs Apr 2026"
+          trend={`${model.currentMonthCompleted.length} completed payments this month`}
           icon={DollarSign}
           tone="gold"
           progress={model.collectionRate}
@@ -559,27 +551,27 @@ export function AdminCommandCenter({
           label="Effective balance due"
           value={formatCurrency(model.effectiveOutstanding)}
           detail={model.setupReviewBalance > 0 ? `${formatCurrency(model.setupReviewBalance)} in setup review` : `${formatCurrency(model.outstandingBalance)} official balance`}
-          trend="- 12.6% vs Apr 2026"
+          trend="Excludes fresh pending ACH"
           icon={Receipt}
           tone={model.effectiveOutstanding > 0 ? 'amber' : 'green'}
-          actionLabel="View aging report"
+          actionLabel="Aging"
           onClick={() => onNavigateTab('tenants', { tenantFilter: 'balance-due' })}
         />
         <KpiCard
           label="Pending ACH"
           value={formatCurrency(model.pendingAchTotal)}
           detail={`${model.processingAch.length} payments scheduled`}
-          trend={model.staleAch.length > 0 ? `${model.staleAch.length} stale` : 'All bank transfers fresh'}
+          trend={model.staleAch.length > 0 ? `${model.staleAch.length} stale` : 'Fresh'}
           icon={Landmark}
           tone="teal"
-          actionLabel="Review pending"
+          actionLabel="Review"
           onClick={() => onNavigateTab('audit', { paymentFilter: 'processing-ach' })}
         />
         <KpiCard
           label="Occupancy"
           value={formatPercent(model.occupancyRate)}
           detail={`${model.occupiedProperties.length} of ${properties.length} properties`}
-          trend="+ 1.8% vs Apr 2026"
+          trend="Based on property status"
           icon={Target}
           tone="teal"
           onClick={() => onNavigateTab('properties')}
@@ -597,7 +589,7 @@ export function AdminCommandCenter({
           label="Maintenance SLA"
           value={formatPercent(model.maintenanceSla)}
           detail="On-time completion"
-          trend="+ 5% vs Apr 2026"
+          trend={`${model.completedMaintenance.length} completed records`}
           icon={Wrench}
           tone={model.maintenanceSla >= 90 ? 'green' : 'amber'}
           onClick={() => onNavigateTab('maintenance')}
@@ -732,9 +724,9 @@ export function AdminCommandCenter({
           <div className="space-y-2">
             {[
               ['New Leads', applications.length],
-              ['Contacted', model.pendingApplications.length],
-              ['Tours Scheduled', Math.max(0, Math.min(7, model.pendingApplications.length))],
-              ['Applications', model.pendingApplications.length],
+              ['Under Review', model.pendingApplications.length],
+              ['Approved', model.approvedApplications.length],
+              ['Pending Signatures', leases.filter((lease) => lease.status.includes('pending')).length],
               ['Leases Signed', leases.filter((lease) => lease.status === 'completed').length],
             ].map(([label, value], index) => (
               <div key={label} className="relative flex items-center justify-between overflow-hidden rounded-md border border-border/60 bg-muted/20 px-3 py-1.5 text-xs">
@@ -748,8 +740,8 @@ export function AdminCommandCenter({
             ))}
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border/60 pt-3 text-[11px]">
-            <div><p className="text-muted-foreground">Conversion Rate</p><p className="font-semibold">{formatPercent(applications.length ? (leases.length / applications.length) * 100 : 0)}</p></div>
-            <div><p className="text-muted-foreground">Avg. Days to Lease</p><p className="font-semibold">18</p></div>
+            <div><p className="text-muted-foreground">Conversion Rate</p><p className="font-semibold">{formatPercent(applications.length ? Math.min((leases.filter((lease) => lease.status === 'completed').length / applications.length) * 100, 100) : 0)}</p></div>
+            <div><p className="text-muted-foreground">Avg. Days to Lease</p><p className="font-semibold">Not tracked</p></div>
           </div>
         </div>
 
@@ -795,7 +787,7 @@ export function AdminCommandCenter({
             </div>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border/60 pt-3 text-[11px]">
-            <div><p className="text-muted-foreground">Avg. Response Time</p><p className="font-semibold">2.4 hrs</p></div>
+            <div><p className="text-muted-foreground">Avg. Response Time</p><p className="font-semibold">Not tracked</p></div>
             <div><p className="text-muted-foreground">On-Time Completion</p><p className="font-semibold">{formatPercent(model.maintenanceSla)}</p></div>
           </div>
         </div>

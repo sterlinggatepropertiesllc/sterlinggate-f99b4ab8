@@ -33,6 +33,7 @@ import { cn } from '@/lib/utils';
 import { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 import { AdminReliabilityPanel } from '@/components/admin/AdminReliabilityPanel';
+import { AdminButton, PageHeader, StatCard } from '@/components/admin/AdminDesignSystem';
 import type { PaymentControlFilter, TenantRecord } from '@/components/admin/adminTypes';
 import {
   getPaymentAgeDays,
@@ -294,44 +295,30 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <section className="rounded-3xl border border-border/60 bg-[radial-gradient(circle_at_top_left,hsl(var(--primary)/0.14),transparent_34%),linear-gradient(135deg,hsl(var(--card)/0.98),hsl(var(--background)/0.98))] p-5 shadow-elevated md:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">
-                Payment Control Center
-              </Badge>
-              <Badge
-                variant="outline"
-                className={statusSummary.staleProcessing.length || statusSummary.needsReview.length ? 'border-warning/40 bg-warning/10 text-warning' : 'border-success/40 bg-success/10 text-success'}
-              >
-                {statusSummary.staleProcessing.length || statusSummary.needsReview.length ? 'Review needed' : 'Ledger healthy'}
-              </Badge>
-            </div>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight md:text-3xl">Payments</h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-              Stripe activity, ACH processing, and balance ledger status in one place.
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Button
+    <div className="space-y-5 animate-fade-in">
+      <PageHeader
+        eyebrow="Payment Control Center"
+        title="Payments"
+        subtitle="Stripe activity, ACH processing, and balance ledger status in one place."
+        actions={
+          <>
+            <AdminButton
               onClick={handleReconcileACH}
-              variant="outline"
               disabled={isReconciling || statusSummary.processingACH.length === 0}
-              className="w-full sm:w-auto"
+              variant="secondary"
             >
               <RefreshCw className={`mr-2 h-4 w-4 ${isReconciling ? 'animate-spin' : ''}`} />
               {isReconciling ? 'Reconciling...' : 'Reconcile ACH'}
-            </Button>
-            <Button onClick={exportToCSV} variant="outline" className="w-full sm:w-auto">
+            </AdminButton>
+            <AdminButton onClick={exportToCSV} variant="secondary">
               <Download className="mr-2 h-4 w-4" />
-              Export CSV
-            </Button>
-          </div>
-        </div>
+              Export report
+            </AdminButton>
+          </>
+        }
+      />
 
-        <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           {[
             {
               id: 'all' as PaymentControlFilter,
@@ -369,27 +356,24 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
               icon: XCircle,
             },
           ].map((item) => (
-            <button
-              type="button"
+            <StatCard
               key={item.id}
+              label={item.label}
+              value={item.value}
+              detail={item.detail}
+              tone={
+                item.id === 'failed'
+                  ? 'danger'
+                  : item.id === 'needs-review' || item.id === 'processing-ach'
+                    ? 'warning'
+                    : item.id === 'completed'
+                      ? 'success'
+                      : 'gold'
+              }
               onClick={() => setQuickFilter(item.id)}
-              className={`rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 ${
-                quickFilter === item.id
-                  ? 'border-primary/60 bg-primary/10'
-                  : 'border-border/60 bg-background/35 hover:border-primary/40'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{item.label}</p>
-                  <p className="mt-2 text-2xl font-semibold">{item.value}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{item.detail}</p>
-                </div>
-                <item.icon className="h-5 w-5 text-primary" />
-              </div>
-            </button>
+              className={quickFilter === item.id ? 'border-primary/45' : undefined}
+            />
           ))}
-        </div>
       </section>
 
       <AdminReliabilityPanel />

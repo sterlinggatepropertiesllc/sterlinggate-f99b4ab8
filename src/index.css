@@ -202,12 +202,12 @@ html, #root {
 
 @layer components {
   .glass-card {
-    @apply bg-card/60 backdrop-blur-xl border border-border/50;
+    @apply bg-card border border-border/70;
     box-shadow: var(--shadow-card);
   }
 
   .glass-nav {
-    @apply bg-background/80 backdrop-blur-xl border-b border-border/50;
+    @apply bg-background border-b border-border/60;
   }
 
   .premium-gradient {
@@ -334,26 +334,26 @@ html, #root {
 
   .ops-shell {
     background:
-      radial-gradient(circle at 20% 0%, hsl(202 67% 13% / 0.46), transparent 34rem),
-      radial-gradient(circle at 82% 12%, hsl(41 78% 13% / 0.22), transparent 28rem),
+      radial-gradient(circle at 20% 0%, hsl(202 55% 11% / 0.26), transparent 34rem),
+      radial-gradient(circle at 82% 10%, hsl(41 64% 11% / 0.14), transparent 28rem),
       linear-gradient(135deg, hsl(214 34% 5%), hsl(214 29% 8%) 52%, hsl(210 34% 5%));
   }
 
   .ops-panel {
-    @apply relative overflow-hidden rounded-xl border bg-card/70;
-    border-color: hsl(var(--border) / 0.82);
+    @apply relative overflow-hidden rounded-xl border bg-card;
+    border-color: hsl(var(--border) / 0.78);
     background:
-      linear-gradient(180deg, hsl(214 26% 12% / 0.9), hsl(214 26% 9% / 0.92)),
-      radial-gradient(circle at 16% 0%, hsl(202 80% 18% / 0.2), transparent 12rem);
+      linear-gradient(180deg, hsl(214 26% 11%), hsl(214 27% 8%)),
+      radial-gradient(circle at 16% 0%, hsl(202 60% 13% / 0.12), transparent 14rem);
     box-shadow:
       0 1px 0 hsl(214 14% 100% / 0.04) inset,
-      0 22px 50px -38px hsl(214 80% 2% / 0.95);
+      0 18px 42px -34px hsl(214 80% 2% / 0.92);
   }
 
   .ops-panel-soft {
-    @apply rounded-xl border bg-card/50;
-    border-color: hsl(var(--border) / 0.68);
-    background: linear-gradient(180deg, hsl(214 24% 11% / 0.78), hsl(214 24% 8% / 0.82));
+    @apply rounded-xl border bg-card;
+    border-color: hsl(var(--border) / 0.66);
+    background: linear-gradient(180deg, hsl(214 23% 10%), hsl(214 24% 8%));
   }
 
   .ops-label {
@@ -366,19 +366,18 @@ html, #root {
 
   .ops-active-nav {
     background:
-      linear-gradient(90deg, hsl(41 85% 38% / 0.24), hsl(41 80% 18% / 0.18)),
-      hsl(214 28% 10% / 0.9);
-    border-color: hsl(41 88% 54% / 0.54);
+      linear-gradient(90deg, hsl(41 82% 34% / 0.2), hsl(41 72% 13% / 0.16)),
+      hsl(214 28% 9%);
+    border-color: hsl(41 82% 54% / 0.4);
     box-shadow:
-      0 0 0 1px hsl(41 88% 54% / 0.16),
-      0 0 28px hsl(41 88% 54% / 0.16) inset,
-      0 0 24px hsl(41 88% 54% / 0.12);
+      0 0 0 1px hsl(41 88% 54% / 0.08),
+      inset 3px 0 0 hsl(41 88% 54% / 0.72);
   }
 
   .ops-mini-button {
     @apply rounded-lg border text-muted-foreground transition-all;
     border-color: hsl(var(--border) / 0.75);
-    background: hsl(214 26% 11% / 0.7);
+    background: hsl(214 26% 10%);
   }
 
   .ops-mini-button:hover {

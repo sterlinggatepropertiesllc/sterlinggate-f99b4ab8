@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo } from 'react';
 import { differenceInDays } from 'date-fns';
 import { Navigate, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -51,6 +51,7 @@ import { EditLeaseDialog } from '@/components/leases/EditLeaseDialog';
 import { AuditCertificate } from '@/components/leases/AuditCertificate';
 import { AdminCommandCenter } from '@/components/admin/AdminCommandCenter';
 import { AdminGlobalSearch } from '@/components/admin/AdminGlobalSearch';
+import { AdminButton, AdminStatusBadge, EmptyState, FilterTabs, PageHeader, StatCard } from '@/components/admin/AdminDesignSystem';
 import type {
   AdminDashboardTab,
   AdminNavigationOptions,
@@ -89,6 +90,16 @@ import logo from '@/assets/logo.png';
 
 type DashboardTab = AdminDashboardTab;
 type Property = Database['public']['Tables']['properties']['Row'];
+type PropertyStatusFilter = 'all' | 'occupied' | 'available' | 'off_market';
+type PropertySortMode = 'newest' | 'rent-high' | 'rent-low' | 'address';
+
+function formatAdminCurrency(value: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(value) ? value : 0);
+}
 
 const AnalyticsDashboard = lazy(() =>
   import('@/components/analytics/AnalyticsDashboard').then((module) => ({ default: module.AnalyticsDashboard }))
@@ -136,6 +147,9 @@ export default function Dashboard() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<ApplicationRecord | null>(null);
   const [isApplicationDetailsOpen, setIsApplicationDetailsOpen] = useState(false);
+  const [propertySearch, setPropertySearch] = useState('');
+  const [propertyStatusFilter, setPropertyStatusFilter] = useState<PropertyStatusFilter>('all');
+  const [propertySortMode, setPropertySortMode] = useState<PropertySortMode>('newest');
 
   const isMobile = useIsMobile();
 
@@ -168,15 +182,15 @@ export default function Dashboard() {
     handleMarkPaymentNotificationsRead();
   }, [handleMarkPaymentNotificationsRead]);
 
-  // Handle tab navigation from URL query params (for notification clicks)
+  // Handle tab navigation from URL query params. The URL remains the source of truth for reloads.
   useEffect(() => {
     const tabParam = searchParams.get('tab');
     if (tabParam && ['overview', 'properties', 'applications', 'tenants', 'leases', 'messages', 'inquiries', 'analytics', 'audit', 'maintenance'].includes(tabParam)) {
       setActiveTab(tabParam as DashboardTab);
-      // Clear the query param after setting the tab
-      setSearchParams({}, { replace: true });
+    } else if (!tabParam) {
+      setActiveTab('overview');
     }
-  }, [searchParams, setSearchParams]);
+  }, [searchParams]);
 
   // Realtime subscription for properties
   useEffect(() => {
@@ -296,6 +310,33 @@ export default function Dashboard() {
     }
     setLoadingTimedOut(false);
   }, [loading, user, role]);
+
+  const propertySummary = useMemo(() => {
+    const list = properties || [];
+    return {
+      total: list.length,
+      occupied: list.filter((property) => property.status === 'occupied').length,
+      available: list.filter((property) => property.status === 'available').length,
+      rentRoll: list.reduce((sum, property) => sum + Number(property.rent_amount || 0), 0),
+    };
+  }, [properties]);
+
+  const visibleProperties = useMemo(() => {
+    const normalizedQuery = propertySearch.trim().toLowerCase();
+    return [...(properties || [])]
+      .filter((property) => propertyStatusFilter === 'all' || property.status === propertyStatusFilter)
+      .filter((property) => {
+        if (!normalizedQuery) return true;
+        return [property.address, property.city, property.state, property.zip_code, property.property_type]
+          .some((value) => String(value || '').toLowerCase().includes(normalizedQuery));
+      })
+      .sort((a, b) => {
+        if (propertySortMode === 'rent-high') return Number(b.rent_amount || 0) - Number(a.rent_amount || 0);
+        if (propertySortMode === 'rent-low') return Number(a.rent_amount || 0) - Number(b.rent_amount || 0);
+        if (propertySortMode === 'address') return a.address.localeCompare(b.address);
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+  }, [properties, propertySearch, propertySortMode, propertyStatusFilter]);
 
   // Wait for both auth and role to be fully loaded before redirecting
 
@@ -441,6 +482,7 @@ export default function Dashboard() {
       setTenantHealthFilter(options.tenantFilter);
     }
     setActiveTab(tab);
+    setSearchParams(tab === 'overview' ? {} : { tab });
     setIsMobileMenuOpen(false);
   };
 
@@ -540,7 +582,7 @@ export default function Dashboard() {
         {/* Main Content */}
         <main className="min-w-0 flex-1 overflow-auto">
           {/* Top Header Bar */}
-          <div className="sticky top-0 z-10 bg-background/5 px-3 py-3 backdrop-blur-xl md:px-5">
+          <div className="sticky top-0 z-10 border-b border-border/35 bg-background px-3 py-3 md:px-5">
             <div className="flex items-center justify-between gap-3">
               {/* Mobile hamburger */}
               {isMobile && (
@@ -581,7 +623,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="relative z-20 overflow-hidden p-3 pt-1 md:-mt-8 md:p-5 md:pt-2">
+          <div className="relative z-20 overflow-hidden p-3 pt-4 md:p-5">
           {/* Overview Tab */}
           {activeTab === 'overview' && (
             <AdminCommandCenter
@@ -605,22 +647,58 @@ export default function Dashboard() {
 
           {/* Properties Tab */}
           {activeTab === 'properties' && (
-            <div className="animate-fade-in">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8">
-                <div>
-                  <h1 className="text-2xl md:text-3xl font-serif">Properties</h1>
-                  <p className="text-muted-foreground text-sm md:text-base">Manage your rental properties</p>
+            <div className="space-y-4 animate-fade-in">
+              <PageHeader
+                title="Properties"
+                subtitle="Manage rental properties, units, occupancy, and portfolio performance."
+                actions={<AdminButton onClick={() => setIsAddPropertyOpen(true)}>Add Property</AdminButton>}
+              />
+
+              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <StatCard label="Total properties" value={propertySummary.total} detail="Portfolio records" tone="gold" />
+                <StatCard label="Occupied units" value={propertySummary.occupied} detail={`${propertySummary.total ? Math.round((propertySummary.occupied / propertySummary.total) * 100) : 0}% occupied`} tone="success" />
+                <StatCard label="Available units" value={propertySummary.available} detail="Ready or needs leasing" tone="warning" />
+                <StatCard label="Monthly rent roll" value={formatAdminCurrency(propertySummary.rentRoll)} detail="Configured monthly rent" tone="teal" />
+              </section>
+
+              <section className="ops-panel p-3">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                  <FilterTabs
+                    value={propertyStatusFilter}
+                    onChange={setPropertyStatusFilter}
+                    items={[
+                      { id: 'all', label: 'All', count: propertySummary.total },
+                      { id: 'occupied', label: 'Occupied', count: propertySummary.occupied },
+                      { id: 'available', label: 'Available', count: propertySummary.available },
+                      { id: 'off_market', label: 'Setup Needed', count: (properties || []).filter((property) => property.status === 'off_market').length },
+                    ]}
+                  />
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <Input
+                      value={propertySearch}
+                      onChange={(event) => setPropertySearch(event.target.value)}
+                      placeholder="Search properties..."
+                      className="h-9 min-w-[260px] rounded-md border-border/70 bg-card text-xs"
+                    />
+                    <select
+                      value={propertySortMode}
+                      onChange={(event) => setPropertySortMode(event.target.value as PropertySortMode)}
+                      className="h-9 rounded-md border border-border/70 bg-card px-3 text-xs text-muted-foreground outline-none"
+                    >
+                      <option value="newest">Sort: Newest</option>
+                      <option value="address">Sort: Address</option>
+                      <option value="rent-high">Sort: Rent high</option>
+                      <option value="rent-low">Sort: Rent low</option>
+                    </select>
+                  </div>
                 </div>
-                <Button onClick={() => setIsAddPropertyOpen(true)} className="w-full sm:w-auto min-h-[44px]">
-                  <Plus className="mr-2 h-4 w-4" /> Add Property
-                </Button>
-              </div>
+              </section>
 
               {propertiesLoading ? (
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
                   {[1, 2, 3].map((i) => (
                     <Card key={i} className="animate-pulse">
-                      <div className="h-40 bg-muted" />
+                      <div className="h-32 bg-muted" />
                       <CardContent className="p-4">
                         <div className="h-5 bg-muted rounded w-1/2 mb-2" />
                         <div className="h-4 bg-muted rounded w-3/4" />
@@ -628,9 +706,9 @@ export default function Dashboard() {
                     </Card>
                   ))}
                 </div>
-              ) : properties && properties.length > 0 ? (
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {properties.map((property) => (
+              ) : properties && properties.length > 0 && visibleProperties.length > 0 ? (
+                <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                  {visibleProperties.map((property) => (
                     <PropertyCard
                       key={property.id}
                       property={property}
@@ -640,26 +718,36 @@ export default function Dashboard() {
                     />
                   ))}
                 </div>
+              ) : properties && properties.length > 0 ? (
+                <EmptyState
+                  title="No properties match this view"
+                  description="Adjust the search or filter tabs to bring properties back into view."
+                />
               ) : (
-                <Card className="p-12 text-center border-dashed">
-                  <Home className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                  <h3 className="text-xl font-serif mb-2">No Properties Yet</h3>
-                  <p className="text-muted-foreground mb-6">Add your first property to get started</p>
-                  <Button onClick={() => setIsAddPropertyOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" /> Add Property
-                  </Button>
-                </Card>
+                <EmptyState
+                  title="No properties yet"
+                  description="Add the first property to start building the portfolio operations view."
+                  action={<AdminButton onClick={() => setIsAddPropertyOpen(true)}>Add Property</AdminButton>}
+                />
               )}
             </div>
           )}
 
           {/* Applications Tab */}
           {activeTab === 'applications' && (
-            <div className="animate-fade-in">
-              <div className="mb-8">
-                <h1 className="text-3xl font-serif">Applications</h1>
-                <p className="text-muted-foreground">Review and manage rental applications</p>
-              </div>
+            <div className="space-y-4 animate-fade-in">
+              <PageHeader
+                title="Applications"
+                subtitle="Review applicant status, missing information, and leasing decisions."
+                actions={<AdminButton onClick={() => handleNavigateTab('applications')}>Review Queue</AdminButton>}
+              />
+
+              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <StatCard label="Pending review" value={applications?.filter((app) => ['pending', 'under_review'].includes(app.status)).length || 0} detail="Needs manager attention" tone="warning" />
+                <StatCard label="Approved" value={applications?.filter((app) => app.status === 'approved').length || 0} detail="Ready for leasing" tone="success" />
+                <StatCard label="Denied" value={applications?.filter((app) => app.status === 'rejected').length || 0} detail="Closed applications" tone="danger" />
+                <StatCard label="Total applications" value={applications?.length || 0} detail="All-time application records" tone="gold" />
+              </section>
 
               {applicationsLoading ? (
                 <div className="space-y-4">
@@ -683,7 +771,7 @@ export default function Dashboard() {
                   {applications.map((app: ApplicationRecord) => (
                     <Card 
                       key={app.id} 
-                      className="p-6 cursor-pointer hover:border-primary/50 transition-colors"
+                      className="cursor-pointer p-4 transition-colors hover:border-primary/35"
                       onClick={() => {
                         setSelectedApplication(app);
                         setIsApplicationDetailsOpen(true);
@@ -692,31 +780,27 @@ export default function Dashboard() {
                       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-2 mb-2">
-                            <h3 className="font-serif text-lg sm:text-xl">{app.profiles?.full_name || 'Applicant'}</h3>
+                            <h3 className="text-base font-semibold">{app.profiles?.full_name || 'Applicant'}</h3>
                             <Badge 
                               variant="outline"
                               className={
-                                app.status === 'approved' ? 'border-success text-success' :
-                                app.status === 'rejected' ? 'border-destructive text-destructive' :
-                                'border-warning text-warning'
+                                app.status === 'approved' ? 'border-success/30 bg-success/10 text-success' :
+                                app.status === 'rejected' ? 'border-destructive/30 bg-destructive/10 text-destructive' :
+                                'border-warning/30 bg-warning/10 text-warning'
                               }
                             >
-                              {app.status === 'approved' && <CheckCircle2 className="h-3 w-3 mr-1" />}
-                              {app.status === 'rejected' && <XCircle className="h-3 w-3 mr-1" />}
-                              {app.status === 'pending' && <Clock className="h-3 w-3 mr-1" />}
                               {app.status}
                             </Badge>
                           </div>
                           <p className="text-muted-foreground mb-1 text-sm truncate">
-                            <MapPin className="h-4 w-4 inline mr-1" />
                             {app.properties?.address}, {app.properties?.city}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             Applied: {new Date(app.created_at).toLocaleDateString()}
                           </p>
                           {app.background_check_consent && (
-                            <Badge variant="secondary" className="mt-2">
-                              <CheckCircle2 className="h-3 w-3 mr-1" /> Background check consent given
+                          <Badge variant="secondary" className="mt-2">
+                              Background check consent given
                             </Badge>
                           )}
                         </div>
@@ -728,14 +812,14 @@ export default function Dashboard() {
                               className="flex-1 sm:flex-initial"
                               onClick={() => handleRejectApplication(app.id, 'Application did not meet requirements')}
                             >
-                              <XCircle className="h-4 w-4 mr-1" /> Reject
+                              Reject
                             </Button>
                             <Button 
                               size="sm"
-                              className="flex-1 sm:flex-initial"
+                              className="flex-1 border border-primary/35 bg-primary/15 text-primary hover:bg-primary/25 sm:flex-initial"
                               onClick={() => handleApproveApplication(app.id)}
                             >
-                              <CheckCircle2 className="h-4 w-4 mr-1" /> Approve
+                              Approve
                             </Button>
                           </div>
                         )}
@@ -744,11 +828,7 @@ export default function Dashboard() {
                   ))}
                 </div>
               ) : (
-                <Card className="p-12 text-center border-dashed">
-                  <ClipboardList className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                  <h3 className="text-xl font-serif mb-2">No Applications</h3>
-                  <p className="text-muted-foreground">Applications will appear here when tenants apply to your properties</p>
-                </Card>
+                <EmptyState title="No applications" description="Applications will appear here when tenants apply to your properties." />
               )}
             </div>
           )}
@@ -774,30 +854,30 @@ export default function Dashboard() {
                   onAddTenant={() => setIsAddTenantOpen(true)}
                 />
               ) : (
-                <Card className="p-12 text-center border-dashed">
-                  <Users className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                  <h3 className="text-xl font-serif mb-2">No Tenants Yet</h3>
-                  <p className="text-muted-foreground mb-6">Add your first tenant or approve applicants to get started</p>
-                  <Button onClick={() => setIsAddTenantOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" /> Add Tenant
-                  </Button>
-                </Card>
+                <EmptyState
+                  title="No tenants yet"
+                  description="Add your first tenant or approve applicants to start managing the rent ledger."
+                  action={<AdminButton onClick={() => setIsAddTenantOpen(true)}>Add Tenant</AdminButton>}
+                />
               )}
             </div>
           )}
 
           {/* Leases Tab */}
           {activeTab === 'leases' && (
-            <div className="animate-fade-in">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8">
-                <div>
-                  <h1 className="text-2xl md:text-3xl font-serif">Leases</h1>
-                  <p className="text-muted-foreground text-sm md:text-base">Manage and track lease agreements</p>
-                </div>
-                <Button onClick={() => setIsCreateLeaseOpen(true)} className="btn-platinum w-full sm:w-auto min-h-[44px]">
-                  <Plus className="h-4 w-4 mr-2" /> Create Lease
-                </Button>
-              </div>
+            <div className="space-y-4 animate-fade-in">
+              <PageHeader
+                title="Leases"
+                subtitle="Track active terms, renewal windows, pending signatures, and rent obligations."
+                actions={<AdminButton onClick={() => setIsCreateLeaseOpen(true)}>Create Lease</AdminButton>}
+              />
+
+              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <StatCard label="Active leases" value={leases?.filter((lease) => lease.status === 'completed').length || 0} detail="Fully signed lease records" tone="success" />
+                <StatCard label="Expiring soon" value={leases?.filter((lease) => lease.status === 'completed' && differenceInDays(new Date(lease.end_date), new Date()) <= 60).length || 0} detail="Next 60 days" tone="warning" />
+                <StatCard label="Pending signatures" value={leases?.filter((lease) => lease.status.includes('pending')).length || 0} detail="Tenant or manager action" tone="gold" />
+                <StatCard label="Monthly rent" value={formatAdminCurrency((leases || []).filter((lease) => lease.status === 'completed').reduce((sum, lease) => sum + Number(lease.monthly_rent || 0), 0))} detail="Active lease rent roll" tone="teal" />
+              </section>
 
               {leasesLoading ? (
                 <div className="space-y-4">
@@ -808,7 +888,21 @@ export default function Dashboard() {
                   ))}
                 </div>
               ) : leases && leases.length > 0 ? (
-                <div className="space-y-4">
+                <div className="ops-panel overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <Table className="min-w-[980px]">
+                      <TableHeader>
+                        <TableRow className="border-border/60 bg-muted/15 hover:bg-muted/15">
+                          <TableHead>Tenant</TableHead>
+                          <TableHead>Property</TableHead>
+                          <TableHead>Term</TableHead>
+                          <TableHead>Rent</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Renewal Window</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
                   {leases.map((lease: LeaseRecord) => {
                     // Status badge configuration
                     const statusConfig = {
@@ -834,6 +928,15 @@ export default function Dashboard() {
                       },
                     };
                     const config = statusConfig[lease.status as keyof typeof statusConfig] || statusConfig.draft;
+                    const daysUntilEnd = differenceInDays(new Date(lease.end_date), new Date());
+                    const statusTone =
+                      lease.status === 'completed'
+                        ? 'success'
+                        : lease.status.includes('pending')
+                          ? 'warning'
+                          : lease.status === 'expired'
+                            ? 'danger'
+                            : 'neutral';
 
                     const navigateToLease = () => {
                       // Keep existing behavior: clicking the card opens the sign/view page
@@ -841,170 +944,107 @@ export default function Dashboard() {
                     };
 
                     return (
-                      <div key={lease.id} className="block">
-                        <Card
-                          role="button"
-                          tabIndex={0}
-                          onClick={navigateToLease}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              navigateToLease();
-                            }
-                          }}
-                          className="p-6 hover:shadow-card transition-smooth cursor-pointer hover:border-primary/30"
-                        >
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                            <div className="min-w-0 flex-1">
-                              <h3 className="font-serif text-lg sm:text-xl mb-1 truncate">{lease.properties?.address}</h3>
-                              <p className="text-muted-foreground text-sm truncate">Tenant: {lease.tenant?.full_name || lease.tenant?.email}</p>
-                              <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-2 text-sm text-muted-foreground">
-                                <span>{new Date(lease.start_date).toLocaleDateString()} - {new Date(lease.end_date).toLocaleDateString()}</span>
-                                <span>${Number(lease.monthly_rent).toLocaleString()}/mo</span>
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                              <Badge 
-                                variant="outline"
-                                className={config.className}
-                              >
-                                {config.label}
-                              </Badge>
-                              
-                              {lease.status === 'completed' && (() => {
-                                const daysUntilEnd = differenceInDays(new Date(lease.end_date), new Date());
-                                if (daysUntilEnd < 0) {
-                                  return (
-                                    <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive">
-                                      Expired
-                                    </Badge>
-                                  );
-                                } else if (daysUntilEnd <= 7) {
-                                  return (
-                                    <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive">
-                                      {daysUntilEnd} days left
-                                    </Badge>
-                                  );
-                                } else if (daysUntilEnd <= 30) {
-                                  return (
-                                    <Badge variant="outline" className="bg-warning/10 text-warning border-warning">
-                                      {daysUntilEnd} days left
-                                    </Badge>
-                                  );
-                                }
-                                return null;
-                              })()}
-                              
-                              {lease.status === 'pending_tenant_signature' && (
-                                <Link to={`/sign-lease/${lease.id}`}>
-                                  <Button size="sm" variant="outline">
-                                    <Eye className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">View</span>
-                                  </Button>
-                                </Link>
-                              )}
-                              
-                              {lease.status === 'pending_manager_signature' && (
-                                <Link to={`/sign-lease/${lease.id}`}>
-                                  <Button size="sm" className="btn-platinum">
-                                    <PenTool className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Sign Now</span>
-                                  </Button>
-                                </Link>
-                              )}
-                              
-                              {lease.status === 'completed' && (
-                                <>
-                                  <Link to={`/sign-lease/${lease.id}`}>
-                                    <Button size="sm" variant="outline">
-                                      <Eye className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">View</span>
-                                    </Button>
-                                  </Link>
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedLeaseForCert(lease);
-                                    }}
-                                  >
-                                    <Shield className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Certificate</span>
-                                  </Button>
-                                </>
-                              )}
-
+                      <TableRow key={lease.id} className="cursor-pointer border-border/45 hover:bg-muted/20" onClick={navigateToLease}>
+                        <TableCell>
+                          <div className="font-medium">{lease.tenant?.full_name || lease.tenant?.email || 'Unassigned'}</div>
+                          <div className="text-xs text-muted-foreground">{lease.tenant?.email}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="max-w-[260px] truncate">{lease.properties?.address || 'No property'}</div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {new Date(lease.start_date).toLocaleDateString()} - {new Date(lease.end_date).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell className="font-medium">{formatAdminCurrency(Number(lease.monthly_rent || 0))}/mo</TableCell>
+                        <TableCell>
+                          <AdminStatusBadge tone={statusTone as 'success' | 'warning' | 'danger' | 'neutral'}>{config.label}</AdminStatusBadge>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {lease.status === 'completed'
+                            ? daysUntilEnd < 0
+                              ? 'Expired'
+                              : daysUntilEnd <= 60
+                                ? `${daysUntilEnd} days left`
+                                : 'Not in window'
+                            : 'Signature pending'}
+                        </TableCell>
+                        <TableCell onClick={(event) => event.stopPropagation()}>
+                          <div className="flex justify-end gap-2">
+                            <Link to={`/sign-lease/${lease.id}`}>
+                              <Button size="sm" variant="outline" className="h-8 border-border/70 bg-card text-xs">View</Button>
+                            </Link>
+                            {lease.status === 'completed' && (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedLeaseForEdit(lease);
-                                  setIsEditLeaseOpen(true);
-                                }}
+                                className="h-8 border-border/70 bg-card text-xs"
+                                onClick={() => setSelectedLeaseForCert(lease)}
                               >
-                                <Edit className="h-4 w-4" />
+                                Certificate
                               </Button>
-
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline" 
-                                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 border-border/70 bg-card text-xs"
+                              onClick={() => {
+                                setSelectedLeaseForEdit(lease);
+                                setIsEditLeaseOpen(true);
+                              }}
+                            >
+                              Edit
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button size="sm" variant="outline" className="h-8 border-border/70 bg-card text-xs text-muted-foreground hover:text-destructive">
+                                  Delete
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Lease</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete the lease for <strong>{lease.properties?.address}</strong>? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      deleteLease.mutate(lease.id);
+                                    }}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                   >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Delete Lease</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      Are you sure you want to delete the lease for{' '}
-                                      <strong>{lease.properties?.address}</strong>?
-                                      <br /><br />
-                                      This action cannot be undone.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        deleteLease.mutate(lease.id);
-                                      }}
-                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                    >
-                                      Delete Lease
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            </div>
+                                    Delete Lease
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
-                        </Card>
-                      </div>
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               ) : (
-                <Card className="p-12 text-center border-dashed">
-                  <FileText className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                  <h3 className="text-xl font-serif mb-2">No Leases</h3>
-                  <p className="text-muted-foreground mb-4">Create your first lease for an approved applicant</p>
-                  <Button onClick={() => setIsCreateLeaseOpen(true)}>
-                    <Plus className="h-4 w-4 mr-2" /> Create Lease
-                  </Button>
-                </Card>
+                <EmptyState
+                  title="No leases"
+                  description="Create the first lease for an approved applicant."
+                  action={<AdminButton onClick={() => setIsCreateLeaseOpen(true)}>Create Lease</AdminButton>}
+                />
               )}
             </div>
           )}
 
           {/* Messages Tab */}
           {activeTab === 'messages' && (
-            <div className="animate-fade-in">
-              <div className="mb-8">
-                <h1 className="text-3xl font-serif">Messages</h1>
-                <p className="text-muted-foreground">Communicate with your tenants</p>
-              </div>
+            <div className="space-y-4 animate-fade-in">
+              <PageHeader title="Messages" subtitle="Communicate with tenants and keep operational context in one place." />
 
               <Suspense fallback={<DashboardTabFallback label="messages" />}>
                 <MessagingCenter />

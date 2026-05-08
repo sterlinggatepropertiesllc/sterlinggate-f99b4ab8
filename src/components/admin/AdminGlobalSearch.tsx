@@ -182,7 +182,7 @@ export function AdminGlobalSearch({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl border-border/70 bg-card/95 p-0 backdrop-blur-xl">
+        <DialogContent className="max-w-2xl border-border/70 bg-card p-0">
           <DialogHeader className="border-b border-border/60 p-4">
             <DialogTitle className="flex items-center gap-2 text-base">
               <Search className="h-4 w-4 text-primary" />

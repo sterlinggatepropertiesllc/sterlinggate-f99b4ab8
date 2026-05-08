@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { AdminStatusBadge } from '@/components/admin/AdminDesignSystem';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,8 +20,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Building2, MapPin, Layers, MoreVertical, Edit, Trash2, Eye, EyeOff, CheckCircle, Camera } from 'lucide-react';
+import { Building2, MoreVertical } from 'lucide-react';
 import type { Database } from '@/integrations/supabase/types';
+import { cn } from '@/lib/utils';
 
 type Property = Database['public']['Tables']['properties']['Row'];
 
@@ -35,103 +37,115 @@ export function PropertyCard({ property, onEdit, onDelete, onStatusChange }: Pro
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const primaryImage = property.photos && property.photos.length > 0 ? property.photos[0] : null;
 
-  const getStatusColor = (status: string) => {
+  const getStatusTone = (status: string) => {
     switch (status) {
       case 'available':
-        return 'bg-success text-success-foreground';
+        return 'success';
       case 'occupied':
-        return 'bg-primary text-primary-foreground';
+        return 'gold';
       default:
-        return 'bg-muted text-muted-foreground';
+        return 'neutral';
     }
   };
+  const statusLabel = property.status === 'off_market'
+    ? 'Off Market'
+    : property.status === 'available'
+      ? 'Available'
+      : property.status === 'occupied'
+        ? 'Occupied'
+        : 'Setup Needed';
+  const propertyType = property.property_type || 'Commercial';
+  const rent = Number(property.rent_amount || 0).toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  });
 
   return (
     <>
-      <Card className="overflow-hidden hover:shadow-card transition-smooth group">
-        <div className="h-44 bg-gradient-to-br from-muted to-muted/50 flex items-center justify-center relative overflow-hidden">
+      <Card className="group overflow-hidden transition-colors hover:border-primary/30">
+        <div className="relative h-32 overflow-hidden border-b border-border/60 bg-muted/20">
           {primaryImage ? (
             <img
               src={primaryImage}
               alt={property.address}
-              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+              className="h-full w-full object-cover opacity-90 transition-transform duration-500 group-hover:scale-[1.02]"
             />
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-background to-primary/10 flex flex-col items-center justify-center">
-              <div className="relative mb-3">
-                <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-pulse" />
-                <div className="relative bg-gradient-to-br from-muted-foreground/10 to-muted-foreground/5 p-4 rounded-full border border-border/50">
-                  <Camera className="h-8 w-8 text-muted-foreground/50" />
-                </div>
-              </div>
-              <p className="text-sm font-medium text-muted-foreground/70 tracking-wide">Photos Coming Soon</p>
-              <div className="flex gap-1 mt-2">
-                <div className="w-1 h-1 rounded-full bg-primary/40" />
-                <div className="w-1 h-1 rounded-full bg-primary/30" />
-                <div className="w-1 h-1 rounded-full bg-primary/20" />
+            <div className="flex h-full items-center justify-center bg-[linear-gradient(135deg,hsl(var(--muted)/0.24),hsl(var(--background)/0.18))]">
+              <div className="text-center">
+                <Building2 className="mx-auto h-7 w-7 text-muted-foreground/45" />
+                <p className="mt-2 text-xs text-muted-foreground">No photo added</p>
               </div>
             </div>
           )}
-          <Badge className={`absolute top-3 right-3 ${getStatusColor(property.status)}`}>
-            {property.status}
-          </Badge>
+          <div className="absolute left-3 top-3">
+            <AdminStatusBadge tone={getStatusTone(property.status) as 'success' | 'gold' | 'neutral'}>
+              {statusLabel}
+            </AdminStatusBadge>
+          </div>
           {property.photos && property.photos.length > 1 && (
-            <div className="absolute bottom-3 left-3 bg-background/80 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium">
+            <div className="absolute bottom-3 left-3 rounded border border-border/60 bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
               +{property.photos.length - 1} photos
             </div>
           )}
         </div>
         <CardContent className="p-4">
-          <div className="flex items-start justify-between mb-2">
-            <h3 className="font-serif text-xl">${Number(property.rent_amount).toLocaleString()}/mo</h3>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="truncate text-sm font-semibold text-foreground">{property.address}</h3>
+              <p className="mt-1 truncate text-xs text-muted-foreground">{property.city}, {property.state} {property.zip_code}</p>
+            </div>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 -mr-2">
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-md border border-border/60 bg-card text-muted-foreground hover:text-primary">
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onEdit(property)}>
-                  <Edit className="h-4 w-4 mr-2" /> Edit Details
-                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onEdit(property)}>Edit Details</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 {property.status !== 'available' && (
-                  <DropdownMenuItem onClick={() => onStatusChange(property.id, 'available')}>
-                    <Eye className="h-4 w-4 mr-2" /> Mark Available
-                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onStatusChange(property.id, 'available')}>Mark Available</DropdownMenuItem>
                 )}
                 {property.status !== 'occupied' && (
-                  <DropdownMenuItem onClick={() => onStatusChange(property.id, 'occupied')}>
-                    <CheckCircle className="h-4 w-4 mr-2" /> Mark Occupied
-                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onStatusChange(property.id, 'occupied')}>Mark Occupied</DropdownMenuItem>
                 )}
                 {property.status !== 'off_market' && (
-                  <DropdownMenuItem onClick={() => onStatusChange(property.id, 'off_market')}>
-                    <EyeOff className="h-4 w-4 mr-2" /> Take Off Market
-                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onStatusChange(property.id, 'off_market')}>Take Off Market</DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-destructive focus:text-destructive"
                   onClick={() => setShowDeleteDialog(true)}
                 >
-                  <Trash2 className="h-4 w-4 mr-2" /> Delete Property
+                  Delete Property
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-          <p className="text-sm text-muted-foreground flex items-center gap-1 mb-2">
-            <MapPin className="h-3 w-3" /> {property.address}, {property.city}
-          </p>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            {property.square_feet && (
-              <span className="flex items-center gap-1">
-                <Layers className="h-4 w-4" /> {property.square_feet.toLocaleString()} sqft
-              </span>
-            )}
-            <span className="flex items-center gap-1">
-              <Building2 className="h-4 w-4" /> Commercial
-            </span>
+
+          <div className="mt-4 flex items-end justify-between gap-4">
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Monthly rent</p>
+              <p className="mt-1 text-xl font-semibold tracking-tight">{rent}<span className="text-xs font-normal text-muted-foreground">/mo</span></p>
+            </div>
+            <Badge variant="outline" className="rounded-md border-border/70 bg-muted/20 px-2 py-1 text-[10px] text-muted-foreground">
+              {propertyType}
+            </Badge>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2 border-t border-border/55 pt-3 text-xs">
+            <div>
+              <p className="text-muted-foreground">Size</p>
+              <p className="mt-1 font-medium">{property.square_feet ? `${property.square_feet.toLocaleString()} sqft` : 'Not set'}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Collection</p>
+              <p className={cn('mt-1 font-medium', property.status === 'occupied' ? 'text-success' : 'text-muted-foreground')}>
+                {property.status === 'occupied' ? 'Active' : 'Setup review'}
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>

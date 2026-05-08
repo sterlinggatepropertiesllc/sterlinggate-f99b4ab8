@@ -5,6 +5,7 @@ import { useLeases } from './useLeases';
 import { useAllPayments } from './usePayments';
 import { useApplications } from './useApplications';
 import { startOfMonth, endOfMonth, subMonths, format, parseISO, isWithinInterval } from 'date-fns';
+import { computeTenantFinancialHealth } from '@/lib/paymentReliability';
 
 export function useAnalytics(managerId: string | undefined) {
   const { data: properties = [] } = useManagerProperties(managerId);
@@ -19,17 +20,21 @@ export function useAnalytics(managerId: string | undefined) {
     const currentMonthEnd = endOfMonth(now);
     const lastMonthStart = startOfMonth(subMonths(now, 1));
     const lastMonthEnd = endOfMonth(subMonths(now, 1));
+    const completedPayments = payments.filter((payment) => payment.status === 'completed');
+    const processingAchPayments = payments.filter((payment) => payment.status === 'processing' && payment.payment_method_type === 'ach');
+    const failedPayments = payments.filter((payment) => ['failed', 'canceled', 'requires_payment_method'].includes(payment.status));
 
-    // Calculate current month revenue
-    const currentMonthRevenue = payments
-      .filter(p => {
+    const currentMonthCompleted = completedPayments
+      .filter((p) => {
         const paymentDate = parseISO(p.payment_date);
         return isWithinInterval(paymentDate, { start: currentMonthStart, end: currentMonthEnd });
-      })
-      .reduce((sum, p) => sum + Number(p.amount), 0);
+      });
+
+    // Calculate current month revenue
+    const currentMonthRevenue = currentMonthCompleted.reduce((sum, p) => sum + Number(p.amount), 0);
 
     // Calculate last month revenue
-    const lastMonthRevenue = payments
+    const lastMonthRevenue = completedPayments
       .filter(p => {
         const paymentDate = parseISO(p.payment_date);
         return isWithinInterval(paymentDate, { start: lastMonthStart, end: lastMonthEnd });
@@ -65,7 +70,7 @@ export function useAnalytics(managerId: string | undefined) {
       const monthStart = startOfMonth(subMonths(now, 11 - i));
       const monthEnd = endOfMonth(subMonths(now, 11 - i));
       
-      const revenue = payments
+      const revenue = completedPayments
         .filter(p => {
           const paymentDate = parseISO(p.payment_date);
           return isWithinInterval(paymentDate, { start: monthStart, end: monthEnd });
@@ -81,7 +86,7 @@ export function useAnalytics(managerId: string | undefined) {
 
     // Revenue by property
     const revenueByProperty = properties.map(property => {
-      const propertyPayments = payments.filter(p => p.property_id === property.id);
+      const propertyPayments = completedPayments.filter(p => p.property_id === property.id);
       const totalRevenue = propertyPayments.reduce((sum, p) => sum + Number(p.amount), 0);
       return {
         id: property.id,
@@ -107,7 +112,13 @@ export function useAnalytics(managerId: string | undefined) {
     ].filter(item => item.value > 0);
 
     // Total revenue all time
-    const totalRevenue = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const totalRevenue = completedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const tenantsWithHealth = tenants.map((tenant) => computeTenantFinancialHealth(tenant, payments));
+    const outstandingBalanceDue = tenantsWithHealth.reduce(
+      (sum, health) => health.hasBalanceDue ? sum + Math.max(Number(health.effectiveBalance || 0), 0) : sum,
+      0
+    );
+    const pendingAchTotal = processingAchPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
 
     // Expected monthly rent (from active leases)
     const expectedMonthlyRent = leases
@@ -124,6 +135,11 @@ export function useAnalytics(managerId: string | undefined) {
       lastMonthRevenue,
       revenueChange,
       totalRevenue,
+      outstandingBalanceDue,
+      pendingAchTotal,
+      failedPaymentCount: failedPayments.length,
+      completedPaymentCount: completedPayments.length,
+      currentMonthPaymentCount: currentMonthCompleted.length,
       occupancyRate,
       collectionRate,
       expectedMonthlyRent,

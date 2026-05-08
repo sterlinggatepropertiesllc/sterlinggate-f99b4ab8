@@ -42,6 +42,22 @@ function shortStripeId(value: string | null) {
   return value.length > 18 ? `${value.slice(0, 10)}...${value.slice(-4)}` : value;
 }
 
+function formatAuditCurrency(value: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function cleanAuditSummary(summary: string) {
+  return summary.replace(/\$-?\d+(?:\.\d+)?/g, (match) => {
+    const value = Number(match.slice(1));
+    return Number.isFinite(value) ? formatAuditCurrency(value) : match;
+  });
+}
+
 function WebhookEventRow({ event }: { event: StripeWebhookEvent }) {
   return (
     <div className="flex items-start justify-between gap-4 rounded-xl border border-border/50 bg-background/45 p-3">
@@ -79,7 +95,7 @@ function AuditLogRow({ log }: { log: AdminAuditLog }) {
             <Badge variant="secondary" className="capitalize">
               {log.action.replace(/_/g, ' ')}
             </Badge>
-            <p className="truncate text-sm font-medium">{log.summary}</p>
+            <p className="truncate text-sm font-medium">{cleanAuditSummary(log.summary)}</p>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             {log.entity_type}

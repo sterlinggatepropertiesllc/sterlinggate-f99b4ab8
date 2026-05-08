@@ -1,210 +1,215 @@
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAnalytics } from '@/hooks/useAnalytics';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
-  Home, 
-  Users, 
-  Percent,
-  Building2,
-  FileText,
-  Sparkles
-} from 'lucide-react';
-import { RevenueChart } from './RevenueChart';
-import { PropertyPerformanceChart } from './PropertyPerformanceChart';
-import { DistributionChart } from './DistributionChart';
+import { AdminButton, AdminStatusBadge, PageHeader, SectionCard, StatCard } from '@/components/admin/AdminDesignSystem';
+
+function formatCurrency(amount: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(amount) ? amount : 0);
+}
+
+function formatPercent(value: number) {
+  return `${(Number.isFinite(value) ? value : 0).toFixed(1)}%`;
+}
+
+function InsightPanel({
+  tone,
+  title,
+  value,
+  detail,
+}: {
+  tone: 'success' | 'warning' | 'danger';
+  title: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/10 p-4">
+      <AdminStatusBadge tone={tone}>{title}</AdminStatusBadge>
+      <p className="mt-3 text-xl font-semibold tracking-tight">{value}</p>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">{detail}</p>
+    </div>
+  );
+}
+
+function BreakdownRow({
+  label,
+  value,
+  max,
+  tone = 'success',
+  formatter = formatCurrency,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  tone?: 'success' | 'warning' | 'danger' | 'gold';
+  formatter?: (value: number) => string;
+}) {
+  const width = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+  const color = tone === 'danger' ? 'bg-destructive' : tone === 'warning' ? 'bg-warning' : tone === 'gold' ? 'bg-primary' : 'bg-success';
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-medium">{formatter(value)}</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-muted/65">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.max(width, value > 0 ? 4 : 0)}%` }} />
+      </div>
+    </div>
+  );
+}
 
 export function AnalyticsDashboard() {
   const { user } = useAuth();
   const analytics = useAnalytics(user?.id);
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const formatPercent = (value: number) => {
-    return `${value.toFixed(1)}%`;
-  };
+  const collectionMax = Math.max(
+    analytics.currentMonthRevenue,
+    analytics.pendingAchTotal,
+    analytics.outstandingBalanceDue,
+    1
+  );
+  const topProperties = analytics.revenueByProperty.slice(0, 6);
+  const topPropertyMax = Math.max(...topProperties.map((property) => property.revenue), 1);
+  const leaseActive = analytics.activeLeases;
+  const leasePending = analytics.pendingLeases;
+  const leaseTotal = Math.max(leaseActive + leasePending, 1);
 
   return (
-    <div className="space-y-8">
-      {/* Premium Header */}
-      <div className="relative animate-fade-in">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-2 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20">
-            <Sparkles className="h-6 w-6 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-serif bg-gradient-to-r from-foreground via-foreground to-muted-foreground bg-clip-text">
-              Portfolio Analytics
-            </h1>
-            <p className="text-muted-foreground">Real-time insights into your property performance</p>
-          </div>
-        </div>
-        <div className="h-px bg-gradient-to-r from-primary/50 via-primary/20 to-transparent mt-4" />
-      </div>
+    <div className="space-y-5 animate-fade-in">
+      <PageHeader
+        title="Portfolio Analytics"
+        subtitle="Real-time insight into portfolio performance, collections, and occupancy."
+        actions={
+          <>
+            <select className="h-9 rounded-md border border-border/70 bg-card px-3 text-xs text-muted-foreground outline-none">
+              <option>May 2026</option>
+              <option>Last 30 days</option>
+              <option>Quarter to date</option>
+            </select>
+            <select className="h-9 rounded-md border border-border/70 bg-card px-3 text-xs text-muted-foreground outline-none">
+              <option>All properties</option>
+              {analytics.revenueByProperty.map((property) => (
+                <option key={property.id}>{property.name}</option>
+              ))}
+            </select>
+            <AdminButton variant="secondary">Export report</AdminButton>
+          </>
+        }
+      />
 
-      {/* Key Metrics - Premium Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* Monthly Revenue Card */}
-        <Card className="group relative overflow-hidden border-primary/10 bg-gradient-to-br from-card via-card to-primary/5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all duration-500 animate-fade-in" style={{ animationDelay: '100ms' }}>
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-primary/10 transition-colors duration-500" />
-          <CardHeader className="flex flex-row items-center justify-between pb-2 relative z-10">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Revenue</CardTitle>
-            <div className="p-2 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors">
-              <DollarSign className="h-4 w-4 text-primary" />
-            </div>
-          </CardHeader>
-          <CardContent className="relative z-10">
-            <div className="text-3xl font-bold tracking-tight">{formatCurrency(analytics.currentMonthRevenue)}</div>
-            <div className="flex items-center gap-2 mt-2">
-              <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                analytics.revenueChange >= 0 
-                  ? 'bg-emerald-500/10 text-emerald-500' 
-                  : 'bg-red-500/10 text-red-500'
-              }`}>
-                {analytics.revenueChange >= 0 ? (
-                  <TrendingUp className="h-3 w-3" />
-                ) : (
-                  <TrendingDown className="h-3 w-3" />
-                )}
-                {formatPercent(Math.abs(analytics.revenueChange))}
-              </div>
-              <span className="text-xs text-muted-foreground">vs last month</span>
-            </div>
-          </CardContent>
-        </Card>
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <StatCard label="MTD collected" value={formatCurrency(analytics.currentMonthRevenue)} detail={`${analytics.currentMonthPaymentCount} completed this month`} tone="success" />
+        <StatCard label="Collection rate" value={formatPercent(analytics.collectionRate)} detail={`${formatCurrency(analytics.expectedMonthlyRent)} expected rent`} tone={analytics.collectionRate >= 90 ? 'success' : 'warning'} progress={analytics.collectionRate} />
+        <StatCard label="Occupancy rate" value={formatPercent(analytics.occupancyRate)} detail={`${analytics.occupiedProperties} of ${analytics.totalProperties} properties`} tone="teal" progress={analytics.occupancyRate} />
+        <StatCard label="Balance due" value={formatCurrency(analytics.outstandingBalanceDue)} detail="Open tenant ledger balance" tone={analytics.outstandingBalanceDue > 0 ? 'warning' : 'success'} />
+        <StatCard label="Pending ACH" value={formatCurrency(analytics.pendingAchTotal)} detail={`${analytics.failedPaymentCount} failed payments`} tone={analytics.pendingAchTotal > 0 ? 'gold' : 'neutral'} />
+      </section>
 
-        {/* Occupancy Rate Card */}
-        <Card className="group relative overflow-hidden border-teal-500/10 bg-gradient-to-br from-card via-card to-teal-500/5 hover:border-teal-500/30 hover:shadow-lg hover:shadow-teal-500/5 transition-all duration-500 animate-fade-in" style={{ animationDelay: '200ms' }}>
-          <div className="absolute inset-0 bg-gradient-to-br from-teal-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <div className="absolute top-0 right-0 w-32 h-32 bg-teal-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-teal-500/10 transition-colors duration-500" />
-          <CardHeader className="flex flex-row items-center justify-between pb-2 relative z-10">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Occupancy Rate</CardTitle>
-            <div className="p-2 rounded-lg bg-teal-500/10 group-hover:bg-teal-500/20 transition-colors">
-              <Home className="h-4 w-4 text-teal-500" />
-            </div>
-          </CardHeader>
-          <CardContent className="relative z-10">
-            <div className="text-3xl font-bold tracking-tight">{formatPercent(analytics.occupancyRate)}</div>
-            <div className="flex items-center gap-2 mt-2">
-              <div className="h-2 flex-1 bg-muted rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-gradient-to-r from-teal-500 to-teal-400 rounded-full transition-all duration-1000"
-                  style={{ width: `${analytics.occupancyRate}%` }}
+      <section className="grid gap-4 xl:grid-cols-[1.45fr_0.75fr]">
+        <SectionCard title="Revenue & Collections Trend" subtitle="Completed Stripe and manual payments over the past 12 months.">
+          <div className="h-[280px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={analytics.monthlyRevenue} margin={{ top: 12, right: 8, left: -14, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="sterlingRevenueFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="hsl(var(--success))" stopOpacity={0.28} />
+                    <stop offset="100%" stopColor="hsl(var(--success))" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="hsl(var(--border))" strokeOpacity={0.4} vertical={false} />
+                <XAxis dataKey="month" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickLine={false} axisLine={false} dy={8} />
+                <YAxis tickFormatter={(value) => `$${Number(value) / 1000}k`} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickLine={false} axisLine={false} />
+                <Tooltip
+                  contentStyle={{
+                    background: 'hsl(var(--popover))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: 10,
+                    color: 'hsl(var(--foreground))',
+                  }}
+                  formatter={(value) => formatCurrency(Number(value))}
                 />
+                <Area type="monotone" dataKey="revenue" stroke="hsl(var(--success))" strokeWidth={2} fill="url(#sterlingRevenueFill)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Collections Breakdown" subtitle="Cash that is settled, pending, or still owed.">
+          <div className="space-y-5">
+            <BreakdownRow label="Collected MTD" value={analytics.currentMonthRevenue} max={collectionMax} tone="success" />
+            <BreakdownRow label="Pending ACH" value={analytics.pendingAchTotal} max={collectionMax} tone="gold" />
+            <BreakdownRow label="Outstanding" value={analytics.outstandingBalanceDue} max={collectionMax} tone="warning" />
+            <div className="rounded-lg border border-border/60 bg-muted/10 p-3 text-xs text-muted-foreground">
+              Failed payments are kept visible as exceptions, not counted as collected cash.
+            </div>
+          </div>
+        </SectionCard>
+      </section>
+
+      <SectionCard title="Top Property Performance" subtitle="Collected revenue by property with current occupancy state.">
+        <div className="space-y-3">
+          {topProperties.length > 0 ? topProperties.map((property) => {
+            const percent = topPropertyMax > 0 ? (property.revenue / topPropertyMax) * 100 : 0;
+            return (
+              <div key={property.id} className="grid gap-3 rounded-lg border border-border/45 bg-muted/10 p-3 md:grid-cols-[1fr_140px_150px] md:items-center">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{property.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{property.status === 'occupied' ? 'Occupied' : property.status === 'available' ? 'Available' : 'Setup needed'}</p>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-muted/70">
+                  <div className="h-full rounded-full bg-success" style={{ width: `${Math.max(percent, property.revenue > 0 ? 4 : 0)}%` }} />
+                </div>
+                <p className="text-right text-sm font-semibold">{formatCurrency(property.revenue)}</p>
               </div>
-              <span className="text-xs text-muted-foreground whitespace-nowrap">
-                {analytics.occupiedProperties}/{analytics.totalProperties}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+            );
+          }) : (
+            <div className="rounded-lg border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">No property revenue yet.</div>
+          )}
+        </div>
+      </SectionCard>
 
-        {/* Collection Rate Card */}
-        <Card className="group relative overflow-hidden border-amber-500/10 bg-gradient-to-br from-card via-card to-amber-500/5 hover:border-amber-500/30 hover:shadow-lg hover:shadow-amber-500/5 transition-all duration-500 animate-fade-in" style={{ animationDelay: '300ms' }}>
-          <div className="absolute inset-0 bg-gradient-to-br from-amber-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-amber-500/10 transition-colors duration-500" />
-          <CardHeader className="flex flex-row items-center justify-between pb-2 relative z-10">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Collection Rate</CardTitle>
-            <div className="p-2 rounded-lg bg-amber-500/10 group-hover:bg-amber-500/20 transition-colors">
-              <Percent className="h-4 w-4 text-amber-500" />
-            </div>
-          </CardHeader>
-          <CardContent className="relative z-10">
-            <div className="text-3xl font-bold tracking-tight">{formatPercent(analytics.collectionRate)}</div>
-            <p className="text-xs text-muted-foreground mt-2">
-              {formatCurrency(analytics.currentMonthRevenue)} of {formatCurrency(analytics.expectedMonthlyRent)}
+      <section className="grid gap-4 lg:grid-cols-3">
+        <SectionCard title="Occupancy Mix" subtitle="Configured property status.">
+          <div className="space-y-3">
+            {analytics.propertyStatusDistribution.length > 0 ? analytics.propertyStatusDistribution.map((item) => (
+              <div key={item.name} className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">{item.name}</span>
+                <span className="font-medium">{item.value}</span>
+              </div>
+            )) : <p className="text-sm text-muted-foreground">No property status data yet.</p>}
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Lease Status / Renewals" subtitle="Signature pipeline and active terms.">
+          <div className="space-y-4">
+            <BreakdownRow label="Active leases" value={leaseActive} max={leaseTotal} tone="success" formatter={(value) => String(value)} />
+            <BreakdownRow label="Pending signatures" value={leasePending} max={leaseTotal} tone="warning" formatter={(value) => String(value)} />
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Aging Balance Overview" subtitle="Outstanding balance pressure.">
+          <div className="space-y-3">
+            <p className="text-3xl font-semibold tracking-tight">{formatCurrency(analytics.outstandingBalanceDue)}</p>
+            <p className="text-sm leading-6 text-muted-foreground">
+              {analytics.outstandingBalanceDue > 0
+                ? 'Keep the aging report and ACH queue aligned before sending late notices.'
+                : 'No outstanding tenant balance is currently visible in the ledger.'}
             </p>
-          </CardContent>
-        </Card>
+          </div>
+        </SectionCard>
+      </section>
 
-        {/* Total Revenue Card */}
-        <Card className="group relative overflow-hidden border-violet-500/10 bg-gradient-to-br from-card via-card to-violet-500/5 hover:border-violet-500/30 hover:shadow-lg hover:shadow-violet-500/5 transition-all duration-500 animate-fade-in" style={{ animationDelay: '400ms' }}>
-          <div className="absolute inset-0 bg-gradient-to-br from-violet-500/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-          <div className="absolute top-0 right-0 w-32 h-32 bg-violet-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-violet-500/10 transition-colors duration-500" />
-          <CardHeader className="flex flex-row items-center justify-between pb-2 relative z-10">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Revenue</CardTitle>
-            <div className="p-2 rounded-lg bg-violet-500/10 group-hover:bg-violet-500/20 transition-colors">
-              <DollarSign className="h-4 w-4 text-violet-500" />
-            </div>
-          </CardHeader>
-          <CardContent className="relative z-10">
-            <div className="text-3xl font-bold tracking-tight">{formatCurrency(analytics.totalRevenue)}</div>
-            <p className="text-xs text-muted-foreground mt-2">All time earnings</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Full Width Revenue Chart */}
-      <div className="animate-fade-in" style={{ animationDelay: '500ms' }}>
-        <RevenueChart data={analytics.monthlyRevenue} />
-      </div>
-
-      {/* Full Width Property Performance */}
-      <div className="animate-fade-in" style={{ animationDelay: '600ms' }}>
-        <PropertyPerformanceChart data={analytics.revenueByProperty.slice(0, 8)} />
-      </div>
-
-      {/* Quick Stats Summary Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-fade-in" style={{ animationDelay: '700ms' }}>
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-br from-card to-primary/5 border border-primary/10">
-          <div className="p-2.5 rounded-lg bg-primary/10">
-            <Building2 className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{analytics.totalProperties}</p>
-            <p className="text-xs text-muted-foreground">Properties</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-br from-card to-teal-500/5 border border-teal-500/10">
-          <div className="p-2.5 rounded-lg bg-teal-500/10">
-            <Users className="h-5 w-5 text-teal-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{analytics.activeTenants}</p>
-            <p className="text-xs text-muted-foreground">Active Tenants</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-br from-card to-amber-500/5 border border-amber-500/10">
-          <div className="p-2.5 rounded-lg bg-amber-500/10">
-            <FileText className="h-5 w-5 text-amber-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{analytics.activeLeases}</p>
-            <p className="text-xs text-muted-foreground">Active Leases</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 p-4 rounded-xl bg-gradient-to-br from-card to-emerald-500/5 border border-emerald-500/10">
-          <div className="p-2.5 rounded-lg bg-emerald-500/10">
-            <Home className="h-5 w-5 text-emerald-500" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold">{analytics.availableProperties}</p>
-            <p className="text-xs text-muted-foreground">Available Units</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Distribution Charts - 2 columns */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in" style={{ animationDelay: '800ms' }}>
-        <DistributionChart 
-          title="Property Status" 
-          data={analytics.propertyStatusDistribution} 
-        />
-        <DistributionChart 
-          title="Lease Status" 
-          data={analytics.leaseStatusDistribution} 
-        />
-      </div>
+      <section className="grid gap-3 rounded-xl border border-border/70 bg-card p-3 lg:grid-cols-3">
+        <InsightPanel tone="success" title="Positive" value={`${analytics.occupiedProperties} occupied`} detail="Occupancy remains the main operational anchor for the portfolio." />
+        <InsightPanel tone="warning" title="Watch" value={formatCurrency(analytics.pendingAchTotal)} detail="Pending ACH should stay out of late notices until it clears or fails." />
+        <InsightPanel tone="danger" title="Risk" value={formatCurrency(analytics.outstandingBalanceDue)} detail="Open balances should be reviewed against payments before tenant outreach." />
+      </section>
     </div>
   );
 }

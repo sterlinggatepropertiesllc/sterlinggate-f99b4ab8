@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useHardDeleteTenant } from '@/hooks/useTenants';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { AdminButton, EmptyState, FilterTabs } from '@/components/admin/AdminDesignSystem';
 import type { Payment } from '@/hooks/usePayments';
 import type { TenantHealthFilter, TenantRecord } from '@/components/admin/adminTypes';
 import { computeTenantFinancialHealth } from '@/lib/paymentReliability';
@@ -109,17 +110,6 @@ function healthMatchesFilter(health: ReturnType<typeof computeTenantFinancialHea
   }
 }
 
-function TinySparkline({ tone = 'gold' }: { tone?: 'gold' | 'red' | 'green' }) {
-  const stroke = tone === 'red' ? 'hsl(var(--destructive))' : tone === 'green' ? 'hsl(var(--success))' : 'hsl(var(--primary))';
-
-  return (
-    <svg viewBox="0 0 92 24" className="h-7 w-24 opacity-90">
-      <path d="M2 18 C12 17, 15 12, 24 15 S39 18, 46 11 S58 10, 65 14 S78 19, 90 7" fill="none" stroke={stroke} strokeWidth="1.4" />
-      <circle cx="90" cy="7" r="1.8" fill={stroke} />
-    </svg>
-  );
-}
-
 function MetricCard({
   label,
   value,
@@ -136,18 +126,13 @@ function MetricCard({
   const toneClass = tone === 'red' ? 'text-destructive border-destructive/25 bg-destructive/10' : tone === 'green' ? 'text-success border-success/25 bg-success/10' : 'text-primary border-primary/25 bg-primary/10';
 
   return (
-    <div className="ops-panel h-[92px] p-3">
+    <div className="ops-panel h-[92px] p-4">
       <div className="flex items-start justify-between gap-3">
-        <span className={`grid h-9 w-9 place-items-center rounded-full border ${toneClass}`}>
-          <Icon className="h-4 w-4" />
-        </span>
-        <TinySparkline tone={tone} />
-      </div>
-      <div className="-mt-1">
         <p className="ops-label">{label}</p>
-        <p className="mt-1 text-2xl font-bold leading-none">{value}</p>
-        <p className={tone === 'red' ? 'mt-1.5 text-[10px] text-destructive' : 'mt-1.5 text-[10px] text-success'}>{detail}</p>
+        <span className={`mt-1 h-1.5 w-8 rounded-full ${toneClass}`} />
       </div>
+      <p className="mt-3 text-2xl font-bold leading-none">{value}</p>
+      <p className={tone === 'red' ? 'mt-1.5 text-[10px] text-destructive' : 'mt-1.5 text-[10px] text-muted-foreground'}>{detail}</p>
     </div>
   );
 }
@@ -306,7 +291,7 @@ export function TenantsTable({
             <h1 className="text-2xl font-semibold tracking-tight">Tenants</h1>
             <p className="mt-1 text-sm text-muted-foreground">Manage and support your active tenant base.</p>
           </div>
-          <Button onClick={onAddTenant} className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90">Add</Button>
+        <AdminButton onClick={onAddTenant} className="shrink-0">Add</AdminButton>
         </div>
 
         <div className="grid gap-3">
@@ -344,46 +329,24 @@ export function TenantsTable({
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Tenants</h1>
           <p className="mt-1 text-sm text-muted-foreground">Manage, track, and support your active tenant base.</p>
         </div>
-        <Button
-          onClick={onAddTenant}
-          className="h-10 gap-2 border border-primary/30 bg-primary/15 px-4 text-primary hover:bg-primary/25"
-        >
-          <UserRound className="h-4 w-4" />
+        <AdminButton onClick={onAddTenant}>
           Add Tenant
-        </Button>
+        </AdminButton>
       </div>
 
       <section className="grid gap-3 lg:grid-cols-4">
-        <MetricCard label="Total tenants" value={String(tenants.length)} detail="+ 6.7% vs last 30 days" icon={Users} tone="gold" />
-        <MetricCard label="Balance due" value={formatCurrency(balanceDue)} detail="+ 12.4% vs last 30 days" icon={WalletCards} tone="red" />
-        <MetricCard label="Pending ACH" value={formatCurrency(pendingAch)} detail="+ 8.1% vs last 30 days" icon={Banknote} tone="gold" />
-        <MetricCard label="At risk / unassigned" value={String(atRisk)} detail="- 3.2% vs last 30 days" icon={UserRound} tone="green" />
+        <MetricCard label="Total tenants" value={String(tenants.length)} detail={`${healthCounts['paid-up']} currently paid up`} icon={Users} tone="gold" />
+        <MetricCard label="Balance due" value={formatCurrency(balanceDue)} detail="Open effective balance" icon={WalletCards} tone="red" />
+        <MetricCard label="Pending ACH" value={formatCurrency(pendingAch)} detail="Bank payments in processing" icon={Banknote} tone="gold" />
+        <MetricCard label="At risk / unassigned" value={String(atRisk)} detail="Balance or setup review" icon={UserRound} tone="green" />
       </section>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {filterItems.map((item) => (
-          <Button
-            key={item.id}
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => onHealthFilterChange?.(item.id)}
-            className={`h-8 rounded-md border px-3 text-[11px] ${
-              healthFilter === item.id
-                ? 'border-primary/45 bg-primary/15 text-primary'
-                : 'border-border/70 bg-card/45 text-muted-foreground hover:border-primary/30 hover:text-primary'
-            }`}
-          >
-            {item.label}
-            <span className="ml-2 rounded-full bg-background/35 px-2 py-0.5 text-[10px]">{item.count}</span>
-          </Button>
-        ))}
-      </div>
+      <FilterTabs items={filterItems} value={healthFilter} onChange={(item) => onHealthFilterChange?.(item)} />
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-1 items-center gap-2">
@@ -393,17 +356,17 @@ export function TenantsTable({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search tenants by name, email, or phone..."
-              className="h-9 rounded-md border-border/70 bg-card/55 pl-9 text-xs"
-            />
-          </div>
-          <Button variant="outline" className="h-9 gap-2 border-border/70 bg-card/55 text-xs text-muted-foreground">
+            className="h-9 rounded-md border-border/70 bg-card pl-9 text-xs"
+          />
+        </div>
+          <Button variant="outline" className="h-9 gap-2 border-border/70 bg-card text-xs text-muted-foreground">
             <Filter className="h-3.5 w-3.5" />
             Filters
           </Button>
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as 'all' | LeaseStatus)}
-            className="h-9 rounded-md border border-border/70 bg-card/55 px-3 text-xs text-muted-foreground outline-none"
+            className="h-9 rounded-md border border-border/70 bg-card px-3 text-xs text-muted-foreground outline-none"
           >
             <option value="all">Lease Status</option>
             <option value="active">Active</option>
@@ -414,7 +377,7 @@ export function TenantsTable({
           <select
             value={healthFilter}
             onChange={(event) => onHealthFilterChange?.(event.target.value as TenantHealthFilter)}
-            className="h-9 rounded-md border border-border/70 bg-card/55 px-3 text-xs text-muted-foreground outline-none"
+            className="h-9 rounded-md border border-border/70 bg-card px-3 text-xs text-muted-foreground outline-none"
           >
             <option value="all">Financial Health</option>
             <option value="paid-up">Current</option>
@@ -428,14 +391,14 @@ export function TenantsTable({
           <select
             value={sortMode}
             onChange={(event) => setSortMode(event.target.value as SortMode)}
-            className="h-9 rounded-md border border-border/70 bg-card/55 px-3 text-xs text-muted-foreground outline-none"
+            className="h-9 rounded-md border border-border/70 bg-card px-3 text-xs text-muted-foreground outline-none"
           >
             <option value="name">Sort by: Name (A-Z)</option>
             <option value="balance">Sort by: Balance due</option>
             <option value="payment">Sort by: Last payment</option>
             <option value="due">Sort by: Next due</option>
           </select>
-          <Button variant="outline" size="icon" className="h-9 w-9 border-border/70 bg-card/55 text-muted-foreground">
+          <Button variant="outline" size="icon" className="h-9 w-9 border-border/70 bg-card text-muted-foreground">
             <LayoutGrid className="h-4 w-4" />
           </Button>
         </div>
@@ -484,16 +447,13 @@ export function TenantsTable({
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="grid h-9 w-9 place-items-center rounded-full border border-primary/25 bg-primary/10 text-primary">
+                      <div className="grid h-9 w-9 place-items-center rounded-full border border-primary/20 bg-primary/10 text-primary">
                         <UserRound className="h-4 w-4" />
                       </div>
                       <div className="min-w-0">
                         <p className="truncate font-semibold text-foreground">{tenantName(tenant)}</p>
                         <p className="truncate text-[11px] text-muted-foreground">{tenant.user?.email || 'No email'}</p>
-                        <p className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                          <Phone className="h-3 w-3" />
-                          {tenant.user?.phone || 'No phone'}
-                        </p>
+                        <p className="text-[10px] text-muted-foreground">{tenant.user?.phone || 'No phone'}</p>
                       </div>
                     </div>
                   </td>
@@ -529,10 +489,7 @@ export function TenantsTable({
                         <p className="font-medium">{formatCurrency(Number(lastPayment.amount))} <CheckCircle2 className="inline h-3 w-3 text-success" /></p>
                       </div>
                     ) : (
-                      <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning">
-                        <AlertTriangle className="mr-1 h-3 w-3" />
-                        No payment
-                      </Badge>
+                      <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning">No payment</Badge>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -577,7 +534,6 @@ export function TenantsTable({
 
       {visibleTenants.length === 0 && (
         <div className="ops-panel border-dashed p-8 text-center text-muted-foreground">
-          <CheckCircle2 className="mx-auto mb-3 h-8 w-8 text-success" />
           No tenants match this filter.
         </div>
       )}

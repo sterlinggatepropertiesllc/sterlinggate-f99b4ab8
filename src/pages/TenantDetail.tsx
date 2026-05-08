@@ -114,14 +114,11 @@ function KpiTile({
   const toneClass = tone === 'red' ? 'text-destructive border-destructive/30 bg-destructive/10' : tone === 'green' ? 'text-success border-success/30 bg-success/10' : 'text-primary border-primary/30 bg-primary/10';
 
   return (
-    <div className="ops-panel h-[92px] p-3">
+    <div className="ops-panel h-[92px] p-3.5">
       <div className="flex items-start justify-between gap-3">
-        <span className={`grid h-8 w-8 place-items-center rounded-full border ${toneClass}`}>
-          <Icon className="h-4 w-4" />
-        </span>
-        <SmallTrend tone={tone} />
+        <p className="ops-label">{label}</p>
+        <span className={`mt-1 h-1.5 w-8 rounded-full ${toneClass}`} />
       </div>
-      <p className="ops-label mt-1">{label}</p>
       <div className="mt-1 flex items-end justify-between gap-2">
         <div>
           <p className="text-xl font-bold leading-none">{value}</p>
@@ -151,7 +148,7 @@ function InfoPanel({
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="ops-label text-foreground">{title}</p>
         {action && (
-          <Button variant="outline" size="sm" className="h-7 border-border/70 bg-card/50 px-2 text-[10px]">
+          <Button variant="outline" size="sm" className="h-7 border-border/70 bg-card px-2 text-[10px]">
             {action}
           </Button>
         )}
@@ -163,8 +160,7 @@ function InfoPanel({
 
 function DetailRow({ icon: Icon, label, value, tone }: { icon: typeof Mail; label: string; value: string; tone?: string }) {
   return (
-    <div className="grid grid-cols-[18px_120px_1fr] items-center gap-2 border-b border-border/35 py-1.5 text-xs last:border-b-0">
-      <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+    <div className="grid grid-cols-[120px_1fr] items-center gap-2 border-b border-border/35 py-1.5 text-xs last:border-b-0">
       <span className="text-muted-foreground">{label}</span>
       <span className={`truncate text-right font-medium ${tone || 'text-foreground'}`}>{value}</span>
     </div>
@@ -404,6 +400,9 @@ export default function TenantDetail() {
   const tenantHealth = computeTenantFinancialHealth(tenant, allPayments);
   const completedPayments = tenantPayments.filter((payment) => payment.status === 'completed');
   const lastPayment = completedPayments[0] as Payment | undefined;
+  const paymentHistoryLabel = completedPayments.length > 0
+    ? `${completedPayments.length} completed payment${completedPayments.length === 1 ? '' : 's'}`
+    : 'No completed payments';
   const monthlyRent = Number(tenant.primary_rent_amount || activeLease?.monthly_rent || tenant.rent_amount || 0);
   const currentBalance = Number(tenant.current_balance || 0);
   const leaseMonths = monthsBetween(tenant.primary_lease_start || activeLease?.start_date, tenant.primary_lease_end || activeLease?.end_date);
@@ -427,7 +426,7 @@ export default function TenantDetail() {
         />
 
         <main className="min-w-0 flex-1 overflow-auto">
-          <div className="sticky top-0 z-10 bg-background/5 px-3 py-3 backdrop-blur-xl md:px-5">
+          <div className="sticky top-0 z-10 border-b border-border/35 bg-background px-3 py-3 md:px-5">
             <div className="flex items-center justify-between gap-3">
               <Button
                 variant="ghost"
@@ -471,7 +470,7 @@ export default function TenantDetail() {
             <section className="ops-panel p-4">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div className="flex min-w-0 items-center gap-4">
-                  <div className="grid h-16 w-16 shrink-0 place-items-center rounded-full border border-primary/45 bg-primary/10 text-primary shadow-[0_0_30px_hsl(var(--primary)/0.16)]">
+                  <div className="grid h-16 w-16 shrink-0 place-items-center rounded-full border border-primary/35 bg-primary/10 text-primary">
                     <UserRound className="h-8 w-8" />
                   </div>
                   <div className="min-w-0">
@@ -488,8 +487,8 @@ export default function TenantDetail() {
                   </div>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-                  <KpiTile label="Current Balance" value={formatCurrency(currentBalance)} detail="+ 12.4% vs last 30 days" icon={Wallet} tone={currentBalance > 0 ? 'red' : 'green'} />
+                <div className="grid gap-3 sm:min-w-[360px] md:grid-cols-2">
+                  <KpiTile label="Current Balance" value={formatCurrency(currentBalance)} detail={currentBalance > 0 ? 'Open ledger balance' : 'No balance due'} icon={Wallet} tone={currentBalance > 0 ? 'red' : 'green'} />
                   <KpiTile label="Monthly Rent" value={formatCurrency(monthlyRent)} detail="Due on the 1st" icon={Home} tone="gold" />
                   <KpiTile label="Last Payment" value={lastPayment ? formatCurrency(Number(lastPayment.amount)) : '--'} detail={lastPayment ? formatDate(lastPayment.payment_date) : 'No payment recorded'} icon={CheckCircle2} tone="green" />
                   <KpiTile label="Lease Term / Renewal" value={leaseMonths ? `${leaseMonths} mo` : '--'} detail={`Renews ${formatDate(tenant.primary_lease_end || activeLease?.end_date)}`} icon={CalendarDays} tone="gold" action="View Lease" />
@@ -498,18 +497,18 @@ export default function TenantDetail() {
             </section>
 
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as DetailTab)} className="mt-3">
-              <TabsList className="grid h-9 w-full grid-cols-4 rounded-lg border border-border/70 bg-card/55 p-1">
+              <TabsList className="grid h-9 w-full grid-cols-4 rounded-lg border border-border/70 bg-card p-1">
                 <TabsTrigger value="overview" className="h-7 text-[11px] data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
-                  <UserRound className="mr-2 h-3.5 w-3.5" /> Overview
+                  Overview
                 </TabsTrigger>
                 <TabsTrigger value="properties" className="h-7 text-[11px] data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
-                  <Home className="mr-2 h-3.5 w-3.5" /> Lease & Property
+                  Lease & Property
                 </TabsTrigger>
                 <TabsTrigger value="balance" className="h-7 text-[11px] data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
-                  <Receipt className="mr-2 h-3.5 w-3.5" /> Billing & Ledger
+                  Billing & Ledger
                 </TabsTrigger>
                 <TabsTrigger value="history" className="h-7 text-[11px] data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
-                  <MessageSquare className="mr-2 h-3.5 w-3.5" /> Communication / Activity
+                  Communication / Activity
                 </TabsTrigger>
               </TabsList>
 
@@ -519,9 +518,9 @@ export default function TenantDetail() {
                     <DetailRow icon={UserRound} label="Full Name" value={tenantName(tenant)} />
                     <DetailRow icon={Mail} label="Email" value={tenant.user?.email || 'No email'} />
                     <DetailRow icon={Phone} label="Phone" value={tenant.user?.phone || 'No phone'} />
-                    <DetailRow icon={Users} label="Emergency Contact" value="Melissa Boyd (Spouse)" />
+                    <DetailRow icon={Users} label="Emergency Contact" value="Not on file" />
                     <DetailRow icon={MessageSquare} label="Preferred Contact" value="Email" />
-                    <DetailRow icon={ShieldCheck} label="ID / Notes" value="Government ID on file" />
+                    <DetailRow icon={ShieldCheck} label="ID / Notes" value="Not on file" />
                   </InfoPanel>
 
                   <InfoPanel title="Lease & Property" action="View Lease">
@@ -529,20 +528,20 @@ export default function TenantDetail() {
                     <DetailRow icon={Building2} label="Unit" value={`Unit ${shortId(tenant.primary_property?.id)}`} />
                     <DetailRow icon={CalendarDays} label="Lease Start" value={formatDate(tenant.primary_lease_start || activeLease?.start_date)} />
                     <DetailRow icon={CalendarDays} label="Lease End" value={formatDate(tenant.primary_lease_end || activeLease?.end_date)} />
-                    <DetailRow icon={Users} label="Occupancy" value="1 Occupant" />
+                    <DetailRow icon={Users} label="Occupancy" value="Not tracked" />
                     <DetailRow icon={Receipt} label="Payment Day" value="1st of each month" />
                     <DetailRow icon={Wallet} label="Rent Amount" value={formatCurrency(monthlyRent)} />
-                    <DetailRow icon={ShieldCheck} label="Security Deposit" value={`${formatCurrency(monthlyRent)} (Held)`} />
+                    <DetailRow icon={ShieldCheck} label="Security Deposit" value="Not tracked" />
                   </InfoPanel>
 
                   <InfoPanel title="Financial Summary" action="View Ledger">
                     <DetailRow icon={Wallet} label="Current Balance" value={formatCurrency(currentBalance)} tone={currentBalance > 0 ? 'text-destructive' : 'text-success'} />
-                    <DetailRow icon={Receipt} label="Amount Due (Next)" value={`${formatCurrency(monthlyRent)} due May 1, 2026`} tone="text-destructive" />
+                    <DetailRow icon={Receipt} label="Next Rent Charge" value={`${formatCurrency(monthlyRent)} on the 1st`} />
                     <DetailRow icon={BanknoteIcon} label="Pending ACH" value={tenantHealth.pendingACH ? `${formatCurrency(tenantHealth.pendingACH)} pending` : '--'} tone="text-primary" />
                     <DetailRow icon={ShieldCheck} label="Available Credit" value={tenantHealth.hasCredit ? formatCurrency(Math.abs(tenantHealth.effectiveBalance)) : '$0'} />
-                    <DetailRow icon={CheckCircle2} label="Autopay" value="Enabled" tone="text-success" />
+                    <DetailRow icon={CheckCircle2} label="Autopay" value="Not configured" />
                     <DetailRow icon={ShieldCheck} label="Credit Health" value={tenantHealth.hasBalanceDue ? 'Needs review' : 'Healthy'} tone={tenantHealth.hasBalanceDue ? 'text-warning' : 'text-success'} />
-                    <DetailRow icon={Receipt} label="Payment History" value="93.6% on-time" tone="text-success" />
+                    <DetailRow icon={Receipt} label="Payment History" value={paymentHistoryLabel} tone={completedPayments.length > 0 ? 'text-success' : undefined} />
                   </InfoPanel>
                 </div>
 
@@ -559,33 +558,29 @@ export default function TenantDetail() {
                           <span className="text-right text-[10px] text-muted-foreground">{formatDate(payment.payment_date)}</span>
                         </div>
                       ))}
-                      <div className="grid grid-cols-[28px_1fr_auto] items-center gap-3 text-xs">
-                        <span className="grid h-7 w-7 place-items-center rounded-full border border-warning/25 bg-warning/10 text-warning">N</span>
-                        <span><span className="block font-medium">Notice sent</span><span className="block text-[10px] text-muted-foreground">Rent reminder generated</span></span>
-                        <span className="text-right text-[10px] text-muted-foreground">Apr 28, 2026</span>
-                      </div>
+                      {tenantPayments.length === 0 && (
+                        <div className="rounded-lg border border-dashed border-border/70 p-3 text-xs text-muted-foreground">
+                          No payment activity recorded for this tenant yet.
+                        </div>
+                      )}
                     </div>
                   </InfoPanel>
 
                   <InfoPanel title="Notes" action="Add Note">
                     <div className="space-y-2 text-xs">
-                      <div className="rounded-lg border border-primary/20 bg-primary/10 p-3">
-                        <p>Prefers email communication. Travels frequently for work.</p>
-                        <p className="mt-2 text-[10px] text-muted-foreground">{managerName} - Apr 15, 2026 - 09:30 AM</p>
-                      </div>
-                      <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
-                        <p>Discussed renewal options. Tenant interested in a 12-month renewal.</p>
-                        <p className="mt-2 text-[10px] text-muted-foreground">{managerName} - Feb 20, 2026 - 04:10 PM</p>
+                      <div className="rounded-lg border border-dashed border-border/70 bg-muted/10 p-3">
+                        <p>No internal notes recorded yet.</p>
+                        <p className="mt-2 text-[10px] text-muted-foreground">Use Add Note when the next tenant interaction needs context.</p>
                       </div>
                     </div>
                   </InfoPanel>
 
                   <InfoPanel title="Automation / Billing Settings" action="Manage">
-                    <DetailRow icon={CheckCircle2} label="Autopay" value="Enabled" tone="text-success" />
-                    <DetailRow icon={Receipt} label="Payment Method" value="Visa **** 4242" />
+                    <DetailRow icon={CheckCircle2} label="Autopay" value="Not configured" />
+                    <DetailRow icon={Receipt} label="Payment Method" value="Not on file" />
                     <DetailRow icon={Wallet} label="Rent Charge" value={`${formatCurrency(monthlyRent)} on the 1st`} />
                     <DetailRow icon={Bell} label="Late Fee" value="$50 after 5 days" />
-                    <DetailRow icon={MessageSquare} label="Reminders" value="3 days before due date" />
+                    <DetailRow icon={MessageSquare} label="Reminders" value="Standard due-date reminders" />
                     <DetailRow icon={CalendarDays} label="Grace Period" value="5 days" />
                   </InfoPanel>
 
