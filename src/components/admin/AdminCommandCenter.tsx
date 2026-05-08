@@ -200,7 +200,7 @@ function PriorityCard({ item }: { item: PriorityAction }) {
     <button
       type="button"
       onClick={item.action}
-      className={`ops-panel-soft group h-[82px] p-2.5 text-left transition-all hover:-translate-y-0.5 hover:border-primary/30 ${toneClass.glow}`}
+      className={`ops-panel-soft group min-h-[104px] p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/30 ${toneClass.glow}`}
     >
       <div className="flex items-start gap-3">
         <span className={`rounded-full border p-1.5 ${toneClass.border} ${toneClass.bg} ${toneClass.text}`}>
@@ -210,7 +210,7 @@ function PriorityCard({ item }: { item: PriorityAction }) {
           <p className={`truncate text-[10px] font-bold uppercase tracking-[0.16em] ${toneClass.text}`}>{item.title}</p>
           <p className="mt-1 truncate text-base font-bold leading-none">{item.value}</p>
           <p className="mt-1 truncate text-[10px] text-muted-foreground">{item.detail}</p>
-          <div className={`mt-1 flex items-center justify-between rounded-md border px-2 py-0.5 text-[9px] ${toneClass.border} ${toneClass.bg}`}>
+          <div className={`mt-2 flex items-center justify-between rounded-md border px-2 py-1 text-[9px] ${toneClass.border} ${toneClass.bg}`}>
             <span>{item.cta}</span>
             <ArrowRight className={`h-3 w-3 transition-transform group-hover:translate-x-0.5 ${toneClass.text}`} />
           </div>
@@ -380,7 +380,7 @@ export function AdminCommandCenter({
       .filter((lease) => lease.status === 'completed')
       .reduce((sum, lease) => sum + Number(lease.monthly_rent || 0), 0);
     const expectedMonthlyRentFromTenants = tenants.reduce(
-      (sum, tenant) => sum + Number(tenant.primary_rent_amount || tenant.rent_amount || 0),
+      (sum, tenant) => sum + Number(tenant.assignment_rent_total || tenant.primary_rent_amount || tenant.rent_amount || 0),
       0
     );
     const expectedMonthlyRent = expectedMonthlyRentFromLeases || expectedMonthlyRentFromTenants;
@@ -389,12 +389,28 @@ export function AdminCommandCenter({
     const staleAch = processingAch.filter((payment) => isStaleProcessingACH(payment));
     const failedPayments = payments.filter((payment) => isFailedPaymentStatus(payment.status));
     const balanceReviewPayments = completedPayments.filter((payment) => !hasPaymentBalanceApplied(payment));
-    const outstandingBalance = tenants.reduce((sum, tenant) => sum + Math.max(Number(tenant.current_balance || 0), 0), 0);
+    const activeCompletedLeaseTenantIds = new Set(
+      leases
+        .filter((lease) => lease.status === 'completed')
+        .filter((lease) => new Date(lease.start_date) <= now && new Date(lease.end_date) >= now)
+        .map((lease) => lease.tenant_id)
+    );
+    const isBillableTenant = (tenant: TenantRecord) =>
+      Boolean(
+        tenant.primary_property ||
+        Number(tenant.active_assignment_count || 0) > 0 ||
+        activeCompletedLeaseTenantIds.has(tenant.user_id)
+      );
+    const billableTenants = tenants.filter(isBillableTenant);
+    const setupReviewBalance = tenants
+      .filter((tenant) => !isBillableTenant(tenant))
+      .reduce((sum, tenant) => sum + Math.max(Number(tenant.current_balance || 0), 0), 0);
+    const outstandingBalance = billableTenants.reduce((sum, tenant) => sum + Math.max(Number(tenant.current_balance || 0), 0), 0);
     const pendingAchByTenant = new Map<string, number>();
     processingAch.forEach((payment) => {
       pendingAchByTenant.set(payment.tenant_id, (pendingAchByTenant.get(payment.tenant_id) || 0) + Number(payment.amount));
     });
-    const effectiveOutstanding = tenants.reduce((sum, tenant) => {
+    const effectiveOutstanding = billableTenants.reduce((sum, tenant) => {
       const balance = Math.max(Number(tenant.current_balance || 0), 0);
       return sum + Math.max(balance - (pendingAchByTenant.get(tenant.id) || 0), 0);
     }, 0);
@@ -438,6 +454,7 @@ export function AdminCommandCenter({
       balanceReviewPayments,
       outstandingBalance,
       effectiveOutstanding,
+      setupReviewBalance,
       pendingAchTotal: processingAch.reduce((sum, payment) => sum + Number(payment.amount), 0),
       occupiedProperties,
       occupancyRate,
@@ -541,7 +558,7 @@ export function AdminCommandCenter({
         <KpiCard
           label="Effective balance due"
           value={formatCurrency(model.effectiveOutstanding)}
-          detail={`${formatCurrency(model.outstandingBalance)} official balance`}
+          detail={model.setupReviewBalance > 0 ? `${formatCurrency(model.setupReviewBalance)} in setup review` : `${formatCurrency(model.outstandingBalance)} official balance`}
           trend="- 12.6% vs Apr 2026"
           icon={Receipt}
           tone={model.effectiveOutstanding > 0 ? 'amber' : 'green'}
@@ -587,7 +604,7 @@ export function AdminCommandCenter({
         />
       </section>
 
-      <section className="ops-panel p-2">
+      <section className="ops-panel p-3">
         <div className="mb-2 flex items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
             <p className="ops-label text-foreground">Priority Actions</p>
@@ -600,7 +617,7 @@ export function AdminCommandCenter({
             View all <ArrowRight className="inline h-3 w-3" />
           </button>
         </div>
-        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
           {priorities.map((item) => (
             <PriorityCard key={item.title} item={item} />
           ))}
@@ -608,7 +625,7 @@ export function AdminCommandCenter({
       </section>
 
       <section className="grid gap-3 lg:grid-cols-[1.1fr_0.7fr]">
-        <div className="ops-panel h-[112px] p-3">
+        <div className="ops-panel min-h-[132px] p-3">
           <div className="mb-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <p className="ops-label text-primary">Portfolio Health</p>
@@ -650,7 +667,7 @@ export function AdminCommandCenter({
           </div>
         </div>
 
-        <div className="ops-panel h-[112px] p-3">
+        <div className="ops-panel min-h-[132px] p-3">
           <div className="mb-2 flex items-center justify-between">
             <div>
               <p className="ops-label text-primary">Quick Actions</p>

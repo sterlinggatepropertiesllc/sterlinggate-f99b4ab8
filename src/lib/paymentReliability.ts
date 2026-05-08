@@ -7,6 +7,7 @@ export interface TenantBalanceInput {
   current_balance?: number | null;
   property_id?: string | null;
   primary_property?: unknown | null;
+  active_assignment_count?: number | null;
 }
 
 export interface TenantFinancialHealth {
@@ -15,6 +16,7 @@ export interface TenantFinancialHealth {
   effectiveBalance: number;
   lastCompletedPayment?: Payment;
   isUnassigned: boolean;
+  needsSetupReview: boolean;
   hasBalanceDue: boolean;
   hasCredit: boolean;
   isPaidUp: boolean;
@@ -83,7 +85,8 @@ export function computeTenantFinancialHealth(
     .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())[0];
   const currentBalance = Number(tenant.current_balance || 0);
   const effectiveBalance = currentBalance - pendingACH;
-  const isUnassigned = !tenant.primary_property && !tenant.property_id;
+  const isUnassigned = !tenant.primary_property && !tenant.active_assignment_count;
+  const needsSetupReview = isUnassigned && Math.abs(currentBalance) > 0;
 
   return {
     currentBalance,
@@ -91,7 +94,8 @@ export function computeTenantFinancialHealth(
     effectiveBalance,
     lastCompletedPayment,
     isUnassigned,
-    hasBalanceDue: effectiveBalance > 0,
+    needsSetupReview,
+    hasBalanceDue: effectiveBalance > 0 && !isUnassigned,
     hasCredit: effectiveBalance < 0,
     isPaidUp: effectiveBalance <= 0 && !isUnassigned,
   };

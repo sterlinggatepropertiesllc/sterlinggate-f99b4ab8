@@ -72,12 +72,18 @@ export function useTenants(managerId: string | undefined) {
         const tenantProps = propertiesByTenant[tenant.id] || [];
         const primaryProp = tenantProps.find(tp => tp.is_primary) || tenantProps[0];
         const additionalPropsCount = Math.max(0, tenantProps.length - 1);
+        const assignmentRentTotal = tenantProps.reduce(
+          (sum, tp) => sum + Number(tp.rent_amount || tp.property?.rent_amount || 0),
+          0
+        );
 
         return {
           ...tenant,
           // Primary property from tenant_properties
           primary_property: primaryProp?.property || null,
           primary_rent_amount: primaryProp?.rent_amount || null,
+          assignment_rent_total: assignmentRentTotal || primaryProp?.rent_amount || null,
+          active_assignment_count: tenantProps.length,
           primary_lease_start: primaryProp?.lease_start_date || null,
           primary_lease_end: primaryProp?.lease_end_date || null,
           additional_properties_count: additionalPropsCount,

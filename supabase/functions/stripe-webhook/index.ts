@@ -783,7 +783,56 @@ async function handlePaymentFailed(
     .maybeSingle();
 
   if (!existingPayment) {
-    logStep("No pending payment found to mark as failed");
+    logStep("No pending payment found to mark as failed; recording failed attempt");
+
+    try {
+      const { payment_type, lease_id } = paymentIntent.metadata || {};
+      const { convenienceFeeInDollars, baseAmountInDollars } = getPaymentAmounts(paymentIntent);
+      const { tenantId, propertyId } = await resolvePaymentContext(supabaseAdmin, paymentIntent.metadata || {});
+
+      const { data: failedPayment, error: insertError } = await supabaseAdmin
+        .from("payments")
+        .insert({
+          tenant_id: tenantId,
+          property_id: propertyId,
+          lease_id: lease_id || null,
+          amount: baseAmountInDollars,
+          convenience_fee: convenienceFeeInDollars || 0,
+          payment_date: new Date().toISOString().split("T")[0],
+          payment_method: "stripe",
+          payment_method_type: paymentIntent.metadata?.payment_method_type || "ach",
+          status: "failed",
+          stripe_payment_intent_id: paymentIntent.id,
+          payment_type: payment_type || "balance",
+          notes: `Payment failed: ${lastError}`,
+        })
+        .select("id, tenant_id, amount, status")
+        .single();
+
+      if (insertError) {
+        if (insertError.code === "23505") {
+          logStep("Failed payment insert raced with another handler; skipping duplicate side effects", {
+            paymentIntentId: paymentIntent.id,
+          });
+          return;
+        }
+
+        throw insertError;
+      }
+
+      logStep("Failed payment attempt recorded", { payment_id: failedPayment.id });
+      await notifyFailedPaymentSideEffects(
+        supabaseAdmin,
+        failedPayment.tenant_id,
+        failedPayment.id,
+        failedPayment.amount,
+        lastError
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logStep("Unable to record failed payment attempt", { paymentIntentId: paymentIntent.id, error: message });
+    }
+
     return;
   }
 
@@ -817,51 +866,67 @@ async function handlePaymentFailed(
 
   logStep("Payment marked as failed", { id: existingPayment.id });
 
-  if (existingPayment.tenant_id) {
-    const { data: tenantData } = await supabaseAdmin
-      .from("tenants")
-      .select("manager_id, user_id")
-      .eq("id", existingPayment.tenant_id)
-      .single();
+  await notifyFailedPaymentSideEffects(
+    supabaseAdmin,
+    existingPayment.tenant_id,
+    existingPayment.id,
+    existingPayment.amount,
+    lastError
+  );
+}
 
-    if (tenantData?.manager_id) {
-      const { data: profileData } = await supabaseAdmin
-        .from("profiles")
-        .select("full_name")
-        .eq("id", tenantData.user_id)
-        .single();
+async function notifyFailedPaymentSideEffects(
+  supabaseAdmin: SupabaseAdminClient,
+  tenantId: string | null,
+  paymentId: string,
+  amount: number,
+  failureReason: string
+) {
+  if (!tenantId) return;
 
-      const tenantName = profileData?.full_name || "A tenant";
+  const { data: tenantData } = await supabaseAdmin
+    .from("tenants")
+    .select("manager_id, user_id")
+    .eq("id", tenantId)
+    .single();
 
-      await supabaseAdmin.from("notifications").insert({
-        user_id: tenantData.manager_id,
-        type: "rent_received",
-        title: "Payment Failed",
-        message: `${tenantName}'s ACH payment has failed. Please follow up.`,
-        metadata: {
-          payment_id: existingPayment.id,
-          tenant_id: existingPayment.tenant_id,
-          failure_reason: lastError,
-        },
-      });
+  if (!tenantData?.manager_id) return;
 
-      logStep("Manager notification created");
+  const { data: profileData } = await supabaseAdmin
+    .from("profiles")
+    .select("full_name")
+    .eq("id", tenantData.user_id)
+    .single();
 
-      await sendDiscordNotificationIfEnabled(supabaseAdmin, tenantData.manager_id, {
-        title: "⚠️ ACH Payment Failed",
-        message: `${tenantName}'s payment of $${existingPayment.amount} has failed: ${lastError}`,
-        type: "rent_received",
-        metadata: {
-          amount: existingPayment.amount,
-          tenant: tenantName,
-          failure_reason: lastError,
-          payment_id: existingPayment.id,
-        },
-      });
+  const tenantName = profileData?.full_name || "A tenant";
 
-      await applyLateFeeIfApplicable(supabaseAdmin, existingPayment.tenant_id, tenantData.manager_id, tenantName);
-    }
-  }
+  await supabaseAdmin.from("notifications").insert({
+    user_id: tenantData.manager_id,
+    type: "rent_received",
+    title: "Payment Failed",
+    message: `${tenantName}'s ACH payment has failed. Please follow up.`,
+    metadata: {
+      payment_id: paymentId,
+      tenant_id: tenantId,
+      failure_reason: failureReason,
+    },
+  });
+
+  logStep("Manager notification created");
+
+  await sendDiscordNotificationIfEnabled(supabaseAdmin, tenantData.manager_id, {
+    title: "ACH Payment Failed",
+    message: `${tenantName}'s payment of $${amount} has failed: ${failureReason}`,
+    type: "rent_received",
+    metadata: {
+      amount,
+      tenant: tenantName,
+      failure_reason: failureReason,
+      payment_id: paymentId,
+    },
+  });
+
+  await applyLateFeeIfApplicable(supabaseAdmin, tenantId, tenantData.manager_id, tenantName);
 }
 
 async function applyLateFeeIfApplicable(
@@ -874,6 +939,33 @@ async function applyLateFeeIfApplicable(
 
   const today = new Date();
   const currentDay = today.getDate();
+
+  const { data: tenantBalance } = await supabaseAdmin
+    .from("tenants")
+    .select("current_balance")
+    .eq("id", tenantId)
+    .single();
+
+  const { data: pendingAchPayments } = await supabaseAdmin
+    .from("payments")
+    .select("amount")
+    .eq("tenant_id", tenantId)
+    .eq("status", "processing")
+    .eq("payment_method_type", "ach")
+    .in("payment_type", ["balance", "rent"]);
+
+  const pendingAchTotal = (pendingAchPayments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const effectiveBalance = Math.max(Number(tenantBalance?.current_balance || 0) - pendingAchTotal, 0);
+
+  if (effectiveBalance <= 0) {
+    logStep("Skipping late fee because credit or pending ACH covers the tenant balance", {
+      tenantId,
+      current_balance: tenantBalance?.current_balance || 0,
+      pendingAchTotal,
+      effectiveBalance,
+    });
+    return;
+  }
 
   const { data: tenantProperties, error: tpError } = await supabaseAdmin
     .from("tenant_properties")
@@ -897,19 +989,23 @@ async function applyLateFeeIfApplicable(
 
   let totalLateFee = 0;
   const lateFeeDetails: string[] = [];
+  let remainingFeeBasis = effectiveBalance;
 
   for (const tp of tenantProperties) {
+    if (remainingFeeBasis <= 0) break;
+
     const rentDueDay = tp.rent_due_day || 1;
     const gracePeriodDays = tp.grace_period_days || 5;
-    const graceEndDay = rentDueDay + gracePeriodDays;
+    const graceEndDay = rentDueDay + Math.max(gracePeriodDays - 1, 0);
 
     if (currentDay > graceEndDay) {
       const rentAmount = tp.rent_amount || 0;
+      const feeBasis = Math.min(rentAmount, remainingFeeBasis);
       let lateFee = 0;
 
       if (tp.late_fee_type === "percentage") {
         const percentage = tp.late_fee_percentage || 5;
-        lateFee = rentAmount * (percentage / 100);
+        lateFee = feeBasis * (percentage / 100);
       } else if (tp.late_fee_type === "flat") {
         lateFee = tp.late_fee_flat_amount || 0;
       } else {
@@ -918,6 +1014,7 @@ async function applyLateFeeIfApplicable(
 
       if (lateFee > 0) {
         totalLateFee += lateFee;
+        remainingFeeBasis -= feeBasis;
         const propertyAddress = (tp.property as { address?: string } | null)?.address || "Unknown property";
         lateFeeDetails.push(`$${lateFee.toFixed(2)} for ${propertyAddress}`);
       }

@@ -108,4 +108,19 @@ describe('payment reliability', () => {
     expect(health.hasBalanceDue).toBe(false);
     expect(health.isPaidUp).toBe(true);
   });
+
+  it('keeps unassigned ledger balances out of collectible balance due', () => {
+    const health = computeTenantFinancialHealth(
+      {
+        id: 'tenant-1',
+        current_balance: 6300,
+      },
+      []
+    );
+
+    expect(health.currentBalance).toBe(6300);
+    expect(health.needsSetupReview).toBe(true);
+    expect(health.hasBalanceDue).toBe(false);
+    expect(health.isPaidUp).toBe(false);
+  });
 });

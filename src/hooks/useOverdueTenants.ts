@@ -69,6 +69,30 @@ export function useOverdueTenants(managerId: string | undefined) {
         // Skip if effective balance is zero or negative (pending ACH covers the balance)
         if (effectiveBalance <= 0) continue;
 
+        const { data: tenantProperties } = await supabase
+          .from('tenant_properties')
+          .select('rent_due_day, grace_period_days, property:properties(address)')
+          .eq('tenant_id', tenant.id)
+          .order('is_primary', { ascending: false })
+          .limit(1);
+
+        const { data: activeLease } = await supabase
+          .from('leases')
+          .select('rent_due_day, grace_period_days')
+          .eq('tenant_id', tenant.user_id)
+          .eq('status', 'completed')
+          .gte('end_date', new Date().toISOString().split('T')[0])
+          .lte('start_date', new Date().toISOString().split('T')[0])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const primaryAssignment = tenantProperties?.[0];
+
+        // A balance on an unassigned or unsigned-lease tenant is a setup review item,
+        // not collectible overdue rent.
+        if (!primaryAssignment && !activeLease) continue;
+
         const { data: profile } = await supabase
           .from('profiles')
           .select('full_name, email')
@@ -76,28 +100,21 @@ export function useOverdueTenants(managerId: string | undefined) {
           .single();
 
         let propertyAddress: string | null = null;
+        if (primaryAssignment?.property) {
+          propertyAddress = primaryAssignment.property.address || null;
+        }
+
         if (tenant.property_id) {
           const { data: property } = await supabase
             .from('properties')
             .select('address')
             .eq('id', tenant.property_id)
             .single();
-          propertyAddress = property?.address || null;
+          propertyAddress = propertyAddress || property?.address || null;
         }
 
-        const { data: lease } = await supabase
-          .from('leases')
-          .select('rent_due_day, grace_period_days')
-          .eq('tenant_id', tenant.user_id)
-          .in('status', ['completed', 'pending_manager_signature', 'pending_tenant_signature'])
-          .gte('end_date', new Date().toISOString().split('T')[0])
-          .lte('start_date', new Date().toISOString().split('T')[0])
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
-
-        const rentDueDay = lease?.rent_due_day || 1;
-        const gracePeriod = lease?.grace_period_days || 5;
+        const rentDueDay = primaryAssignment?.rent_due_day || activeLease?.rent_due_day || 1;
+        const gracePeriod = primaryAssignment?.grace_period_days || activeLease?.grace_period_days || 5;
 
         const today = new Date();
         const currentMonth = today.getMonth();
@@ -110,7 +127,7 @@ export function useOverdueTenants(managerId: string | undefined) {
         }
 
         const gracePeriodEnd = new Date(dueDate);
-        gracePeriodEnd.setDate(gracePeriodEnd.getDate() + gracePeriod);
+        gracePeriodEnd.setDate(gracePeriodEnd.getDate() + Math.max(gracePeriod - 1, 0));
 
         const daysOverdue = today > gracePeriodEnd 
           ? Math.floor((today.getTime() - gracePeriodEnd.getTime()) / (1000 * 60 * 60 * 24))

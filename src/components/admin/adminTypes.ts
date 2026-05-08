@@ -59,6 +59,8 @@ export interface TenantRecord extends Tables<'tenants'> {
   primary_property?: PropertySummary | null;
   property?: PropertySummary | null;
   primary_rent_amount?: number | null;
+  assignment_rent_total?: number | null;
+  active_assignment_count?: number | null;
   primary_lease_start?: string | null;
   primary_lease_end?: string | null;
   additional_properties_count?: number | null;

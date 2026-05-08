@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  ChevronsUpDown,
   Eye,
   Filter,
   LayoutGrid,
@@ -75,6 +74,11 @@ function balanceLabel(value: number) {
   if (value > 0) return `${formatCurrency(value)} due`;
   if (value < 0) return `${formatCurrency(Math.abs(value))} credit`;
   return 'Current';
+}
+
+function rentLabel(tenant: TenantRecord) {
+  const totalRent = Number(tenant.assignment_rent_total || tenant.primary_rent_amount || 0);
+  return totalRent > 0 ? `${formatCurrency(totalRent)}/mo` : '--';
 }
 
 function leaseStatus(tenant: TenantRecord): LeaseStatus {
@@ -273,7 +277,7 @@ export function TenantsTable({
       });
   }, [healthFilter, query, sortMode, statusFilter, tenantsWithHealth]);
 
-  const balanceDue = tenantsWithHealth.reduce((sum, { health }) => sum + Math.max(health.effectiveBalance, 0), 0);
+  const balanceDue = tenantsWithHealth.reduce((sum, { health }) => (health.hasBalanceDue ? sum + Math.max(health.effectiveBalance, 0) : sum), 0);
   const pendingAch = tenantsWithHealth.reduce((sum, { health }) => sum + health.pendingACH, 0);
   const atRisk = tenantsWithHealth.filter(({ health, status }) => health.hasBalanceDue || status === 'unassigned').length;
 
@@ -327,7 +331,9 @@ export function TenantsTable({
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
                 <span className="text-muted-foreground">{tenant.primary_property?.address || 'Not assigned'}</span>
-                <span className="text-right font-medium">{balanceLabel(health.effectiveBalance)}</span>
+                <span className="text-right font-medium">
+                  {health.needsSetupReview ? `${formatCurrency(health.currentBalance)} setup review` : balanceLabel(health.effectiveBalance)}
+                </span>
               </div>
             </button>
           ))}
@@ -452,8 +458,23 @@ export function TenantsTable({
           <tbody className="divide-y divide-border/45">
             {visibleTenants.map(({ tenant, health, status }) => {
               const lastPayment = health.lastCompletedPayment;
-              const balanceTone = health.hasBalanceDue ? 'text-destructive' : health.hasCredit ? 'text-primary' : 'text-success';
-              const nextDueAmount = Math.max(Number(tenant.primary_rent_amount || 0), health.effectiveBalance || 0);
+              const balanceTone = health.hasBalanceDue ? 'text-destructive' : health.hasCredit ? 'text-primary' : health.needsSetupReview ? 'text-warning' : 'text-success';
+              const totalRent = Number(tenant.assignment_rent_total || tenant.primary_rent_amount || 0);
+              const nextDueAmount = health.needsSetupReview ? 0 : Math.max(totalRent, health.hasBalanceDue ? health.effectiveBalance : 0);
+              const financialStatus = health.needsSetupReview
+                ? 'Setup review'
+                : health.hasBalanceDue
+                  ? 'Balance due'
+                  : health.pendingACH > 0
+                    ? 'ACH pending'
+                    : 'Healthy';
+              const financialClass = health.needsSetupReview
+                ? 'border-warning/30 bg-warning/10 text-warning'
+                : health.hasBalanceDue
+                  ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                  : health.pendingACH > 0
+                    ? 'border-warning/30 bg-warning/10 text-warning'
+                    : 'border-success/30 bg-success/10 text-success';
 
               return (
                 <tr
@@ -491,13 +512,15 @@ export function TenantsTable({
                     </p>
                   </td>
                   <td className="px-4 py-3">
-                    <Badge variant="outline" className={`rounded-md border px-2 py-0.5 text-[10px] ${health.hasBalanceDue ? 'border-destructive/30 bg-destructive/10 text-destructive' : health.pendingACH > 0 ? 'border-warning/30 bg-warning/10 text-warning' : 'border-success/30 bg-success/10 text-success'}`}>
-                      {health.hasBalanceDue ? 'Balance due' : health.pendingACH > 0 ? 'ACH pending' : 'Healthy'}
+                    <Badge variant="outline" className={`rounded-md border px-2 py-0.5 text-[10px] ${financialClass}`}>
+                      {financialStatus}
                     </Badge>
-                    <p className={`mt-1 text-[10px] ${balanceTone}`}>{balanceLabel(health.effectiveBalance)}</p>
+                    <p className={`mt-1 text-[10px] ${balanceTone}`}>
+                      {health.needsSetupReview ? `${formatCurrency(health.currentBalance)} ledger balance` : balanceLabel(health.effectiveBalance)}
+                    </p>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="font-medium">{tenant.primary_rent_amount ? `${formatCurrency(Number(tenant.primary_rent_amount))}/mo` : '--'}</p>
+                    <p className="font-medium">{rentLabel(tenant)}</p>
                   </td>
                   <td className="px-4 py-3">
                     {lastPayment ? (
@@ -513,7 +536,7 @@ export function TenantsTable({
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-primary">{tenant.primary_lease_end ? formatDate(tenant.primary_lease_end) : 'May 1, 2026'}</p>
+                    <p className="text-primary">{health.needsSetupReview ? '--' : tenant.primary_lease_end ? formatDate(tenant.primary_lease_end) : 'May 1, 2026'}</p>
                     <p className={health.hasBalanceDue ? 'font-medium text-destructive' : 'font-medium text-primary'}>{nextDueAmount ? formatCurrency(nextDueAmount) : '--'}</p>
                   </td>
                   <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
@@ -536,24 +559,16 @@ export function TenantsTable({
         <div className="flex items-center justify-between border-t border-border/70 px-4 py-3 text-[11px] text-muted-foreground">
           <span>Showing 1 to {visibleTenants.length} of {tenants.length} tenants</span>
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md border border-border/60 bg-card/45">
+            <Button variant="ghost" size="icon" disabled className="h-7 w-7 rounded-md border border-border/60 bg-card/45 opacity-60">
               <ChevronLeft className="h-3.5 w-3.5" />
             </Button>
-            {[1, 2, 3].map((page) => (
-              <Button
-                key={page}
-                variant="ghost"
-                className={`h-7 w-7 rounded-md border p-0 text-[11px] ${page === 1 ? 'border-primary/40 bg-primary/15 text-primary' : 'border-border/60 bg-card/45 text-muted-foreground'}`}
-              >
-                {page}
-              </Button>
-            ))}
-            <span className="px-2">...</span>
-            <Button variant="ghost" className="h-7 rounded-md border border-border/60 bg-card/45 px-2 text-[11px] text-muted-foreground">
-              <ChevronsUpDown className="mr-1 h-3 w-3" />
-              22
+            <Button
+              variant="ghost"
+              className="h-7 w-7 rounded-md border border-primary/40 bg-primary/15 p-0 text-[11px] text-primary"
+            >
+              1
             </Button>
-            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-md border border-border/60 bg-card/45">
+            <Button variant="ghost" size="icon" disabled className="h-7 w-7 rounded-md border border-border/60 bg-card/45 opacity-60">
               <ChevronRight className="h-3.5 w-3.5" />
             </Button>
           </div>
