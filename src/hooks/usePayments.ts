@@ -18,6 +18,7 @@ export interface Payment {
   convenience_fee: number | null;
   stripe_payment_intent_id: string | null;
   stripe_session_id: string | null;
+  stripe_status?: string | null;
   balance_adjustment_id: string | null;
   balance_applied_at: string | null;
 }

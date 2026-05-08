@@ -542,6 +542,11 @@ async function handlePaymentProcessing(
     .maybeSingle();
 
   if (existingPayment) {
+    await supabaseAdmin
+      .from("payments")
+      .update({ stripe_status: paymentIntent.status })
+      .eq("id", existingPayment.id);
+
     logStep("Processing payment already recorded", { id: existingPayment.id, status: existingPayment.status });
     return;
   }
@@ -562,6 +567,7 @@ async function handlePaymentProcessing(
       status: "processing",
       stripe_payment_intent_id: paymentIntent.id,
       stripe_session_id: checkoutSessionId || null,
+      stripe_status: paymentIntent.status,
       payment_type,
       notes: `${payment_type?.replace(/_/g, " ")} via ACH (processing)`,
     });
@@ -606,6 +612,7 @@ async function handlePaymentSucceeded(
 
       const paymentUpdate: Record<string, unknown> = {
         status: "completed",
+        stripe_status: paymentIntent.status,
       };
 
       if (checkoutSessionId) {
@@ -622,6 +629,10 @@ async function handlePaymentSucceeded(
       }
     } else {
       logStep("Payment already completed", { id: existingPayment.id });
+      await supabaseAdmin
+        .from("payments")
+        .update({ stripe_status: paymentIntent.status })
+        .eq("id", existingPayment.id);
     }
 
     if (payment_type === "balance" || payment_type === "rent" || existingPayment.payment_type === "balance" || existingPayment.payment_type === "rent") {
@@ -662,6 +673,7 @@ async function handlePaymentSucceeded(
       status: "completed",
       stripe_payment_intent_id: paymentIntent.id,
       stripe_session_id: checkoutSessionId || null,
+      stripe_status: paymentIntent.status,
       payment_type: payment_type,
       notes: convenienceFeeInDollars > 0
         ? `${payment_type?.replace(/_/g, " ")} via Stripe webhook - card fee: $${convenienceFeeInDollars.toFixed(2)}`
@@ -691,7 +703,7 @@ async function handlePaymentSucceeded(
       if (racedPayment.status !== "completed") {
         const { error: updateError } = await supabaseAdmin
           .from("payments")
-          .update({ status: "completed" })
+          .update({ status: "completed", stripe_status: paymentIntent.status })
           .eq("id", racedPayment.id);
 
         if (updateError) {
@@ -819,8 +831,9 @@ async function handlePaymentFailed(
           payment_method_type: paymentIntent.metadata?.payment_method_type || "ach",
           status: "failed",
           stripe_payment_intent_id: paymentIntent.id,
+          stripe_status: paymentIntent.status,
           payment_type: payment_type || "balance",
-          notes: `Payment failed: ${lastError}`,
+          notes: `Stripe status: ${paymentIntent.status}; Payment failed: ${lastError}`,
         })
         .select("id, tenant_id, amount, status")
         .single();
@@ -842,7 +855,8 @@ async function handlePaymentFailed(
         failedPayment.tenant_id,
         failedPayment.id,
         failedPayment.amount,
-        lastError
+        lastError,
+        paymentIntent.status
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -853,6 +867,11 @@ async function handlePaymentFailed(
   }
 
   if (existingPayment.status === "failed") {
+    await supabaseAdmin
+      .from("payments")
+      .update({ stripe_status: paymentIntent.status, notes: `Stripe status: ${paymentIntent.status}; Payment failed: ${lastError}` })
+      .eq("id", existingPayment.id);
+
     logStep("Payment already marked failed; skipping duplicate failure side effects", {
       id: existingPayment.id,
     });
@@ -871,7 +890,8 @@ async function handlePaymentFailed(
     .from("payments")
     .update({ 
       status: "failed",
-      notes: `Payment failed: ${lastError}`,
+      stripe_status: paymentIntent.status,
+      notes: `Stripe status: ${paymentIntent.status}; Payment failed: ${lastError}`,
     })
     .eq("id", existingPayment.id);
 
@@ -887,7 +907,8 @@ async function handlePaymentFailed(
     existingPayment.tenant_id,
     existingPayment.id,
     existingPayment.amount,
-    lastError
+    lastError,
+    paymentIntent.status
   );
 }
 
@@ -896,7 +917,8 @@ async function notifyFailedPaymentSideEffects(
   tenantId: string | null,
   paymentId: string,
   amount: number,
-  failureReason: string
+  failureReason: string,
+  stripeStatus = "payment_failed"
 ) {
   if (!tenantId) return;
 
@@ -919,25 +941,31 @@ async function notifyFailedPaymentSideEffects(
   await supabaseAdmin.from("notifications").insert({
     user_id: tenantData.manager_id,
     type: "rent_received",
-    title: "Payment Failed",
-    message: `${tenantName}'s ACH payment has failed. Please follow up.`,
+    title: stripeStatus === "requires_payment_method" ? "Payment Incomplete" : "Payment Failed",
+    message: stripeStatus === "requires_payment_method"
+      ? `${tenantName}'s payment was incomplete in Stripe. No money moved.`
+      : `${tenantName}'s ACH payment has failed. Please follow up.`,
     metadata: {
       payment_id: paymentId,
       tenant_id: tenantId,
       failure_reason: failureReason,
+      stripe_status: stripeStatus,
     },
   });
 
   logStep("Manager notification created");
 
   await sendDiscordNotificationIfEnabled(supabaseAdmin, tenantData.manager_id, {
-    title: "ACH Payment Failed",
-    message: `${tenantName}'s payment of $${amount} has failed: ${failureReason}`,
+    title: stripeStatus === "requires_payment_method" ? "Payment Incomplete" : "ACH Payment Failed",
+    message: stripeStatus === "requires_payment_method"
+      ? `${tenantName}'s payment of $${amount} was incomplete in Stripe. No money moved.`
+      : `${tenantName}'s payment of $${amount} has failed: ${failureReason}`,
     type: "rent_received",
     metadata: {
       amount,
       tenant: tenantName,
       failure_reason: failureReason,
+      stripe_status: stripeStatus,
       payment_id: paymentId,
     },
   });

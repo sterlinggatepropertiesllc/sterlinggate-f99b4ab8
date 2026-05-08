@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import type { Payment } from '@/hooks/usePayments';
+import { getPaymentStatusDisplay } from '@/lib/paymentDisplay';
 import type { AdminNavigate, ApplicationRecord, LeaseRecord, PropertyRecord, TenantRecord } from './adminTypes';
 
 interface AdminGlobalSearchProps {
@@ -117,10 +118,11 @@ export function AdminGlobalSearch({
       ...payments.slice(0, 250).map((payment) => {
         const tenant = tenants.find((item) => item.id === payment.tenant_id);
         const property = properties.find((item) => item.id === payment.property_id);
+        const statusDisplay = getPaymentStatusDisplay(payment);
         return {
           id: `payment-${payment.id}`,
           type: 'Payment' as const,
-          title: `${formatCurrency(Number(payment.amount))} ${payment.status}`,
+          title: `${formatCurrency(Number(payment.amount))} ${statusDisplay.label}`,
           detail: tenant?.user?.full_name || property?.address || payment.stripe_payment_intent_id || payment.id,
           meta: shortId(payment.stripe_payment_intent_id || payment.stripe_session_id || payment.id),
           icon: Banknote,

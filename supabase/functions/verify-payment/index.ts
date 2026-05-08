@@ -84,6 +84,9 @@ serve(async (req) => {
     const paymentIntentId = typeof session.payment_intent === 'string'
       ? session.payment_intent
       : session.payment_intent?.id || null;
+    const paymentIntentStatus = typeof session.payment_intent === 'string'
+      ? session.payment_status === 'paid' ? 'succeeded' : session.payment_status
+      : session.payment_intent?.status || (session.payment_status === 'paid' ? 'succeeded' : session.payment_status);
 
     // Get user_id from session metadata (set during checkout creation by authenticated user)
     const userId = session.metadata?.user_id;
@@ -121,6 +124,7 @@ serve(async (req) => {
         const paymentUpdate: Record<string, unknown> = {
           status: 'completed',
           stripe_session_id: session_id,
+          stripe_status: paymentIntentStatus,
         };
 
         if (paymentIntentId) {
@@ -135,6 +139,12 @@ serve(async (req) => {
         if (updateError) {
           throw new Error(`Failed to mark payment completed: ${updateError.message}`);
         }
+      }
+      else {
+        await supabaseAdmin
+          .from('payments')
+          .update({ stripe_status: paymentIntentStatus })
+          .eq('id', existingPayment.id);
       }
 
       const balanceResult = await applyCompletedPaymentToBalance(
@@ -275,6 +285,7 @@ serve(async (req) => {
         status: 'completed',
         stripe_session_id: session_id,
         stripe_payment_intent_id: paymentIntentId,
+        stripe_status: paymentIntentStatus,
         payment_type: payment_type,
         notes: convenienceFeeInDollars > 0
           ? `${payment_type?.replace(/_/g, ' ')} via Stripe - card fee: $${convenienceFeeInDollars.toFixed(2)}`
@@ -298,6 +309,7 @@ serve(async (req) => {
             const paymentUpdate: Record<string, unknown> = {
               status: 'completed',
               stripe_session_id: session_id,
+              stripe_status: paymentIntentStatus,
             };
 
             if (paymentIntentId) {

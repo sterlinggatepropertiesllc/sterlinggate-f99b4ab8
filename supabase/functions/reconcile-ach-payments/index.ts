@@ -130,7 +130,7 @@ serve(async (req) => {
     // any non-terminal local payment with a Stripe PI can be verified directly.
     let query = supabaseAdmin
       .from("payments")
-      .select("id, amount, status, stripe_payment_intent_id, payment_type, tenant_id, convenience_fee")
+      .select("id, amount, status, stripe_status, stripe_payment_intent_id, payment_type, tenant_id, convenience_fee")
       .in("status", ["processing", "pending", "requires_action", "requires_confirmation", "requires_capture"])
       .not("stripe_payment_intent_id", "is", null);
 
@@ -185,7 +185,7 @@ serve(async (req) => {
           // Update payment to completed
           const { error: updateError } = await supabaseAdmin
             .from("payments")
-            .update({ status: "completed" })
+            .update({ status: "completed", stripe_status: pi.status })
             .eq("id", payment.id);
 
           if (updateError) {
@@ -239,7 +239,7 @@ serve(async (req) => {
         } else if (pi.status === "canceled" || pi.status === "requires_payment_method") {
           await supabaseAdmin
             .from("payments")
-            .update({ status: "failed", notes: `Reconciled: Stripe status was ${pi.status}` })
+            .update({ status: "failed", stripe_status: pi.status, notes: `Reconciled: Stripe status was ${pi.status}` })
             .eq("id", payment.id);
 
           details.push({ 
@@ -253,8 +253,8 @@ serve(async (req) => {
             tenantId: payment.tenant_id,
             paymentId: payment.id,
             amount: Number(payment.amount || 0),
-            title: "Payment Failed",
-            message: `$${Number(payment.amount || 0).toFixed(2)} payment did not clear. Stripe status: ${pi.status}.`,
+            title: pi.status === "requires_payment_method" ? "Payment Incomplete" : "Payment Failed",
+            message: `$${Number(payment.amount || 0).toFixed(2)} payment did not complete. Stripe status: ${pi.status}.`,
             stripeStatus: pi.status,
           });
 

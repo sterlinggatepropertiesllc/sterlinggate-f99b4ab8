@@ -108,7 +108,7 @@ export function AnalyticsDashboard() {
         <StatCard label="Collection rate" value={formatPercent(analytics.collectionRate)} detail={`${formatCurrency(analytics.expectedMonthlyRent)} expected rent`} tone={analytics.collectionRate >= 90 ? 'success' : 'warning'} progress={analytics.collectionRate} />
         <StatCard label="Occupancy rate" value={formatPercent(analytics.occupancyRate)} detail={`${analytics.occupiedProperties} of ${analytics.totalProperties} properties`} tone="teal" progress={analytics.occupancyRate} />
         <StatCard label="Balance due" value={formatCurrency(analytics.outstandingBalanceDue)} detail="Open tenant ledger balance" tone={analytics.outstandingBalanceDue > 0 ? 'warning' : 'success'} />
-        <StatCard label="Pending ACH" value={formatCurrency(analytics.pendingAchTotal)} detail={`${analytics.failedPaymentCount} failed payments`} tone={analytics.pendingAchTotal > 0 ? 'gold' : 'neutral'} />
+        <StatCard label="Pending ACH" value={formatCurrency(analytics.pendingAchTotal)} detail={`${analytics.failedPaymentCount} payment exceptions`} tone={analytics.pendingAchTotal > 0 ? 'gold' : 'neutral'} />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.45fr_0.75fr]">

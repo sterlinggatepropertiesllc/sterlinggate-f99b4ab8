@@ -151,12 +151,17 @@ serve(async (req) => {
     if (existingPayment) {
       console.log("[VERIFY-PAYMENT-INTENT] Payment already recorded:", existingPayment.id, "status:", existingPayment.status, "stripe:", paymentIntent.status);
 
+      await supabaseAdmin
+        .from('payments')
+        .update({ stripe_status: paymentIntent.status })
+        .eq('id', existingPayment.id);
+
       let currentStatus = existingPayment.status;
 
       if (paymentIntent.status === 'succeeded' && currentStatus !== 'completed') {
         const { error: updateError } = await supabaseAdmin
           .from('payments')
-          .update({ status: 'completed' })
+          .update({ status: 'completed', stripe_status: paymentIntent.status })
           .eq('id', existingPayment.id);
 
         if (updateError) {
@@ -170,7 +175,7 @@ serve(async (req) => {
         const failedStatus = paymentIntent.status === 'canceled' ? 'canceled' : 'failed';
         await supabaseAdmin
           .from('payments')
-          .update({ status: failedStatus, notes: `Stripe status: ${paymentIntent.status}` })
+          .update({ status: failedStatus, stripe_status: paymentIntent.status, notes: `Stripe status: ${paymentIntent.status}` })
           .eq('id', existingPayment.id);
         currentStatus = failedStatus;
       }
@@ -279,6 +284,7 @@ serve(async (req) => {
           payment_method_type: 'ach',
           status: 'processing',
           stripe_payment_intent_id: payment_intent_id,
+          stripe_status: paymentIntent.status,
           payment_type: payment_type,
           notes: `${payment_type?.replace(/_/g, ' ')} via ACH (processing)`,
         })
@@ -430,6 +436,7 @@ serve(async (req) => {
           payment_method_type: paymentIntent.metadata?.payment_method_type || 'card',
           status: 'completed',
           stripe_payment_intent_id: payment_intent_id,
+          stripe_status: paymentIntent.status,
           payment_type: 'application_fee',
           notes: 'Application fee via Stripe (embedded)',
         })
@@ -597,6 +604,7 @@ serve(async (req) => {
         payment_method_type: paymentIntent.metadata?.payment_method_type || 'card',
         status: 'completed',
         stripe_payment_intent_id: payment_intent_id,
+        stripe_status: paymentIntent.status,
         payment_type: payment_type,
         notes: convenienceFee > 0 
           ? `${payment_type?.replace(/_/g, ' ')} via Stripe (embedded) - card fee: $${convenienceFeeInDollars.toFixed(2)}`
@@ -618,7 +626,7 @@ serve(async (req) => {
           if (racedPayment.status !== 'completed') {
             const { error: updateError } = await supabaseAdmin
               .from('payments')
-              .update({ status: 'completed' })
+              .update({ status: 'completed', stripe_status: paymentIntent.status })
               .eq('id', racedPayment.id);
 
             if (updateError) {

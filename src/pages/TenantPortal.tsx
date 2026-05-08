@@ -26,6 +26,8 @@ import { TenantMessagingCenter } from '@/components/messages/TenantMessagingCent
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { format, startOfMonth, subDays, subMonths, startOfYear } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { formatDisplayDate } from '@/lib/dateUtils';
+import { getPaymentStatusDisplay } from '@/lib/paymentDisplay';
 import { 
   Building2, 
   Home, 
@@ -1248,47 +1250,48 @@ export default function TenantPortal() {
                     </div>
                   ) : filteredPayments.length > 0 ? (
                     <div className="divide-y divide-border">
-                      {filteredPayments.map((payment) => (
+                      {filteredPayments.map((payment) => {
+                        const paymentDisplay = getPaymentStatusDisplay(payment);
+                        const statusToneClass = paymentDisplay.tone === 'success'
+                          ? 'bg-success/10 text-success border-success'
+                          : paymentDisplay.tone === 'warning'
+                            ? 'bg-warning/10 text-warning border-warning'
+                            : paymentDisplay.tone === 'destructive'
+                              ? 'bg-destructive/10 text-destructive border-destructive'
+                              : 'bg-muted/40 text-muted-foreground border-border';
+
+                        return (
                         <div key={payment.id} className="p-4 flex items-center justify-between hover:bg-muted/30 transition-colors">
                           <div className="flex items-center gap-4">
-                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                              payment.status === 'completed' ? 'bg-success/10' : 
-                              payment.status === 'pending' ? 'bg-warning/10' : 'bg-destructive/10'
-                            }`}>
-                              {payment.status === 'completed' ? (
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${statusToneClass}`}>
+                              {paymentDisplay.tone === 'success' ? (
                                 <CheckCircle2 className="h-5 w-5 text-success" />
-                              ) : payment.status === 'pending' ? (
+                              ) : paymentDisplay.tone === 'warning' ? (
                                 <Clock className="h-5 w-5 text-warning" />
+                              ) : paymentDisplay.tone === 'muted' ? (
+                                <AlertCircle className="h-5 w-5 text-muted-foreground" />
                               ) : (
                                 <XCircle className="h-5 w-5 text-destructive" />
                               )}
                             </div>
                             <div>
                               <p className="font-medium capitalize">{payment.payment_type || 'Payment'}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {new Date(payment.payment_date).toLocaleDateString('en-US', {
-                                  year: 'numeric',
-                                  month: 'long',
-                                  day: 'numeric'
-                                })}
-                              </p>
+                              <p className="text-sm text-muted-foreground">{formatDisplayDate(payment.payment_date)}</p>
+                              <p className="text-xs text-muted-foreground">{paymentDisplay.description}</p>
                             </div>
                           </div>
                           <div className="text-right">
                             <p className="font-serif text-lg">${Number(payment.amount).toLocaleString()}</p>
                             <Badge 
                               variant="outline" 
-                              className={`text-xs capitalize ${
-                                payment.status === 'completed' ? 'border-success text-success' :
-                                payment.status === 'pending' ? 'border-warning text-warning' :
-                                'border-destructive text-destructive'
-                              }`}
+                              className={`text-xs ${statusToneClass}`}
                             >
-                              {payment.status}
+                              {paymentDisplay.label}
                             </Badge>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="p-12 text-center">

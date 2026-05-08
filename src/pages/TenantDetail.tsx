@@ -49,6 +49,7 @@ import { useProfile } from '@/hooks/useProfiles';
 import { useApplyLateFee, useRentCharges } from '@/hooks/useRentCharges';
 import { computeTenantFinancialHealth, isFailedPaymentStatus, paymentAffectsTenantBalance } from '@/lib/paymentReliability';
 import { formatDisplayDate, parseDisplayDate } from '@/lib/dateUtils';
+import { getPaymentStatusDisplay, isIncompleteStripePayment } from '@/lib/paymentDisplay';
 import type { AdminDashboardTab, TenantAssignedProperty, TenantRecord } from '@/components/admin/adminTypes';
 import logo from '@/assets/logo.png';
 
@@ -134,10 +135,21 @@ function paymentActivityCopy(payment: Payment) {
     };
   }
 
-  if (isFailedPaymentStatus(payment.status)) {
+  if (isIncompleteStripePayment(payment)) {
     return {
-      title: 'Payment failed',
-      detail: `${amount} did not clear via ${method}`,
+      title: 'Payment incomplete',
+      detail: `${amount} never completed in Stripe; no money moved`,
+      className: 'border-warning/25 bg-warning/10 text-warning',
+      marker: 'i',
+    };
+  }
+
+  if (isFailedPaymentStatus(payment.status)) {
+    const statusDisplay = getPaymentStatusDisplay(payment);
+
+    return {
+      title: `Payment ${statusDisplay.label.toLowerCase()}`,
+      detail: `${amount} ${statusDisplay.description.toLowerCase()} via ${method}`,
       className: 'border-destructive/25 bg-destructive/10 text-destructive',
       marker: '!',
     };

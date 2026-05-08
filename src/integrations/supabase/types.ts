@@ -735,6 +735,7 @@ export type Database = {
           status: string
           stripe_payment_intent_id: string | null
           stripe_session_id: string | null
+          stripe_status: string | null
           tenant_id: string
         }
         Insert: {
@@ -754,6 +755,7 @@ export type Database = {
           status?: string
           stripe_payment_intent_id?: string | null
           stripe_session_id?: string | null
+          stripe_status?: string | null
           tenant_id: string
         }
         Update: {
@@ -773,6 +775,7 @@ export type Database = {
           status?: string
           stripe_payment_intent_id?: string | null
           stripe_session_id?: string | null
+          stripe_status?: string | null
           tenant_id?: string
         }
         Relationships: [
