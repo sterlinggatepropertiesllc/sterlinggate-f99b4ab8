@@ -38,6 +38,86 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_audit_logs: {
+        Row: {
+          action: string
+          actor_id: string | null
+          changed_fields: string[]
+          created_at: string
+          entity_id: string | null
+          entity_type: string
+          id: string
+          metadata: Json
+          new_data: Json | null
+          old_data: Json | null
+          payment_id: string | null
+          property_id: string | null
+          summary: string
+          tenant_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          changed_fields?: string[]
+          created_at?: string
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          metadata?: Json
+          new_data?: Json | null
+          old_data?: Json | null
+          payment_id?: string | null
+          property_id?: string | null
+          summary: string
+          tenant_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          changed_fields?: string[]
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          metadata?: Json
+          new_data?: Json | null
+          old_data?: Json | null
+          payment_id?: string | null
+          property_id?: string | null
+          summary?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_audit_logs_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_audit_logs_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_audit_logs_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_audit_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       applications: {
         Row: {
           applicant_id: string
@@ -754,6 +834,74 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      stripe_webhook_events: {
+        Row: {
+          api_version: string | null
+          checkout_session_id: string | null
+          created_at: string
+          error_message: string | null
+          event_type: string
+          id: string
+          last_received_at: string
+          livemode: boolean | null
+          metadata: Json
+          payment_id: string | null
+          payment_intent_id: string | null
+          processed_at: string | null
+          received_at: string
+          retry_count: number
+          status: string
+          stripe_event_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          api_version?: string | null
+          checkout_session_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          event_type: string
+          id?: string
+          last_received_at?: string
+          livemode?: boolean | null
+          metadata?: Json
+          payment_id?: string | null
+          payment_intent_id?: string | null
+          processed_at?: string | null
+          received_at?: string
+          retry_count?: number
+          status?: string
+          stripe_event_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          api_version?: string | null
+          checkout_session_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          last_received_at?: string
+          livemode?: boolean | null
+          metadata?: Json
+          payment_id?: string | null
+          payment_intent_id?: string | null
+          processed_at?: string | null
+          received_at?: string
+          retry_count?: number
+          status?: string
+          stripe_event_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stripe_webhook_events_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       properties: {
         Row: {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback } from 'react';
 import { differenceInDays } from 'date-fns';
 import { Navigate, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import { useManagerProperties, useCreateProperty, useUpdateProperty, useDeletePr
 import { useApplications, useUpdateApplication } from '@/hooks/useApplications';
 import { ApplicationDetailsDialog } from '@/components/applications/ApplicationDetailsDialog';
 import { useTenants, useAddTenant, useUpdateTenant, useDeleteTenant, useRevokeTenantAccess, useHardDeleteTenant } from '@/hooks/useTenants';
+import { useAllPayments } from '@/hooks/usePayments';
 import { AddTenantDialog } from '@/components/tenants/AddTenantDialog';
 import { TenantsTable } from '@/components/tenants/TenantsTable';
 import { TenantDetailsDialog } from '@/components/tenants/TenantDetailsDialog';
@@ -44,18 +45,24 @@ import { toast } from 'sonner';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { OverdueRentAlert } from '@/components/notifications/OverdueRentAlert';
 import { SettingsDialog } from '@/components/settings/SettingsDialog';
-import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard';
-import { AuditDashboard } from '@/components/audit/AuditDashboard';
 import { ImageUploader } from '@/components/properties/ImageUploader';
 import { PropertyCard } from '@/components/properties/PropertyCard';
 import { EditPropertyDialog } from '@/components/properties/EditPropertyDialog';
 import { CreateLeaseWizard } from '@/components/leases/CreateLeaseWizard';
 import { EditLeaseDialog } from '@/components/leases/EditLeaseDialog';
-import { MessagingCenter } from '@/components/messages/MessagingCenter';
 import { AuditCertificate } from '@/components/leases/AuditCertificate';
-import { InquiriesTab } from '@/components/inquiries/InquiriesTab';
+import { AdminCommandCenter } from '@/components/admin/AdminCommandCenter';
+import { AdminGlobalSearch } from '@/components/admin/AdminGlobalSearch';
+import type {
+  AdminDashboardTab,
+  AdminNavigationOptions,
+  ApplicationRecord,
+  LeaseRecord,
+  PaymentControlFilter,
+  TenantHealthFilter,
+  TenantRecord,
+} from '@/components/admin/adminTypes';
 import type { Database } from '@/integrations/supabase/types';
-import { MaintenanceDashboard } from '@/components/maintenance/MaintenanceDashboard';
 import { 
   LayoutDashboard, 
   Home, 
@@ -85,28 +92,54 @@ import {
 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
-type DashboardTab = 'overview' | 'properties' | 'applications' | 'tenants' | 'leases' | 'messages' | 'inquiries' | 'analytics' | 'audit' | 'maintenance';
+type DashboardTab = AdminDashboardTab;
 type Property = Database['public']['Tables']['properties']['Row'];
+
+const AnalyticsDashboard = lazy(() =>
+  import('@/components/analytics/AnalyticsDashboard').then((module) => ({ default: module.AnalyticsDashboard }))
+);
+const AuditDashboard = lazy(() =>
+  import('@/components/audit/AuditDashboard').then((module) => ({ default: module.AuditDashboard }))
+);
+const MessagingCenter = lazy(() =>
+  import('@/components/messages/MessagingCenter').then((module) => ({ default: module.MessagingCenter }))
+);
+const InquiriesTab = lazy(() =>
+  import('@/components/inquiries/InquiriesTab').then((module) => ({ default: module.InquiriesTab }))
+);
+const MaintenanceDashboard = lazy(() =>
+  import('@/components/maintenance/MaintenanceDashboard').then((module) => ({ default: module.MaintenanceDashboard }))
+);
+
+function DashboardTabFallback({ label }: { label: string }) {
+  return (
+    <Card className="p-8 text-center text-sm text-muted-foreground">
+      Loading {label}...
+    </Card>
+  );
+}
 
 export default function Dashboard() {
   const { user, role, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+  const [paymentQuickFilter, setPaymentQuickFilter] = useState<PaymentControlFilter>('all');
+  const [tenantHealthFilter, setTenantHealthFilter] = useState<TenantHealthFilter>('all');
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
   const [isCreateLeaseOpen, setIsCreateLeaseOpen] = useState(false);
   const [isAddTenantOpen, setIsAddTenantOpen] = useState(false);
-  const [selectedTenant, setSelectedTenant] = useState<any>(null);
+  const [selectedTenant, setSelectedTenant] = useState<TenantRecord | null>(null);
   const [isTenantDetailsOpen, setIsTenantDetailsOpen] = useState(false);
   const [propertyImages, setPropertyImages] = useState<string[]>([]);
   const [pendingImageFiles, setPendingImageFiles] = useState<File[]>([]);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [selectedLeaseForCert, setSelectedLeaseForCert] = useState<any>(null);
-  const [selectedLeaseForEdit, setSelectedLeaseForEdit] = useState<any>(null);
+  const [selectedLeaseForCert, setSelectedLeaseForCert] = useState<LeaseRecord | null>(null);
+  const [selectedLeaseForEdit, setSelectedLeaseForEdit] = useState<LeaseRecord | null>(null);
   const [isEditLeaseOpen, setIsEditLeaseOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [selectedApplication, setSelectedApplication] = useState<any>(null);
+  const [selectedApplication, setSelectedApplication] = useState<ApplicationRecord | null>(null);
   const [isApplicationDetailsOpen, setIsApplicationDetailsOpen] = useState(false);
 
   const isMobile = useIsMobile();
@@ -116,6 +149,7 @@ export default function Dashboard() {
   const { data: applications, isLoading: applicationsLoading, isError: applicationsError, refetch: refetchApplications } = useApplications();
   const { data: tenants, isLoading: tenantsLoading } = useTenants(user?.id);
   const { data: leases, isLoading: leasesLoading } = useLeases(user?.id, role);
+  const { data: allPayments = [] } = useAllPayments();
   const { data: unreadCount } = useUnreadCount(user?.id);
   const { data: managerProfile } = useProfile(user?.id);
   const { unreadPaymentCount, markAllPaymentNotificationsRead } = useUnreadPaymentNotifications();
@@ -202,12 +236,12 @@ export default function Dashboard() {
   // Sync selectedTenant with fresh data after tenants refetch
   useEffect(() => {
     if (selectedTenant && tenants && Array.isArray(tenants)) {
-      const freshTenant = tenants.find((t: any) => t.id === selectedTenant.id);
+      const freshTenant = tenants.find((t: TenantRecord) => t.id === selectedTenant.id);
       if (freshTenant && JSON.stringify(freshTenant) !== JSON.stringify(selectedTenant)) {
         setSelectedTenant(freshTenant);
       }
     }
-  }, [tenants, selectedTenant?.id]);
+  }, [tenants, selectedTenant]);
 
   // Realtime subscription for leases
   useEffect(() => {
@@ -257,33 +291,6 @@ export default function Dashboard() {
       supabase.removeChannel(channel);
     };
   }, [user?.id, queryClient]);
-
-  // Calculate expiring leases for warnings (must be declared before any early returns)
-  const expiringLeases = useMemo(() => {
-    if (!leases) return { all: [], expired: [], critical: [], warning: [] };
-
-    const today = new Date();
-    const completedLeases = leases.filter((l: any) => l.status === 'completed');
-
-    const all = completedLeases.filter((l: any) => {
-      const daysUntilEnd = differenceInDays(new Date(l.end_date), today);
-      return daysUntilEnd <= 30;
-    });
-
-    const expired = all.filter((l: any) => differenceInDays(new Date(l.end_date), today) < 0);
-
-    const critical = all.filter((l: any) => {
-      const days = differenceInDays(new Date(l.end_date), today);
-      return days >= 0 && days <= 7;
-    });
-
-    const warning = all.filter((l: any) => {
-      const days = differenceInDays(new Date(l.end_date), today);
-      return days > 7 && days <= 30;
-    });
-
-    return { all, expired, critical, warning };
-  }, [leases]);
 
   // Safety timeout for loading state
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
@@ -423,6 +430,17 @@ export default function Dashboard() {
     await updateProperty.mutateAsync({ id, status });
   };
 
+  const handleNavigateTab = (tab: DashboardTab, options?: AdminNavigationOptions) => {
+    if (options?.paymentFilter) {
+      setPaymentQuickFilter(options.paymentFilter);
+    }
+    if (options?.tenantFilter) {
+      setTenantHealthFilter(options.tenantFilter);
+    }
+    setActiveTab(tab);
+    setIsMobileMenuOpen(false);
+  };
+
   const navItems = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'properties', label: 'Properties', icon: Home },
@@ -449,7 +467,7 @@ export default function Dashboard() {
           <button
             key={item.id}
             onClick={() => {
-              setActiveTab(item.id as DashboardTab);
+              handleNavigateTab(item.id as DashboardTab);
               onNavClick?.();
             }}
             className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-smooth text-left min-h-[48px] active:bg-sidebar-accent/70 overflow-hidden ${
@@ -524,6 +542,15 @@ export default function Dashboard() {
                 </h2>
               </div>
               <div className="flex items-center gap-1 md:gap-2">
+                <AdminGlobalSearch
+                  properties={properties || []}
+                  tenants={tenants || []}
+                  applications={applications || []}
+                  leases={leases || []}
+                  payments={allPayments}
+                  onNavigateTab={handleNavigateTab}
+                  onOpenTenant={(tenantId) => navigate(`/dashboard/tenant/${tenantId}`)}
+                />
                 <OverdueRentAlert managerId={user?.id} />
                 <NotificationBell />
                 <SettingsDialog />
@@ -534,196 +561,22 @@ export default function Dashboard() {
           <div className="p-4 md:p-8 overflow-hidden">
           {/* Overview Tab */}
           {activeTab === 'overview' && (
-            <div className="animate-fade-in">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8">
-                <div>
-                  <h1 className="text-2xl md:text-3xl font-serif">Dashboard</h1>
-                  <p className="text-muted-foreground text-sm md:text-base">Welcome back! Here's your property overview.</p>
-                </div>
-                <Button onClick={() => setIsAddPropertyOpen(true)} className="w-full sm:w-auto min-h-[44px]">
-                  <Plus className="mr-2 h-4 w-4" /> Add Property
-                </Button>
-              </div>
-
-              {/* Stats Grid */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-6 md:mb-8">
-                <Card className="hover:shadow-card transition-smooth">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-muted-foreground text-sm">Total Properties</p>
-                        <p className="text-4xl font-serif mt-1">{stats.totalProperties}</p>
-                      </div>
-                      <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
-                        <Home className="h-6 w-6 text-primary" />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 mt-3 text-sm">
-                      <Badge variant="secondary" className="bg-success/10 text-success">
-                        {stats.availableProperties} available
-                      </Badge>
-                      <Badge variant="secondary">
-                        {stats.occupiedProperties} occupied
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="hover:shadow-card transition-smooth">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-muted-foreground text-sm">Active Tenants</p>
-                        <p className="text-4xl font-serif mt-1">{stats.activeTenants}</p>
-                      </div>
-                      <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
-                        <Users className="h-6 w-6 text-accent" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="hover:shadow-card transition-smooth">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-muted-foreground text-sm">Pending Applications</p>
-                        <p className="text-4xl font-serif mt-1">{stats.pendingApplications}</p>
-                      </div>
-                      <div className="w-12 h-12 bg-warning/10 rounded-xl flex items-center justify-center">
-                        <ClipboardList className="h-6 w-6 text-warning" />
-                      </div>
-                    </div>
-                    {stats.pendingApplications > 0 && (
-                      <Button 
-                        variant="link" 
-                        className="p-0 h-auto mt-2 text-sm"
-                        onClick={() => setActiveTab('applications')}
-                      >
-                        Review applications →
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="hover:shadow-card transition-smooth">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-muted-foreground text-sm">Pending Leases</p>
-                        <p className="text-4xl font-serif mt-1">{stats.pendingLeases}</p>
-                      </div>
-                      <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
-                        <FileText className="h-6 w-6 text-primary" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Lease Expiration Warnings */}
-              {expiringLeases.all.length > 0 && (
-                <Card className="border-warning/50 bg-warning/5 mb-6">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="font-serif text-lg flex items-center gap-2">
-                      <Clock className="h-5 w-5 text-warning" />
-                      Lease Attention Required
-                    </CardTitle>
-                    <CardDescription>
-                      {expiringLeases.expired.length > 0 && `${expiringLeases.expired.length} expired · `}
-                      {expiringLeases.critical.length > 0 && `${expiringLeases.critical.length} expiring within 7 days · `}
-                      {expiringLeases.warning.length > 0 && `${expiringLeases.warning.length} expiring within 30 days`}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {expiringLeases.all.slice(0, 5).map((lease: any) => {
-                        const daysUntilEnd = differenceInDays(new Date(lease.end_date), new Date());
-                        const isExpired = daysUntilEnd < 0;
-                        const isCritical = daysUntilEnd >= 0 && daysUntilEnd <= 7;
-                        
-                        return (
-                          <div 
-                            key={lease.id} 
-                            className="flex items-center justify-between p-3 bg-background rounded-lg border cursor-pointer hover:border-primary/50 transition-colors"
-                            onClick={() => navigate(`/sign-lease/${lease.id}`)}
-                          >
-                            <div>
-                              <p className="font-medium">{lease.properties?.address}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {lease.tenant?.full_name || lease.tenant?.email} · Ends {new Date(lease.end_date).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <Badge 
-                              variant="outline" 
-                              className={
-                                isExpired ? 'bg-destructive/10 text-destructive border-destructive' :
-                                isCritical ? 'bg-destructive/10 text-destructive border-destructive' :
-                                'bg-warning/10 text-warning border-warning'
-                              }
-                            >
-                              {isExpired ? 'Expired' : `${daysUntilEnd} days left`}
-                            </Badge>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {expiringLeases.all.length > 5 && (
-                      <Button variant="link" className="mt-2 p-0 h-auto" onClick={() => setActiveTab('leases')}>
-                        View all {expiringLeases.all.length} leases →
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Quick Actions */}
-              <div className="grid md:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="font-serif">Recent Applications</CardTitle>
-                    <CardDescription>Review and respond to new applications</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {applications && applications.filter(a => a.status === 'pending').length > 0 ? (
-                      <div className="space-y-3">
-                        {applications.filter(a => a.status === 'pending').slice(0, 3).map((app: any) => (
-                          <div key={app.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                            <div>
-                              <p className="font-medium">{app.profiles?.full_name || 'Applicant'}</p>
-                              <p className="text-sm text-muted-foreground">{app.properties?.address}</p>
-                            </div>
-                            <Badge variant="outline" className="text-warning border-warning">
-                              <Clock className="h-3 w-3 mr-1" /> Pending
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-muted-foreground text-center py-8">No pending applications</p>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="font-serif">Quick Actions</CardTitle>
-                    <CardDescription>Common tasks at your fingertips</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <Button className="w-full justify-start" variant="outline" onClick={() => setIsAddPropertyOpen(true)}>
-                      <Plus className="mr-2 h-4 w-4" /> Add New Property
-                    </Button>
-                    <Button className="w-full justify-start" variant="outline" onClick={() => setActiveTab('applications')}>
-                      <ClipboardList className="mr-2 h-4 w-4" /> Review Applications
-                    </Button>
-                    <Button className="w-full justify-start" variant="outline" onClick={() => setActiveTab('messages')}>
-                      <MessageSquare className="mr-2 h-4 w-4" /> View Messages
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
+            <AdminCommandCenter
+              managerId={user.id}
+              properties={properties || []}
+              applications={applications || []}
+              tenants={tenants || []}
+              leases={leases || []}
+              payments={allPayments}
+              unreadMessages={unreadCount || 0}
+              unreadInquiries={unreadInquiriesCount || 0}
+              paymentNotifications={unreadPaymentCount || 0}
+              onNavigateTab={handleNavigateTab}
+              onAddProperty={() => setIsAddPropertyOpen(true)}
+              onAddTenant={() => setIsAddTenantOpen(true)}
+              onCreateLease={() => setIsCreateLeaseOpen(true)}
+              onOpenTenant={(tenantId) => navigate(`/dashboard/tenant/${tenantId}`)}
+            />
           )}
 
           {/* Properties Tab */}
@@ -803,7 +656,7 @@ export default function Dashboard() {
                 </Card>
               ) : applications && applications.length > 0 ? (
                 <div className="space-y-4">
-                  {applications.map((app: any) => (
+                  {applications.map((app: ApplicationRecord) => (
                     <Card 
                       key={app.id} 
                       className="p-6 cursor-pointer hover:border-primary/50 transition-colors"
@@ -900,6 +753,9 @@ export default function Dashboard() {
               ) : tenants && tenants.length > 0 ? (
                 <TenantsTable 
                   tenants={tenants} 
+                  payments={allPayments}
+                  healthFilter={tenantHealthFilter}
+                  onHealthFilterChange={setTenantHealthFilter}
                   onNavigate={(tenantId) => navigate(`/dashboard/tenant/${tenantId}`)} 
                 />
               ) : (
@@ -938,7 +794,7 @@ export default function Dashboard() {
                 </div>
               ) : leases && leases.length > 0 ? (
                 <div className="space-y-4">
-                  {leases.map((lease: any) => {
+                  {leases.map((lease: LeaseRecord) => {
                     // Status badge configuration
                     const statusConfig = {
                       draft: { 
@@ -1135,21 +991,42 @@ export default function Dashboard() {
                 <p className="text-muted-foreground">Communicate with your tenants</p>
               </div>
 
-              <MessagingCenter />
+              <Suspense fallback={<DashboardTabFallback label="messages" />}>
+                <MessagingCenter />
+              </Suspense>
             </div>
           )}
 
           {/* Analytics Tab */}
-          {activeTab === 'analytics' && <AnalyticsDashboard />}
+          {activeTab === 'analytics' && (
+            <Suspense fallback={<DashboardTabFallback label="analytics" />}>
+              <AnalyticsDashboard />
+            </Suspense>
+          )}
 
           {/* Inquiries Tab */}
-          {activeTab === 'inquiries' && <InquiriesTab managerId={user.id} />}
+          {activeTab === 'inquiries' && (
+            <Suspense fallback={<DashboardTabFallback label="inquiries" />}>
+              <InquiriesTab managerId={user.id} />
+            </Suspense>
+          )}
 
           {/* Audit Tab */}
-          {activeTab === 'audit' && <AuditDashboard />}
+          {activeTab === 'audit' && (
+            <Suspense fallback={<DashboardTabFallback label="payments" />}>
+              <AuditDashboard
+                quickFilter={paymentQuickFilter}
+                onQuickFilterChange={setPaymentQuickFilter}
+              />
+            </Suspense>
+          )}
 
           {/* Maintenance Tab */}
-          {activeTab === 'maintenance' && <MaintenanceDashboard />}
+          {activeTab === 'maintenance' && (
+            <Suspense fallback={<DashboardTabFallback label="maintenance" />}>
+              <MaintenanceDashboard />
+            </Suspense>
+          )}
           </div>
         </main>
       </div>
@@ -1274,7 +1151,7 @@ export default function Dashboard() {
       <AddTenantDialog
         open={isAddTenantOpen}
         onOpenChange={setIsAddTenantOpen}
-        existingTenantUserIds={tenants?.map((t: any) => t.user_id) || []}
+        existingTenantUserIds={tenants?.map((tenant: TenantRecord) => tenant.user_id) || []}
         managerId={user.id}
       />
 

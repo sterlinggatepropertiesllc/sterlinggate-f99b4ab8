@@ -12,6 +12,44 @@ const logStep = (step: string, details?: unknown) => {
   console.log(`[RECONCILE-ACH] ${step}${detailsStr}`);
 };
 
+async function recordReconciliationAudit(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  input: {
+    actorId: string;
+    tenantId?: string;
+    checked: number;
+    updated: number;
+    failed: number;
+    details: Array<{ payment_id: string; amount: number; stripe_status: string; action: string }>;
+  }
+) {
+  try {
+    const { error } = await supabaseAdmin
+      .from("admin_audit_logs")
+      .insert({
+        action: "ach_reconciliation_run",
+        entity_type: "payments",
+        actor_id: input.actorId,
+        tenant_id: input.tenantId || null,
+        summary: `ACH reconciliation checked ${input.checked} payment(s): ${input.updated} updated, ${input.failed} failed`,
+        changed_fields: [],
+        metadata: {
+          checked: input.checked,
+          updated: input.updated,
+          failed: input.failed,
+          details: input.details,
+        },
+      });
+
+    if (error) {
+      logStep("Failed to record reconciliation audit log", { error: error.message });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logStep("Reconciliation audit log unavailable", { error: message });
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -63,6 +101,15 @@ serve(async (req) => {
     if (fetchError) throw new Error(`Failed to fetch payments: ${fetchError.message}`);
 
     if (!processingPayments || processingPayments.length === 0) {
+      await recordReconciliationAudit(supabaseAdmin, {
+        actorId: userData.user.id,
+        tenantId: tenant_id,
+        checked: 0,
+        updated: 0,
+        failed: 0,
+        details: [],
+      });
+
       return new Response(JSON.stringify({ 
         message: "No processing payments found", 
         updated: 0, 
@@ -173,6 +220,15 @@ serve(async (req) => {
     }
 
     logStep("Reconciliation complete", { updated, failed });
+
+    await recordReconciliationAudit(supabaseAdmin, {
+      actorId: userData.user.id,
+      tenantId: tenant_id,
+      checked: processingPayments.length,
+      updated,
+      failed,
+      details,
+    });
 
     return new Response(JSON.stringify({ 
       message: `Reconciled ${updated} payments`, 

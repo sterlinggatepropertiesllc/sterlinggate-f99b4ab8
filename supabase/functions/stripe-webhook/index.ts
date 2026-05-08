@@ -14,6 +14,178 @@ const logStep = (step: string, details?: unknown) => {
   console.log(`[STRIPE-WEBHOOK] ${step}${detailsStr}`);
 };
 
+function extractStripeReferences(event: Stripe.Event) {
+  const object = event.data.object as {
+    id?: string;
+    object?: string;
+    payment_intent?: string | { id?: string } | null;
+  };
+
+  if (object.object === "checkout.session") {
+    return {
+      checkoutSessionId: object.id || null,
+      paymentIntentId: typeof object.payment_intent === "string"
+        ? object.payment_intent
+        : object.payment_intent?.id || null,
+    };
+  }
+
+  if (object.object === "payment_intent") {
+    return {
+      checkoutSessionId: null,
+      paymentIntentId: object.id || null,
+    };
+  }
+
+  return { checkoutSessionId: null, paymentIntentId: null };
+}
+
+async function findPaymentIdForStripeReference(
+  supabaseAdmin: SupabaseAdminClient,
+  paymentIntentId: string | null,
+  checkoutSessionId: string | null
+) {
+  if (!paymentIntentId && !checkoutSessionId) return null;
+
+  const filters = [
+    paymentIntentId ? `stripe_payment_intent_id.eq.${paymentIntentId}` : null,
+    checkoutSessionId ? `stripe_session_id.eq.${checkoutSessionId}` : null,
+  ].filter(Boolean).join(",");
+
+  const { data } = await supabaseAdmin
+    .from("payments")
+    .select("id")
+    .or(filters)
+    .limit(1)
+    .maybeSingle();
+
+  return data?.id || null;
+}
+
+async function recordWebhookReceived(
+  supabaseAdmin: SupabaseAdminClient,
+  event: Stripe.Event
+) {
+  const { paymentIntentId, checkoutSessionId } = extractStripeReferences(event);
+
+  const { data: existing } = await supabaseAdmin
+    .from("stripe_webhook_events")
+    .select("id, retry_count")
+    .eq("stripe_event_id", event.id)
+    .maybeSingle();
+
+  if (existing?.id) {
+    const { error } = await supabaseAdmin
+      .from("stripe_webhook_events")
+      .update({
+        event_type: event.type,
+        livemode: event.livemode,
+        api_version: event.api_version || null,
+        status: "received",
+        payment_intent_id: paymentIntentId,
+        checkout_session_id: checkoutSessionId,
+        retry_count: Number(existing.retry_count || 0) + 1,
+        last_received_at: new Date().toISOString(),
+        error_message: null,
+      })
+      .eq("id", existing.id);
+
+    if (error) {
+      logStep("Failed to update webhook health row", { error: error.message, eventId: event.id });
+    }
+
+    return existing.id as string;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("stripe_webhook_events")
+    .insert({
+      stripe_event_id: event.id,
+      event_type: event.type,
+      livemode: event.livemode,
+      api_version: event.api_version || null,
+      status: "received",
+      payment_intent_id: paymentIntentId,
+      checkout_session_id: checkoutSessionId,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    logStep("Failed to insert webhook health row", { error: error.message, eventId: event.id });
+    return null;
+  }
+
+  return data.id as string;
+}
+
+async function markWebhookResult(
+  supabaseAdmin: SupabaseAdminClient,
+  webhookLogId: string | null,
+  event: Stripe.Event,
+  status: "processed" | "ignored"
+) {
+  if (!webhookLogId) return;
+
+  const { paymentIntentId, checkoutSessionId } = extractStripeReferences(event);
+  const paymentId = await findPaymentIdForStripeReference(supabaseAdmin, paymentIntentId, checkoutSessionId);
+
+  const { error } = await supabaseAdmin
+    .from("stripe_webhook_events")
+    .update({
+      status,
+      payment_id: paymentId,
+      processed_at: new Date().toISOString(),
+      error_message: null,
+    })
+    .eq("id", webhookLogId);
+
+  if (error) {
+    logStep("Failed to mark webhook result", { error: error.message, webhookLogId, status });
+  }
+}
+
+async function markWebhookFailed(
+  supabaseAdmin: SupabaseAdminClient,
+  webhookLogId: string | null,
+  error: unknown
+) {
+  if (!webhookLogId) return;
+
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const { error: updateError } = await supabaseAdmin
+    .from("stripe_webhook_events")
+    .update({
+      status: "failed",
+      error_message: errorMessage,
+      processed_at: new Date().toISOString(),
+    })
+    .eq("id", webhookLogId);
+
+  if (updateError) {
+    logStep("Failed to mark webhook failed", { error: updateError.message, webhookLogId });
+  }
+}
+
+async function recordInvalidWebhookDelivery(
+  supabaseAdmin: SupabaseAdminClient,
+  message: string,
+  bodyLength: number
+) {
+  const { error } = await supabaseAdmin
+    .from("stripe_webhook_events")
+    .insert({
+      event_type: "signature_verification_failed",
+      status: "failed",
+      error_message: message,
+      metadata: { bodyLength },
+    } as never);
+
+  if (error) {
+    logStep("Failed to record invalid webhook delivery", { error: error.message });
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -67,6 +239,7 @@ serve(async (req) => {
         signaturePresent: !!signature,
         webhookSecretPrefix: webhookSecret.substring(0, 10) + "...",
       });
+      await recordInvalidWebhookDelivery(supabaseAdmin, message, body.length);
       return new Response(JSON.stringify({ error: `Webhook Error: ${message}` }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 400,
@@ -75,35 +248,46 @@ serve(async (req) => {
 
     logStep("Signature verified successfully", { type: event.type, id: event.id });
 
+    const webhookLogId = await recordWebhookReceived(supabaseAdmin, event);
+    let handled = true;
+
     // Handle the event
-    switch (event.type) {
-      case "checkout.session.completed": {
-        const session = event.data.object as Stripe.Checkout.Session;
-        await handleCheckoutSessionCompleted(stripe, supabaseAdmin, session);
-        break;
+    try {
+      switch (event.type) {
+        case "checkout.session.completed": {
+          const session = event.data.object as Stripe.Checkout.Session;
+          await handleCheckoutSessionCompleted(stripe, supabaseAdmin, session);
+          break;
+        }
+        case "payment_intent.processing": {
+          const paymentIntent = event.data.object as Stripe.PaymentIntent;
+          await handlePaymentProcessing(supabaseAdmin, paymentIntent);
+          break;
+        }
+        case "payment_intent.succeeded": {
+          const paymentIntent = event.data.object as Stripe.PaymentIntent;
+          await handlePaymentSucceeded(supabaseAdmin, paymentIntent);
+          break;
+        }
+        case "payment_intent.payment_failed": {
+          const paymentIntent = event.data.object as Stripe.PaymentIntent;
+          await handlePaymentFailed(supabaseAdmin, paymentIntent);
+          break;
+        }
+        case "payment_intent.canceled": {
+          const paymentIntent = event.data.object as Stripe.PaymentIntent;
+          await handlePaymentFailed(supabaseAdmin, paymentIntent, "Payment canceled");
+          break;
+        }
+        default:
+          handled = false;
+          logStep("Unhandled event type", { type: event.type });
       }
-      case "payment_intent.processing": {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        await handlePaymentProcessing(supabaseAdmin, paymentIntent);
-        break;
-      }
-      case "payment_intent.succeeded": {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        await handlePaymentSucceeded(supabaseAdmin, paymentIntent);
-        break;
-      }
-      case "payment_intent.payment_failed": {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        await handlePaymentFailed(supabaseAdmin, paymentIntent);
-        break;
-      }
-      case "payment_intent.canceled": {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        await handlePaymentFailed(supabaseAdmin, paymentIntent, "Payment canceled");
-        break;
-      }
-      default:
-        logStep("Unhandled event type", { type: event.type });
+
+      await markWebhookResult(supabaseAdmin, webhookLogId, event, handled ? "processed" : "ignored");
+    } catch (handlerError) {
+      await markWebhookFailed(supabaseAdmin, webhookLogId, handlerError);
+      throw handlerError;
     }
 
     return new Response(JSON.stringify({ received: true }), {
