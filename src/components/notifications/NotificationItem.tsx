@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { X, FileText, DollarSign, Wrench, FileSignature, MessageSquare, CheckCircle, XCircle, ChevronRight } from 'lucide-react';
+import { X, FileText, DollarSign, Wrench, FileSignature, MessageSquare, CheckCircle, XCircle, ChevronRight, AlertCircle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Notification, NotificationType } from '@/hooks/useNotifications';
 import { formatDistanceToNow } from 'date-fns';
@@ -22,13 +22,36 @@ const typeConfig: Record<NotificationType, { icon: React.ElementType; color: str
   message_received: { icon: MessageSquare, color: 'text-accent-foreground', bg: 'bg-accent/10' },
 };
 
+function getNotificationConfig(notification: Notification) {
+  if (notification.type !== 'rent_received') {
+    return typeConfig[notification.type] || typeConfig.application_received;
+  }
+
+  const stripeStatus = String(notification.metadata?.stripe_status || notification.metadata?.tenant_payment_status || '').toLowerCase();
+  const title = notification.title.toLowerCase();
+
+  if (stripeStatus === 'processing' || title.includes('processing') || title.includes('initiated')) {
+    return { icon: Clock, color: 'text-warning', bg: 'bg-warning/10' };
+  }
+
+  if (stripeStatus === 'requires_payment_method' || title.includes('incomplete')) {
+    return { icon: AlertCircle, color: 'text-warning', bg: 'bg-warning/10' };
+  }
+
+  if (stripeStatus === 'payment_failed' || title.includes('failed') || title.includes('did not clear')) {
+    return { icon: XCircle, color: 'text-destructive', bg: 'bg-destructive/10' };
+  }
+
+  return typeConfig.rent_received;
+}
+
 export function NotificationItem({ notification, onDismiss, onMarkAsRead, onNavigate, isMobile }: NotificationItemProps) {
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchDelta, setTouchDelta] = useState(0);
   const [isDismissing, setIsDismissing] = useState(false);
   const itemRef = useRef<HTMLDivElement>(null);
 
-  const config = typeConfig[notification.type] || typeConfig.application_received;
+  const config = getNotificationConfig(notification);
   const Icon = config.icon;
   const timeAgo = formatDistanceToNow(new Date(notification.created_at), { addSuffix: true });
 

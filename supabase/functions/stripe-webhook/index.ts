@@ -524,6 +524,75 @@ async function resolvePaymentContext(
   return { tenantId: resolvedTenantId, propertyId: resolvedPropertyId };
 }
 
+async function notifyTenantPaymentStatus(
+  supabaseAdmin: SupabaseAdminClient,
+  input: {
+    tenantId: string | null;
+    paymentId: string;
+    amount: number;
+    title: string;
+    message: string;
+    stripeStatus: string;
+    source: string;
+  }
+) {
+  if (!input.tenantId) return;
+
+  try {
+    const { data: tenantData } = await supabaseAdmin
+      .from("tenants")
+      .select("user_id")
+      .eq("id", input.tenantId)
+      .single();
+
+    if (!tenantData?.user_id) return;
+
+    const { data: existingNotification } = await supabaseAdmin
+      .from("notifications")
+      .select("id")
+      .eq("user_id", tenantData.user_id)
+      .eq("type", "rent_received")
+      .eq("metadata->>payment_id", input.paymentId)
+      .eq("metadata->>tenant_payment_status", input.stripeStatus)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingNotification?.id) {
+      logStep("Tenant payment notification already exists", {
+        paymentId: input.paymentId,
+        stripeStatus: input.stripeStatus,
+      });
+      return;
+    }
+
+    await supabaseAdmin.from("notifications").insert({
+      user_id: tenantData.user_id,
+      type: "rent_received",
+      title: input.title,
+      message: input.message,
+      metadata: {
+        tenant_id: input.tenantId,
+        payment_id: input.paymentId,
+        amount: input.amount,
+        stripe_status: input.stripeStatus,
+        tenant_payment_status: input.stripeStatus,
+        source: input.source,
+      },
+    });
+
+    logStep("Tenant payment notification created", {
+      paymentId: input.paymentId,
+      stripeStatus: input.stripeStatus,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logStep("Tenant payment notification unavailable", {
+      paymentId: input.paymentId,
+      error: message,
+    });
+  }
+}
+
 async function handlePaymentProcessing(
   supabaseAdmin: SupabaseAdminClient,
   paymentIntent: Stripe.PaymentIntent,
@@ -553,7 +622,7 @@ async function handlePaymentProcessing(
 
   const { tenantId, propertyId } = await resolvePaymentContext(supabaseAdmin, paymentIntent.metadata || {});
 
-  const { error: insertError } = await supabaseAdmin
+  const { data: processingPayment, error: insertError } = await supabaseAdmin
     .from("payments")
     .insert({
       tenant_id: tenantId,
@@ -570,7 +639,9 @@ async function handlePaymentProcessing(
       stripe_status: paymentIntent.status,
       payment_type,
       notes: `${payment_type?.replace(/_/g, " ")} via ACH (processing)`,
-    });
+    })
+    .select("id")
+    .single();
 
   if (insertError) {
     if (insertError.code === "23505") {
@@ -584,6 +655,16 @@ async function handlePaymentProcessing(
   }
 
   logStep("Processing payment recorded", { paymentIntentId: paymentIntent.id, amountInDollars });
+
+  await notifyTenantPaymentStatus(supabaseAdmin, {
+    tenantId,
+    paymentId: processingPayment.id,
+    amount: baseAmountInDollars,
+    title: "Payment Processing",
+    message: `$${baseAmountInDollars.toFixed(2)} ACH payment was submitted to Stripe. ACH usually clears in 3-5 business days, and your balance will update when Stripe confirms it.`,
+    stripeStatus: paymentIntent.status,
+    source: "stripe_webhook",
+  });
 }
 
 async function handlePaymentSucceeded(
@@ -792,6 +873,16 @@ async function notifyPaymentCleared(
       },
     });
   }
+
+  await notifyTenantPaymentStatus(supabaseAdmin, {
+    tenantId,
+    paymentId,
+    amount: amountInDollars,
+    title: "Payment Cleared",
+    message: `$${amountInDollars.toFixed(2)} payment was verified by Stripe and applied to your Sterling Gate ledger.`,
+    stripeStatus: "succeeded",
+    source: "stripe_webhook",
+  });
 }
 
 async function handlePaymentFailed(
@@ -928,7 +1019,7 @@ async function notifyFailedPaymentSideEffects(
     .eq("id", tenantId)
     .single();
 
-  if (!tenantData?.manager_id) return;
+  if (!tenantData) return;
 
   const { data: profileData } = await supabaseAdmin
     .from("profiles")
@@ -937,6 +1028,23 @@ async function notifyFailedPaymentSideEffects(
     .single();
 
   const tenantName = profileData?.full_name || "A tenant";
+
+  const tenantTitle = stripeStatus === "requires_payment_method" ? "Payment Incomplete" : "Payment Failed";
+  const tenantMessage = stripeStatus === "requires_payment_method"
+    ? `$${Number(amount || 0).toFixed(2)} payment never completed in Stripe. No money moved, so please retry only if your balance is still due.`
+    : `$${Number(amount || 0).toFixed(2)} payment did not clear in Stripe. Please retry or contact management if this looks wrong.`;
+
+  await notifyTenantPaymentStatus(supabaseAdmin, {
+    tenantId,
+    paymentId,
+    amount: Number(amount || 0),
+    title: tenantTitle,
+    message: tenantMessage,
+    stripeStatus,
+    source: "stripe_webhook",
+  });
+
+  if (!tenantData.manager_id) return;
 
   await supabaseAdmin.from("notifications").insert({
     user_id: tenantData.manager_id,

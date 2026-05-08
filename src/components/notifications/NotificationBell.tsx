@@ -41,7 +41,7 @@ export function NotificationBell() {
     
     // Determine which dashboard we're on
     const isAdminDashboard = location.pathname === '/dashboard';
-    const isTenantPortal = location.pathname === '/tenant';
+    const isTenantPortal = location.pathname.startsWith('/tenant');
     
     // Map notification type to tab
     let targetTab = '';
@@ -54,7 +54,7 @@ export function NotificationBell() {
         targetTab = 'applications';
         break;
       case 'rent_received':
-        targetTab = 'audit';
+        targetTab = isTenantPortal ? 'payments' : 'audit';
         break;
       case 'lease_signed':
         targetTab = 'leases';

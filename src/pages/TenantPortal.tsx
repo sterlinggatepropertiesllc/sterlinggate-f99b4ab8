@@ -7,7 +7,7 @@ import { useLeases } from '@/hooks/useLeases';
 import { useUnreadCount } from '@/hooks/useMessages';
 import { RentPaymentDialog } from '@/components/payments/RentPaymentDialog';
 import { useProfile } from '@/hooks/useProfiles';
-import { usePayments } from '@/hooks/usePayments';
+import { usePayments, Payment } from '@/hooks/usePayments';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useTenantProperties } from '@/hooks/useTenantProperties';
 import { usePendingACHPayments } from '@/hooks/usePendingACHPayments';
@@ -26,7 +26,7 @@ import { TenantMessagingCenter } from '@/components/messages/TenantMessagingCent
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { format, startOfMonth, subDays, subMonths, startOfYear } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { formatDisplayDate } from '@/lib/dateUtils';
+import { formatDisplayDate, parseDisplayDate } from '@/lib/dateUtils';
 import { getPaymentStatusDisplay } from '@/lib/paymentDisplay';
 import { 
   Building2, 
@@ -59,6 +59,155 @@ import {
 import logo from '@/assets/logo.png';
 
 type PortalTab = 'dashboard' | 'applications' | 'leases' | 'payments' | 'documents' | 'messages';
+
+type TenantPaymentNotice = {
+  id: string;
+  title: string;
+  description: string;
+  amountLabel: string;
+  dateLabel: string;
+  tone: 'success' | 'warning' | 'destructive' | 'muted';
+  canRetry: boolean;
+};
+
+function formatMoney(amount: number) {
+  return amount.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function getPaymentSortTime(payment: Payment) {
+  const created = parseDisplayDate(payment.created_at)?.getTime();
+  if (created) return created;
+
+  return parseDisplayDate(payment.payment_date)?.getTime() || 0;
+}
+
+function isTenantBalancePayment(payment: Payment) {
+  const type = (payment.payment_type || '').toLowerCase();
+  const notes = (payment.notes || '').toLowerCase();
+
+  return type === 'balance' || type === 'rent' || notes.includes('balance') || notes.includes('rent');
+}
+
+function buildTenantPaymentNotice(payment: Payment, currentBalance: number): TenantPaymentNotice {
+  const display = getPaymentStatusDisplay(payment);
+  const amountLabel = formatMoney(Number(payment.amount || 0));
+  const dateLabel = formatDisplayDate(payment.payment_date);
+
+  if (display.label === 'Processing') {
+    return {
+      id: payment.id,
+      title: 'Payment processing',
+      description: `${amountLabel} is with Stripe. ACH payments usually take 3-5 business days, and this will not be treated as late unless Stripe later reports it failed.`,
+      amountLabel,
+      dateLabel,
+      tone: 'warning',
+      canRetry: false,
+    };
+  }
+
+  if (display.label === 'Incomplete') {
+    return {
+      id: payment.id,
+      title: 'Payment incomplete',
+      description: `${amountLabel} never completed in Stripe. No money moved, so retry only if your current balance is still due.`,
+      amountLabel,
+      dateLabel,
+      tone: 'warning',
+      canRetry: currentBalance > 0,
+    };
+  }
+
+  if (display.label === 'Failed' || display.label === 'Canceled') {
+    return {
+      id: payment.id,
+      title: display.label === 'Canceled' ? 'Payment canceled' : 'Payment did not clear',
+      description: `${amountLabel} was not applied to your ledger. Please retry or contact management if this looks wrong.`,
+      amountLabel,
+      dateLabel,
+      tone: display.label === 'Canceled' ? 'muted' : 'destructive',
+      canRetry: currentBalance > 0,
+    };
+  }
+
+  return {
+    id: payment.id,
+    title: 'Payment cleared',
+    description: `${amountLabel} was verified by Stripe and applied to your ledger.`,
+    amountLabel,
+    dateLabel,
+    tone: 'success',
+    canRetry: false,
+  };
+}
+
+function TenantPaymentFeedback({
+  notices,
+  onRetry,
+  onOpenPayments,
+}: {
+  notices: TenantPaymentNotice[];
+  onRetry: () => void;
+  onOpenPayments: () => void;
+}) {
+  if (notices.length === 0) return null;
+
+  const toneClass = {
+    success: 'border-success/25 bg-success/5 text-success',
+    warning: 'border-warning/25 bg-warning/5 text-warning',
+    destructive: 'border-destructive/25 bg-destructive/5 text-destructive',
+    muted: 'border-border bg-muted/20 text-muted-foreground',
+  };
+
+  return (
+    <Card className="border-border/70 bg-card/80">
+      <div className="p-4 md:p-5 space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Stripe payment status</p>
+            <h3 className="font-serif text-lg mt-1">Latest payment feedback</h3>
+            <p className="text-sm text-muted-foreground">
+              We read this from Stripe and your ledger, so incomplete payments are never counted as money received.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={onOpenPayments} className="self-start">
+            View history
+          </Button>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          {notices.map((notice) => (
+            <div key={notice.id} className={`rounded-xl border p-4 ${toneClass[notice.tone]}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium text-foreground">{notice.title}</p>
+                    <Badge variant="outline" className={toneClass[notice.tone]}>
+                      {notice.dateLabel}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-2">{notice.description}</p>
+                </div>
+                <p className="font-serif text-lg text-foreground whitespace-nowrap">{notice.amountLabel}</p>
+              </div>
+
+              {notice.canRetry && (
+                <Button size="sm" className="mt-3" onClick={onRetry}>
+                  Pay current balance
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
 
 export default function TenantPortal() {
   const { user, role, loading, signOut } = useAuth();
@@ -298,6 +447,33 @@ export default function TenantPortal() {
     setLoadingTimedOut(false);
   }, [loading, user, role]);
 
+  // Use actual balance from tenant record
+  const currentBalance = tenantRecord?.current_balance ?? 0;
+  const isOverdue = currentBalance > 0;
+
+  const paymentStatusNotices = useMemo(() => {
+    if (!payments || payments.length === 0) return [];
+
+    const relevantPayments = payments
+      .filter(isTenantBalancePayment)
+      .sort((a, b) => getPaymentSortTime(b) - getPaymentSortTime(a));
+
+    const openOrProblemPayment = relevantPayments.find((payment) => {
+      const display = getPaymentStatusDisplay(payment);
+      return ['Processing', 'Incomplete', 'Failed', 'Canceled'].includes(display.label);
+    });
+
+    const latestSucceededPayment = relevantPayments.find((payment) => {
+      const display = getPaymentStatusDisplay(payment);
+      return display.label === 'Succeeded';
+    });
+
+    return [openOrProblemPayment, latestSucceededPayment]
+      .filter((payment, index, list): payment is Payment => Boolean(payment) && list.findIndex((item) => item?.id === payment?.id) === index)
+      .map((payment) => buildTenantPaymentNotice(payment, currentBalance))
+      .slice(0, 2);
+  }, [payments, currentBalance]);
+
   // Wait for both auth and role to be fully loaded before redirecting
   if (loading || (user && role === null)) {
     return (
@@ -340,10 +516,6 @@ export default function TenantPortal() {
   const today = new Date();
   const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1);
   const nextRentDueDate = nextMonth.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
-  // Use actual balance from tenant record
-  const currentBalance = tenantRecord?.current_balance ?? 0;
-  const isOverdue = currentBalance > 0;
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -491,6 +663,12 @@ export default function TenantPortal() {
                       </p>
                     </div>
 
+                    <TenantPaymentFeedback
+                      notices={paymentStatusNotices}
+                      onRetry={() => setShowPaymentDialog(true)}
+                      onOpenPayments={() => setActiveTab('payments')}
+                    />
+
                     {/* Balance Card - Always visible even without property */}
                     {(currentBalance !== 0 || isOverdue) && (
                       <Card className={`p-4 md:p-5 max-w-md ${(hasPendingACH ? effectiveBalance : currentBalance) > 0 ? 'border-destructive/50 bg-destructive/5' : ''}`}>
@@ -586,6 +764,11 @@ export default function TenantPortal() {
                       </p>
                     </div>
 
+                    <TenantPaymentFeedback
+                      notices={paymentStatusNotices}
+                      onRetry={() => setShowPaymentDialog(true)}
+                      onOpenPayments={() => setActiveTab('payments')}
+                    />
 
                     {/* Summary Cards */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
@@ -1127,6 +1310,14 @@ export default function TenantPortal() {
                   <p className="text-muted-foreground">View your payment history</p>
                 </div>
 
+                <div className="mb-6">
+                  <TenantPaymentFeedback
+                    notices={paymentStatusNotices}
+                    onRetry={() => setShowPaymentDialog(true)}
+                    onOpenPayments={() => setActiveTab('payments')}
+                  />
+                </div>
+
                 {/* Date Filters */}
                 <Card className="p-4 mb-6">
                   <div className="flex flex-col gap-4">
@@ -1288,6 +1479,16 @@ export default function TenantPortal() {
                             >
                               {paymentDisplay.label}
                             </Badge>
+                            {['Incomplete', 'Failed', 'Canceled'].includes(paymentDisplay.label) && currentBalance > 0 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="mt-2 h-8"
+                                onClick={() => setShowPaymentDialog(true)}
+                              >
+                                Pay balance
+                              </Button>
+                            )}
                           </div>
                         </div>
                         );

@@ -41,6 +41,60 @@ async function applyCompletedPaymentToBalance(
   return data;
 }
 
+async function notifyTenantPaymentStatus(
+  supabaseAdmin: SupabaseAdminClient,
+  input: {
+    tenantId: string | null;
+    paymentId: string;
+    amount: number;
+    title: string;
+    message: string;
+    stripeStatus: string;
+    source: string;
+  }
+) {
+  if (!input.tenantId) return;
+
+  try {
+    const { data: tenantData } = await supabaseAdmin
+      .from('tenants')
+      .select('user_id')
+      .eq('id', input.tenantId)
+      .single();
+
+    if (!tenantData?.user_id) return;
+
+    const { data: existingNotification } = await supabaseAdmin
+      .from('notifications')
+      .select('id')
+      .eq('user_id', tenantData.user_id)
+      .eq('type', 'rent_received')
+      .eq('metadata->>payment_id', input.paymentId)
+      .eq('metadata->>tenant_payment_status', input.stripeStatus)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingNotification?.id) return;
+
+    await supabaseAdmin.from('notifications').insert({
+      user_id: tenantData.user_id,
+      type: 'rent_received',
+      title: input.title,
+      message: input.message,
+      metadata: {
+        tenant_id: input.tenantId,
+        payment_id: input.paymentId,
+        amount: input.amount,
+        stripe_status: input.stripeStatus,
+        tenant_payment_status: input.stripeStatus,
+        source: input.source,
+      },
+    });
+  } catch (err) {
+    console.error('[VERIFY-PAYMENT] Tenant payment notification unavailable:', err);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -112,7 +166,7 @@ serve(async (req) => {
     // Check if payment already recorded (idempotency)
     const { data: existingPayment } = await supabaseAdmin
       .from('payments')
-      .select('id, status, payment_type, balance_adjustment_id')
+      .select('id, status, payment_type, tenant_id, amount, balance_adjustment_id')
       .or(`stripe_session_id.eq.${session_id}${paymentIntentId ? `,stripe_payment_intent_id.eq.${paymentIntentId}` : ''}`)
       .limit(1)
       .maybeSingle();
@@ -154,6 +208,16 @@ serve(async (req) => {
         userId,
         convenienceFeeInDollars
       );
+
+      await notifyTenantPaymentStatus(supabaseAdmin, {
+        tenantId: existingPayment.tenant_id,
+        paymentId: existingPayment.id,
+        amount: Number(existingPayment.amount || baseAmountInDollars || 0),
+        title: 'Payment Cleared',
+        message: `$${Number(existingPayment.amount || baseAmountInDollars || 0).toFixed(2)} payment was verified by Stripe and applied to your Sterling Gate ledger.`,
+        stripeStatus: paymentIntentStatus,
+        source: 'verify_payment',
+      });
 
       return new Response(JSON.stringify({ 
         success: true, 
@@ -359,6 +423,16 @@ serve(async (req) => {
       userId,
       convenienceFeeInDollars
     );
+
+    await notifyTenantPaymentStatus(supabaseAdmin, {
+      tenantId: resolvedTenantId,
+      paymentId: newPayment.id,
+      amount: baseAmountInDollars,
+      title: 'Payment Cleared',
+      message: `$${baseAmountInDollars.toFixed(2)} payment was verified by Stripe and applied to your Sterling Gate ledger.`,
+      stripeStatus: paymentIntentStatus,
+      source: 'verify_payment',
+    });
 
     return new Response(JSON.stringify({ 
       success: true, 

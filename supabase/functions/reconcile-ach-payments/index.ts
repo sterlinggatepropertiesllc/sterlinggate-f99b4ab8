@@ -70,7 +70,48 @@ async function notifyManagerPaymentStatus(
       .eq("id", input.tenantId)
       .single();
 
-    if (!tenantData?.manager_id) return;
+    if (!tenantData) return;
+    const tenantTitle = input.stripeStatus === "succeeded"
+      ? "Payment Cleared"
+      : input.stripeStatus === "requires_payment_method"
+        ? "Payment Incomplete"
+        : "Payment Did Not Clear";
+    const tenantMessage = input.stripeStatus === "succeeded"
+      ? `$${Number(input.amount || 0).toFixed(2)} payment was verified by Stripe and applied to your Sterling Gate ledger.`
+      : input.stripeStatus === "requires_payment_method"
+        ? `$${Number(input.amount || 0).toFixed(2)} payment never completed in Stripe. No money moved.`
+        : `$${Number(input.amount || 0).toFixed(2)} payment did not clear in Stripe. Please retry or contact management if this looks wrong.`;
+
+    if (tenantData.user_id) {
+      const { data: existingTenantNotification } = await supabaseAdmin
+        .from("notifications")
+        .select("id")
+        .eq("user_id", tenantData.user_id)
+        .eq("type", "rent_received")
+        .eq("metadata->>payment_id", input.paymentId)
+        .eq("metadata->>tenant_payment_status", input.stripeStatus)
+        .limit(1)
+        .maybeSingle();
+
+      if (!existingTenantNotification?.id) {
+        await supabaseAdmin.from("notifications").insert({
+          user_id: tenantData.user_id,
+          type: "rent_received",
+          title: tenantTitle,
+          message: tenantMessage,
+          metadata: {
+            tenant_id: input.tenantId,
+            payment_id: input.paymentId,
+            amount: input.amount,
+            stripe_status: input.stripeStatus,
+            tenant_payment_status: input.stripeStatus,
+            source: "ach_reconciliation",
+          },
+        });
+      }
+    }
+
+    if (!tenantData.manager_id) return;
 
     await supabaseAdmin.from("notifications").insert({
       user_id: tenantData.manager_id,

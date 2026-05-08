@@ -9,6 +9,7 @@ export interface PendingACHPayment {
   payment_date: string;
   payment_method_type: string | null;
   status: string;
+  stripe_status?: string | null;
   notes: string | null;
 }
 
@@ -29,7 +30,7 @@ export function usePendingACHPayments(tenantId: string | undefined, currentBalan
 
       const { data, error } = await supabase
         .from('payments')
-        .select('id, amount, created_at, payment_date, payment_method_type, status, notes')
+        .select('id, amount, created_at, payment_date, payment_method_type, status, stripe_status, notes')
         .eq('tenant_id', tenantId)
         .eq('status', 'processing')
         .eq('payment_method_type', 'ach')
