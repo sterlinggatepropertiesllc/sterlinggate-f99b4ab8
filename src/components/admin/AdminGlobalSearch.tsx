@@ -163,12 +163,12 @@ export function AdminGlobalSearch({
       <Button
         type="button"
         variant="outline"
-        className="hidden h-10 min-w-[260px] justify-start gap-2 border-border/70 bg-card/60 text-muted-foreground hover:bg-card md:flex"
+        className="hidden h-10 min-w-[360px] justify-start gap-2 rounded-lg border-border/70 bg-card/70 text-xs text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_14px_40px_-30px_rgba(0,0,0,0.9)] hover:border-primary/35 hover:bg-card/90 lg:min-w-[430px] md:flex"
         onClick={() => setOpen(true)}
       >
         <Search className="h-4 w-4" />
-        Search tenants, payments, leases...
-        <span className="ml-auto rounded border border-border/70 px-1.5 py-0.5 text-[10px] text-muted-foreground">Cmd K</span>
+        Search properties, tenants, leases, payments...
+        <span className="ml-auto rounded border border-border/70 bg-background/45 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">⌘K</span>
       </Button>
       <Button
         type="button"

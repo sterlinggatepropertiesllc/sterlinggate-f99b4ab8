@@ -39,8 +39,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { OverdueRentAlert } from '@/components/notifications/OverdueRentAlert';
@@ -73,7 +71,6 @@ import {
   Plus,
   LogOut,
   MapPin,
-  DollarSign,
   CheckCircle2,
   XCircle,
   Clock,
@@ -82,8 +79,6 @@ import {
   Edit,
   BarChart3,
   Receipt,
-  Layers,
-  Download,
   PenTool,
   Shield,
   Menu,
@@ -336,6 +331,14 @@ export default function Dashboard() {
     pendingLeases: leases?.filter(l => l.status !== 'completed').length || 0,
   };
 
+  const managerDisplayName = managerProfile?.full_name || managerProfile?.email || user.email || 'Property Manager';
+  const managerEmail = managerProfile?.email || user.email || '';
+  const managerInitials = managerDisplayName
+    .split(/\s|@/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'SG';
 
   const handleAddProperty = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -458,11 +461,14 @@ export default function Dashboard() {
   // Sidebar content component
   const SidebarContent = ({ onNavClick }: { onNavClick?: () => void }) => (
     <>
-      <Link to="/" className="flex items-center mb-8 w-full">
-        <img src={logo} alt="Sterling Gate Properties" className="h-16 md:h-24 w-auto object-contain" />
+      <Link
+        to="/"
+        className="mb-7 flex h-20 w-full items-center justify-center rounded-xl border border-sidebar-border/80 bg-black/20 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+      >
+        <img src={logo} alt="Sterling Gate Properties" className="h-16 w-auto scale-150 object-contain" />
       </Link>
       
-      <nav className="space-y-1 flex-1 overflow-hidden">
+      <nav className="flex-1 space-y-1.5 overflow-y-auto pr-1">
         {navItems.map((item) => (
           <button
             key={item.id}
@@ -470,18 +476,18 @@ export default function Dashboard() {
               handleNavigateTab(item.id as DashboardTab);
               onNavClick?.();
             }}
-            className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-smooth text-left min-h-[48px] active:bg-sidebar-accent/70 overflow-hidden ${
+            className={`group flex min-h-[40px] w-full items-center justify-between overflow-hidden rounded-lg border px-3 py-2 text-left text-[13px] transition-all ${
               activeTab === item.id
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+                ? 'ops-active-nav border-primary/45 text-primary'
+                : 'border-transparent text-sidebar-foreground/68 hover:border-sidebar-border/70 hover:bg-sidebar-accent/25 hover:text-sidebar-foreground'
             }`}
           >
-            <span className="flex items-center gap-3 min-w-0 truncate">
-              <item.icon className="h-5 w-5 shrink-0" />
-              <span className="truncate">{item.label}</span>
+            <span className="flex min-w-0 items-center gap-3 truncate">
+              <item.icon className="h-4 w-4 shrink-0" />
+              <span className="truncate font-medium">{item.label}</span>
             </span>
             {item.badge && item.badge > 0 && (
-              <Badge variant="secondary" className="bg-sidebar-primary text-sidebar-primary-foreground text-xs shrink-0 ml-2">
+              <Badge variant="secondary" className="ml-2 h-5 min-w-5 shrink-0 rounded-full border border-primary/25 bg-primary/15 px-1.5 text-[10px] text-primary">
                 {item.badge}
               </Badge>
             )}
@@ -489,25 +495,36 @@ export default function Dashboard() {
         ))}
       </nav>
 
-      <Separator className="my-4 bg-sidebar-border" />
-      
-      <Button 
-        variant="ghost" 
-        onClick={() => signOut()} 
-        className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 min-h-[48px]"
-      >
-        <LogOut className="mr-3 h-5 w-5" /> Sign Out
-      </Button>
+      <div className="mt-5 border-t border-sidebar-border/70 pt-4">
+        <div className="flex items-center gap-3 rounded-xl border border-sidebar-border/80 bg-black/20 p-2.5">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-primary/35 bg-primary/15 text-xs font-bold text-primary">
+            {managerInitials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold text-sidebar-foreground">{managerDisplayName}</p>
+            <p className="truncate text-[10px] text-sidebar-foreground/55">{managerEmail || 'Property Manager'}</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => signOut()}
+            className="h-8 w-8 shrink-0 rounded-lg text-sidebar-foreground/55 hover:bg-sidebar-accent/50 hover:text-primary"
+            aria-label="Sign out"
+          >
+            <LogOut className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
     </>
   );
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="flex w-full">
+    <div className="min-h-screen ops-shell p-0 md:p-3">
+      <div className="flex min-h-screen w-full gap-3 md:min-h-[calc(100vh-1.5rem)] md:rounded-2xl md:border md:border-border/70 md:bg-background/25 md:p-2 md:shadow-[0_30px_100px_-60px_rgba(0,0,0,0.95)]">
         {/* Mobile Sidebar Sheet */}
         {isMobile && (
           <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
-            <SheetContent side="left" className="w-72 p-4 bg-sidebar flex flex-col">
+            <SheetContent side="left" className="flex w-72 flex-col border-sidebar-border bg-sidebar p-3">
               <SidebarContent onNavClick={() => setIsMobileMenuOpen(false)} />
             </SheetContent>
           </Sheet>
@@ -515,15 +532,15 @@ export default function Dashboard() {
 
         {/* Desktop Sidebar */}
         {!isMobile && (
-          <aside className="w-64 bg-sidebar min-h-screen p-2 flex flex-col flex-shrink-0">
+          <aside className="sticky top-5 flex h-[calc(100vh-2.5rem)] w-[190px] flex-shrink-0 flex-col rounded-xl border border-sidebar-border/85 bg-sidebar/95 p-2 shadow-[0_20px_60px_-42px_rgba(0,0,0,0.9)]">
             <SidebarContent />
           </aside>
         )}
 
         {/* Main Content */}
-        <main className="flex-1 overflow-auto min-w-0">
+        <main className="min-w-0 flex-1 overflow-auto">
           {/* Top Header Bar */}
-          <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 md:px-8 py-3 md:py-4">
+          <div className="sticky top-0 z-10 bg-background/5 px-3 py-3 backdrop-blur-xl md:px-5">
             <div className="flex items-center justify-between gap-3">
               {/* Mobile hamburger */}
               {isMobile && (
@@ -536,12 +553,8 @@ export default function Dashboard() {
                   <Menu className="h-5 w-5" />
                 </Button>
               )}
-              <div className="flex-1 min-w-0">
-                <h2 className="text-base md:text-lg font-serif text-foreground truncate">
-                  {navItems.find(item => item.id === activeTab)?.label || 'Dashboard'}
-                </h2>
-              </div>
-              <div className="flex items-center gap-1 md:gap-2">
+              <div className="hidden min-w-[170px] lg:block" />
+              <div className="flex min-w-0 flex-1 justify-center">
                 <AdminGlobalSearch
                   properties={properties || []}
                   tenants={tenants || []}
@@ -551,18 +564,29 @@ export default function Dashboard() {
                   onNavigateTab={handleNavigateTab}
                   onOpenTenant={(tenantId) => navigate(`/dashboard/tenant/${tenantId}`)}
                 />
+              </div>
+              <div className="flex items-center gap-1.5 md:gap-2">
                 <OverdueRentAlert managerId={user?.id} />
                 <NotificationBell />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="hidden h-10 w-10 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary md:inline-flex"
+                  aria-label="Help"
+                >
+                  <HelpCircle className="h-5 w-5" />
+                </Button>
                 <SettingsDialog />
               </div>
             </div>
           </div>
 
-          <div className="p-4 md:p-8 overflow-hidden">
+          <div className="relative z-20 overflow-hidden p-3 pt-1 md:-mt-8 md:p-5 md:pt-2">
           {/* Overview Tab */}
           {activeTab === 'overview' && (
             <AdminCommandCenter
               managerId={user.id}
+              managerName={managerDisplayName}
               properties={properties || []}
               applications={applications || []}
               tenants={tenants || []}
