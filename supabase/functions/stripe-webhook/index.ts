@@ -594,12 +594,27 @@ async function handlePaymentFailed(
 
   const { data: existingPayment } = await supabaseAdmin
     .from("payments")
-    .select("id, tenant_id, amount")
+    .select("id, tenant_id, amount, status")
     .eq("stripe_payment_intent_id", paymentIntent.id)
     .maybeSingle();
 
   if (!existingPayment) {
     logStep("No pending payment found to mark as failed");
+    return;
+  }
+
+  if (existingPayment.status === "failed") {
+    logStep("Payment already marked failed; skipping duplicate failure side effects", {
+      id: existingPayment.id,
+    });
+    return;
+  }
+
+  if (existingPayment.status === "completed") {
+    logStep("Ignoring failure event for already completed payment", {
+      id: existingPayment.id,
+      paymentIntentId: paymentIntent.id,
+    });
     return;
   }
 

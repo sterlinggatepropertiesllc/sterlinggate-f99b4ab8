@@ -36,7 +36,7 @@ export function useApplications(propertyManagerId?: string) {
   const query = useQuery({
     queryKey: ['applications', propertyManagerId],
     queryFn: async () => {
-      let query = supabase
+      const query = supabase
         .from('applications')
         .select(`
           *,

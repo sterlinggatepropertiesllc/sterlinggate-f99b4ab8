@@ -16,6 +16,35 @@ interface TelegramUser {
   photo_url?: string;
 }
 
+interface TelegramWebApp {
+  initData: string;
+  ready: () => void;
+  expand: () => void;
+  requestFullscreen?: () => void;
+  isVerticalSwipesEnabled?: boolean;
+  viewportStableHeight?: number;
+  viewportHeight?: number;
+  safeAreaInset?: { top?: number; bottom?: number };
+  contentSafeAreaInset?: { top?: number; bottom?: number };
+  onEvent: (event: 'viewportChanged', callback: () => void) => void;
+  offEvent: (event: 'viewportChanged', callback: () => void) => void;
+  themeParams?: {
+    bg_color?: string;
+    text_color?: string;
+  };
+  BackButton: {
+    hide: () => void;
+    show: () => void;
+    onClick: (callback: () => void) => void;
+  };
+}
+
+type TelegramWindow = Window & {
+  Telegram?: {
+    WebApp?: TelegramWebApp;
+  };
+};
+
 const TelegramContext = createContext<TelegramContextType>({
   isTelegram: false,
   telegramUser: null,
@@ -25,7 +54,7 @@ const TelegramContext = createContext<TelegramContextType>({
 
 function isTelegramWebApp(): boolean {
   try {
-    const tg = (window as any).Telegram?.WebApp;
+    const tg = (window as TelegramWindow).Telegram?.WebApp;
     return !!tg?.initData && tg.initData.length > 0;
   } catch {
     return false;
@@ -51,7 +80,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
 
     if (!inTelegram) return;
 
-    const tg = (window as any).Telegram?.WebApp;
+    const tg = (window as TelegramWindow).Telegram?.WebApp;
     if (!tg) {
       console.warn('[TelegramContext] Telegram.WebApp object not available despite initData check');
       return;
@@ -102,7 +131,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
       updateViewportHeight();
       tg.onEvent('viewportChanged', updateViewportHeight);
       cleanupViewport = () => {
-        try { tg.offEvent('viewportChanged', updateViewportHeight); } catch {}
+        try { tg.offEvent('viewportChanged', updateViewportHeight); } catch (e) { console.warn('[TG] viewport cleanup failed:', e); }
       };
     } catch (e) { console.warn('[TG] viewport height setup failed:', e); }
 
@@ -128,10 +157,10 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
           } else {
             tg.BackButton.show();
           }
-        } catch {}
+        } catch (e) { console.warn('[TG] back button update failed:', e); }
       };
 
-      try { tg.BackButton.onClick(() => { window.history.back(); }); } catch {}
+      try { tg.BackButton.onClick(() => { window.history.back(); }); } catch (e) { console.warn('[TG] back button handler failed:', e); }
       window.addEventListener('popstate', updateBackButton);
       updateBackButton();
       cleanupBackButton = () => {
@@ -146,7 +175,7 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cleanupViewport?.();
       cleanupBackButton?.();
-      try { document.documentElement.classList.remove('telegram-webapp'); } catch {}
+      try { document.documentElement.classList.remove('telegram-webapp'); } catch (e) { console.warn('[TG] classList cleanup failed:', e); }
     };
   }, []);
 
@@ -163,7 +192,9 @@ export function TelegramProvider({ children }: { children: React.ReactNode }) {
           const params = new URLSearchParams(initData);
           const userStr = params.get('user');
           if (userStr) setTelegramUser(JSON.parse(userStr));
-        } catch {}
+        } catch (e) {
+          console.warn('[TelegramContext] Existing Telegram user parse failed:', e);
+        }
         setIsAuthenticating(false);
         return;
       }

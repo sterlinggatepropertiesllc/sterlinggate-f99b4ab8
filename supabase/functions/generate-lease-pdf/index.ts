@@ -86,13 +86,6 @@ function parseHTMLToBlocks(html: string): TextBlock[] {
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n');
 
-  // Split by block-level elements
-  const blockPattern = /<(h[1-6]|p|div|br\s*\/?|hr\s*\/?|li|ul|ol|article|section|header|footer|main|aside|blockquote)[^>]*>/gi;
-  
-  let lastIndex = 0;
-  let match;
-  const regex = new RegExp(blockPattern);
-  
   // Simple state machine to parse HTML
   let currentPos = 0;
   const length = cleanedHtml.length;
