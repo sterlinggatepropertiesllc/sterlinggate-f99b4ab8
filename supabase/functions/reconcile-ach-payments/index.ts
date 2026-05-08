@@ -50,6 +50,47 @@ async function recordReconciliationAudit(
   }
 }
 
+async function notifyManagerPaymentStatus(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  input: {
+    tenantId: string | null;
+    paymentId: string;
+    amount: number;
+    title: string;
+    message: string;
+    stripeStatus: string;
+  }
+) {
+  if (!input.tenantId) return;
+
+  try {
+    const { data: tenantData } = await supabaseAdmin
+      .from("tenants")
+      .select("manager_id, user_id")
+      .eq("id", input.tenantId)
+      .single();
+
+    if (!tenantData?.manager_id) return;
+
+    await supabaseAdmin.from("notifications").insert({
+      user_id: tenantData.manager_id,
+      type: "rent_received",
+      title: input.title,
+      message: input.message,
+      metadata: {
+        tenant_id: input.tenantId,
+        payment_id: input.paymentId,
+        amount: input.amount,
+        stripe_status: input.stripeStatus,
+        source: "ach_reconciliation",
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logStep("Payment status notification unavailable", { paymentId: input.paymentId, error: message });
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -85,11 +126,12 @@ serve(async (req) => {
 
     logStep("Starting reconciliation", { tenant_id: tenant_id || "ALL", requested_by: userData.user.id });
 
-    // Build query: either per-tenant or system-wide
+    // Build query: either per-tenant or system-wide. This is the webhook safety net:
+    // any non-terminal local payment with a Stripe PI can be verified directly.
     let query = supabaseAdmin
       .from("payments")
-      .select("id, amount, stripe_payment_intent_id, payment_type, tenant_id, convenience_fee")
-      .eq("status", "processing")
+      .select("id, amount, status, stripe_payment_intent_id, payment_type, tenant_id, convenience_fee")
+      .in("status", ["processing", "pending", "requires_action", "requires_confirmation", "requires_capture"])
       .not("stripe_payment_intent_id", "is", null);
 
     if (tenant_id) {
@@ -111,7 +153,7 @@ serve(async (req) => {
       });
 
       return new Response(JSON.stringify({ 
-        message: "No processing payments found", 
+        message: "No open Stripe-linked payments found", 
         updated: 0, 
         failed: 0,
         details: [] 
@@ -121,7 +163,7 @@ serve(async (req) => {
       });
     }
 
-    logStep(`Found ${processingPayments.length} processing payments to check`);
+    logStep(`Found ${processingPayments.length} open Stripe-linked payments to check`);
 
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "");
 
@@ -139,7 +181,7 @@ serve(async (req) => {
         const pi = await stripe.paymentIntents.retrieve(payment.stripe_payment_intent_id!);
         logStep("Stripe status", { pi_id: pi.id, status: pi.status });
 
-      if (pi.status === "succeeded") {
+        if (pi.status === "succeeded") {
           // Update payment to completed
           const { error: updateError } = await supabaseAdmin
             .from("payments")
@@ -182,6 +224,15 @@ serve(async (req) => {
             });
           }
 
+          await notifyManagerPaymentStatus(supabaseAdmin, {
+            tenantId: payment.tenant_id,
+            paymentId: payment.id,
+            amount: Number(payment.amount || 0),
+            title: "Payment Cleared",
+            message: `$${Number(payment.amount || 0).toFixed(2)} payment cleared after Stripe reconciliation and the ledger was updated.`,
+            stripeStatus: pi.status,
+          });
+
           updated++;
           logStep("Payment reconciled", { payment_id: payment.id, amount: payment.amount });
 
@@ -197,6 +248,16 @@ serve(async (req) => {
             stripe_status: pi.status, 
             action: "marked_failed" 
           });
+
+          await notifyManagerPaymentStatus(supabaseAdmin, {
+            tenantId: payment.tenant_id,
+            paymentId: payment.id,
+            amount: Number(payment.amount || 0),
+            title: "Payment Failed",
+            message: `$${Number(payment.amount || 0).toFixed(2)} payment did not clear. Stripe status: ${pi.status}.`,
+            stripeStatus: pi.status,
+          });
+
           failed++;
         } else {
           details.push({ 

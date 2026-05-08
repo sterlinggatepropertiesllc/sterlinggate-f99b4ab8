@@ -47,8 +47,9 @@ import { useUnreadPaymentNotifications } from '@/hooks/useUnreadPaymentNotificat
 import { useUnreadInquiriesCount } from '@/hooks/useInquiries';
 import { useProfile } from '@/hooks/useProfiles';
 import { useApplyLateFee, useRentCharges } from '@/hooks/useRentCharges';
-import { computeTenantFinancialHealth } from '@/lib/paymentReliability';
-import type { AdminDashboardTab, TenantRecord } from '@/components/admin/adminTypes';
+import { computeTenantFinancialHealth, isFailedPaymentStatus, paymentAffectsTenantBalance } from '@/lib/paymentReliability';
+import { formatDisplayDate, parseDisplayDate } from '@/lib/dateUtils';
+import type { AdminDashboardTab, TenantAssignedProperty, TenantRecord } from '@/components/admin/adminTypes';
 import logo from '@/assets/logo.png';
 
 type DetailTab = 'overview' | 'properties' | 'balance' | 'history';
@@ -65,12 +66,7 @@ function formatCurrency(value: number) {
 }
 
 function formatDate(value?: string | null) {
-  if (!value) return '--';
-  return new Date(value).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  return formatDisplayDate(value);
 }
 
 function tenantName(tenant?: TenantRecord | null) {
@@ -85,9 +81,74 @@ function shortId(value?: string | null) {
 
 function monthsBetween(start?: string | null, end?: string | null) {
   if (!start || !end) return 0;
-  const startDate = new Date(start);
-  const endDate = new Date(end);
+  const startDate = parseDisplayDate(start);
+  const endDate = parseDisplayDate(end);
+  if (!startDate || !endDate) return 0;
   return Math.max(0, (endDate.getFullYear() - startDate.getFullYear()) * 12 + endDate.getMonth() - startDate.getMonth());
+}
+
+function isBalancePayment(payment: Payment) {
+  return payment.payment_type !== 'application_fee' && (
+    !payment.payment_type || paymentAffectsTenantBalance(payment.payment_type)
+  );
+}
+
+function paymentTimestamp(payment: Payment) {
+  return parseDisplayDate(payment.payment_date)?.getTime()
+    || parseDisplayDate(payment.created_at)?.getTime()
+    || 0;
+}
+
+function sortPaymentsNewestFirst(a: Payment, b: Payment) {
+  const dateDifference = paymentTimestamp(b) - paymentTimestamp(a);
+  if (dateDifference !== 0) return dateDifference;
+  return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+}
+
+function paymentMethodLabel(payment: Payment) {
+  const method = (payment.payment_method_type || payment.payment_method || 'stripe').toLowerCase();
+  if (method === 'ach') return 'ACH';
+  if (method === 'card' || method === 'stripe') return method === 'card' ? 'card' : 'Stripe';
+  return method;
+}
+
+function paymentActivityCopy(payment: Payment) {
+  const amount = formatCurrency(Number(payment.amount || 0));
+  const method = paymentMethodLabel(payment);
+
+  if (payment.status === 'completed') {
+    return {
+      title: 'Payment received',
+      detail: `${amount} verified by Stripe via ${method}`,
+      className: 'border-success/25 bg-success/10 text-success',
+      marker: '$',
+    };
+  }
+
+  if (payment.status === 'processing') {
+    return {
+      title: method === 'ACH' ? 'ACH processing' : 'Payment processing',
+      detail: `${amount} initiated, awaiting Stripe confirmation`,
+      className: 'border-warning/25 bg-warning/10 text-warning',
+      marker: '~',
+    };
+  }
+
+  if (isFailedPaymentStatus(payment.status)) {
+    return {
+      title: 'Payment failed',
+      detail: `${amount} did not clear via ${method}`,
+      className: 'border-destructive/25 bg-destructive/10 text-destructive',
+      marker: '!',
+    };
+  }
+
+  return {
+    title: 'Payment status updated',
+    detail: `${amount} is ${payment.status || 'under review'} via ${method}`,
+    className: 'border-primary/25 bg-primary/10 text-primary',
+    marker: 'i',
+  };
 }
 
 function SmallTrend({ tone = 'gold' }: { tone?: 'gold' | 'red' | 'green' }) {
@@ -342,22 +403,33 @@ export default function TenantDetail() {
             manager_id
           )
         `)
-        .eq('tenant_id', tenantId);
+        .eq('tenant_id', tenantId)
+        .order('is_primary', { ascending: false });
 
-      const primary = tenantProperties?.find((item) => item.is_primary) || tenantProperties?.[0];
-      const assignmentRentTotal = (tenantProperties || []).reduce(
+      const assignedProperties = ([...(tenantProperties || [])] as TenantAssignedProperty[]).sort(
+        (a, b) => Number(Boolean(b.is_primary)) - Number(Boolean(a.is_primary))
+      );
+      const primary = assignedProperties.find((item) => item.is_primary) || assignedProperties[0];
+      const assignmentRentTotal = assignedProperties.reduce(
         (sum, item) => sum + Number(item.rent_amount || item.property?.rent_amount || 0),
         0
       );
+      const assignedPropertySummary = assignedProperties
+        .map((item) => item.property?.address)
+        .filter(Boolean)
+        .join(' + ') || null;
+
       return {
         ...data,
         primary_property: primary?.property || data.property || null,
+        assigned_properties: assignedProperties,
+        assigned_property_summary: assignedPropertySummary,
         primary_rent_amount: primary?.rent_amount || data.rent_amount || null,
         assignment_rent_total: assignmentRentTotal || primary?.rent_amount || null,
-        active_assignment_count: tenantProperties?.length || 0,
+        active_assignment_count: assignedProperties.length,
         primary_lease_start: primary?.lease_start_date || data.lease_start_date || null,
         primary_lease_end: primary?.lease_end_date || data.lease_end_date || null,
-        additional_properties_count: Math.max(0, (tenantProperties?.length || 0) - 1),
+        additional_properties_count: Math.max(0, assignedProperties.length - 1),
       } as TenantRecord;
     },
     enabled: !!tenantId,
@@ -373,6 +445,11 @@ export default function TenantDetail() {
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'balance_adjustments', filter: `tenant_id=eq.${tenantId}` }, () => {
         refetch();
+        queryClient.invalidateQueries({ queryKey: ['balance-adjustments', tenantId] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments', filter: `tenant_id=eq.${tenantId}` }, () => {
+        refetch();
+        queryClient.invalidateQueries({ queryKey: ['payments'] });
         queryClient.invalidateQueries({ queryKey: ['balance-adjustments', tenantId] });
       })
       .subscribe();
@@ -425,12 +502,24 @@ export default function TenantDetail() {
   );
   const displayLease = activeLease || tenantLeases.find((lease) => ['pending_manager_signature', 'pending_tenant_signature'].includes(lease.status));
   const tenantHealth = computeTenantFinancialHealth(tenant, allPayments);
-  const completedPayments = tenantPayments.filter((payment) => payment.status === 'completed');
+  const assignedProperties = tenant.assigned_properties || [];
+  const assignedPropertyAddresses = assignedProperties
+    .map((assignment) => assignment.property?.address)
+    .filter(Boolean) as string[];
+  const tenantLedgerPayments = tenantPayments
+    .filter(isBalancePayment)
+    .sort(sortPaymentsNewestFirst);
+  const completedPayments = tenantLedgerPayments
+    .filter((payment) => payment.status === 'completed')
+    .sort(sortPaymentsNewestFirst);
+  const paymentActivity = tenantLedgerPayments
+    .filter((payment) => ['completed', 'processing', 'failed', 'canceled', 'requires_payment_method'].includes(payment.status || ''))
+    .slice(0, 5);
   const lastPayment = completedPayments[0] as Payment | undefined;
   const paymentHistoryLabel = completedPayments.length > 0
     ? `${completedPayments.length} completed payment${completedPayments.length === 1 ? '' : 's'}`
     : 'No completed payments';
-  const assignmentCount = Number(tenant.active_assignment_count || 0);
+  const assignmentCount = assignedProperties.length || Number(tenant.active_assignment_count || 0);
   const assignmentRentTotal = Number(tenant.assignment_rent_total || 0);
   const monthlyRent = Number(assignmentRentTotal || tenant.primary_rent_amount || activeLease?.monthly_rent || tenant.rent_amount || 0);
   const ledgerBalance = Number(tenant.current_balance || 0);
@@ -450,7 +539,14 @@ export default function TenantDetail() {
           : 'No collectible balance';
   const leaseMonths = monthsBetween(tenant.primary_lease_start || displayLease?.start_date, tenant.primary_lease_end || displayLease?.end_date);
   const lateFeeCandidate = rentCharges.find((charge) => charge.status === 'pending' && !charge.late_fee_applied && !charge.late_fee_waived);
-  const primaryPropertyLabel = tenant.primary_property?.address || activeLease?.properties?.address || 'No active assignment';
+  const primaryPropertyLabel = assignedPropertyAddresses[0] || tenant.primary_property?.address || activeLease?.properties?.address || 'No active assignment';
+  const propertySummaryLabel = assignedPropertyAddresses.length > 0
+    ? assignedPropertyAddresses.join(' + ')
+    : primaryPropertyLabel;
+  const assignedSinceDate = assignedProperties
+    .map((assignment) => assignment.lease_start_date)
+    .filter(Boolean)
+    .sort()[0] || tenant.primary_lease_start || tenant.created_at;
   const tenantStatusLabel = needsSetupReview ? 'Setup Review' : assignmentCount || activeLease ? 'Active' : 'Unassigned';
   const leaseStartDate = tenant.primary_lease_start || displayLease?.start_date || null;
   const leaseEndDate = tenant.primary_lease_end || displayLease?.end_date || null;
@@ -562,8 +658,8 @@ export default function TenantDetail() {
                     <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 text-cyan-300" />{tenant.user?.email || 'No email'}</span>
                       <span className="flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 text-cyan-300" />{tenant.user?.phone || 'No phone'}</span>
-                      <span className="flex items-center gap-1.5"><Home className="h-3.5 w-3.5 text-muted-foreground" />{primaryPropertyLabel}</span>
-                      <span className="flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />{assignmentCount ? `Resident since ${formatDate(tenant.primary_lease_start || tenant.created_at)}` : 'Assignment required before billing'}</span>
+                      <span className="flex max-w-[520px] items-center gap-1.5"><Home className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span className="truncate">{propertySummaryLabel}</span></span>
+                      <span className="flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />{assignmentCount ? `Resident since ${formatDate(assignedSinceDate)}` : 'Assignment required before billing'}</span>
                     </div>
                   </div>
                 </div>
@@ -605,7 +701,18 @@ export default function TenantDetail() {
                   </InfoPanel>
 
                   <InfoPanel title="Lease & Property" action={displayLease ? 'Open Lease' : 'Manage'} onAction={handleOpenLease}>
-                    <DetailRow icon={Home} label="Property" value={primaryPropertyLabel} />
+                    {assignedProperties.length > 1 ? (
+                      assignedProperties.map((assignment, index) => (
+                        <DetailRow
+                          key={assignment.id}
+                          icon={Home}
+                          label={index === 0 ? 'Primary Property' : `Property ${index + 1}`}
+                          value={assignment.property?.address || 'No address'}
+                        />
+                      ))
+                    ) : (
+                      <DetailRow icon={Home} label="Property" value={propertySummaryLabel} />
+                    )}
                     <DetailRow icon={Building2} label="Units Assigned" value={assignmentCount ? `${assignmentCount}` : 'None'} />
                     <DetailRow icon={CalendarDays} label="Lease Start" value={formatDate(leaseStartDate)} />
                     <DetailRow icon={CalendarDays} label="Lease End" value={formatDate(leaseEndDate)} />
@@ -629,17 +736,21 @@ export default function TenantDetail() {
                 <div className="mt-3 grid gap-3 lg:grid-cols-[1.1fr_1fr_0.9fr]">
                   <InfoPanel title="Recent Activity" action="Open Ledger" onAction={() => setActiveTab('balance')}>
                     <div className="space-y-3">
-                      {(tenantPayments.length ? tenantPayments.slice(0, 4) : allPayments.slice(0, 4)).map((payment) => (
-                        <div key={payment.id} className="grid grid-cols-[28px_1fr_auto] items-center gap-3 text-xs">
-                          <span className="grid h-7 w-7 place-items-center rounded-full border border-success/25 bg-success/10 text-success">$</span>
-                          <span className="min-w-0">
-                            <span className="block truncate font-medium">Payment received</span>
-                            <span className="block truncate text-[10px] text-muted-foreground">{formatCurrency(Number(payment.amount))} received via {payment.payment_method_type || payment.payment_method || 'card'}</span>
-                          </span>
-                          <span className="text-right text-[10px] text-muted-foreground">{formatDate(payment.payment_date)}</span>
-                        </div>
-                      ))}
-                      {tenantPayments.length === 0 && (
+                      {paymentActivity.map((payment) => {
+                        const activity = paymentActivityCopy(payment);
+
+                        return (
+                          <div key={payment.id} className="grid grid-cols-[28px_1fr_auto] items-center gap-3 text-xs">
+                            <span className={`grid h-7 w-7 place-items-center rounded-full border ${activity.className}`}>{activity.marker}</span>
+                            <span className="min-w-0">
+                              <span className="block truncate font-medium">{activity.title}</span>
+                              <span className="block truncate text-[10px] text-muted-foreground">{activity.detail}</span>
+                            </span>
+                            <span className="text-right text-[10px] text-muted-foreground">{formatDate(payment.payment_date)}</span>
+                          </div>
+                        );
+                      })}
+                      {paymentActivity.length === 0 && (
                         <div className="rounded-lg border border-dashed border-border/70 p-3 text-xs text-muted-foreground">
                           No payment activity recorded for this tenant yet.
                         </div>

@@ -35,6 +35,7 @@ import { AdminButton, EmptyState, FilterTabs } from '@/components/admin/AdminDes
 import type { Payment } from '@/hooks/usePayments';
 import type { TenantHealthFilter, TenantRecord } from '@/components/admin/adminTypes';
 import { computeTenantFinancialHealth } from '@/lib/paymentReliability';
+import { formatDisplayDate, parseDisplayDate } from '@/lib/dateUtils';
 
 interface TenantsTableProps {
   tenants: TenantRecord[];
@@ -60,12 +61,7 @@ function formatCurrency(value: number) {
 }
 
 function formatDate(value?: string | null) {
-  if (!value) return '--';
-  return new Date(value).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  return formatDisplayDate(value);
 }
 
 function tenantName(tenant: TenantRecord) {
@@ -81,6 +77,18 @@ function balanceLabel(value: number) {
 function rentLabel(tenant: TenantRecord) {
   const totalRent = Number(tenant.assignment_rent_total || tenant.primary_rent_amount || 0);
   return totalRent > 0 ? `${formatCurrency(totalRent)}/mo` : '--';
+}
+
+function assignedPropertyLabel(tenant: TenantRecord) {
+  const addresses = tenant.assigned_properties
+    ?.map((assignment) => assignment.property?.address)
+    .filter(Boolean) as string[] | undefined;
+
+  if (addresses?.length) {
+    return addresses.length > 1 ? `${addresses[0]} + ${addresses.length - 1} more` : addresses[0];
+  }
+
+  return tenant.assigned_property_summary || tenant.primary_property?.address || '--';
 }
 
 function leaseStatus(tenant: TenantRecord): LeaseStatus {
@@ -248,13 +256,14 @@ export function TenantsTable({
           tenant.user?.full_name,
           tenant.user?.email,
           tenant.user?.phone,
+          tenant.assigned_property_summary,
           tenant.primary_property?.address,
         ].some((value) => String(value || '').toLowerCase().includes(normalizedQuery));
       })
       .sort((a, b) => {
         if (sortMode === 'balance') return b.health.effectiveBalance - a.health.effectiveBalance;
         if (sortMode === 'payment') {
-          return new Date(b.health.lastCompletedPayment?.payment_date || 0).getTime() - new Date(a.health.lastCompletedPayment?.payment_date || 0).getTime();
+          return (parseDisplayDate(b.health.lastCompletedPayment?.payment_date)?.getTime() || 0) - (parseDisplayDate(a.health.lastCompletedPayment?.payment_date)?.getTime() || 0);
         }
         if (sortMode === 'due') {
           return new Date(a.tenant.primary_lease_end || 8640000000000000).getTime() - new Date(b.tenant.primary_lease_end || 8640000000000000).getTime();
@@ -316,7 +325,7 @@ export function TenantsTable({
                 <StatusBadge status={status} />
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                <span className="text-muted-foreground">{tenant.primary_property?.address || 'Not assigned'}</span>
+                <span className="text-muted-foreground">{assignedPropertyLabel(tenant)}</span>
                 <span className="text-right font-medium">
                   {health.needsSetupReview ? `${formatCurrency(health.currentBalance)} setup review` : balanceLabel(health.effectiveBalance)}
                 </span>
@@ -453,7 +462,7 @@ export function TenantsTable({
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="max-w-[170px] truncate text-foreground">{tenant.primary_property?.address || '--'}</p>
+                    <p className="max-w-[190px] truncate text-foreground">{assignedPropertyLabel(tenant)}</p>
                     <Badge variant="secondary" className="mt-1 rounded bg-muted/60 px-1.5 py-0 text-[9px] text-muted-foreground">
                       {tenant.primary_property ? `Unit ${tenant.additional_properties_count ? `+${tenant.additional_properties_count}` : '1A'}` : 'Not assigned'}
                     </Badge>

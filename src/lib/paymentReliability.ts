@@ -1,4 +1,5 @@
 import type { Payment } from '@/hooks/usePayments';
+import { parseDisplayDate } from '@/lib/dateUtils';
 
 export type AchReconciliationAction = 'complete_and_apply_balance' | 'mark_failed' | 'wait' | 'unknown';
 
@@ -82,7 +83,7 @@ export function computeTenantFinancialHealth(
     .reduce((sum, payment) => sum + Number(payment.amount), 0);
   const lastCompletedPayment = tenantPayments
     .filter((payment) => payment.status === 'completed')
-    .sort((a, b) => new Date(b.payment_date).getTime() - new Date(a.payment_date).getTime())[0];
+    .sort((a, b) => (parseDisplayDate(b.payment_date)?.getTime() || 0) - (parseDisplayDate(a.payment_date)?.getTime() || 0))[0];
   const currentBalance = Number(tenant.current_balance || 0);
   const effectiveBalance = currentBalance - pendingACH;
   const isUnassigned = !tenant.primary_property && !tenant.active_assignment_count;

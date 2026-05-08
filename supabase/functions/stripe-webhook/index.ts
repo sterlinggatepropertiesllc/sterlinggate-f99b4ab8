@@ -726,6 +726,8 @@ async function handlePaymentSucceeded(
       convenienceFeeInDollars
     );
   }
+
+  await notifyPaymentCleared(supabaseAdmin, resolvedTenantId, newPayment.id, amountInDollars, payment_type);
 }
 
 async function notifyPaymentCleared(
@@ -752,8 +754,22 @@ async function notifyPaymentCleared(
   }
 
   if (tenantData?.manager_id) {
+    await supabaseAdmin.from("notifications").insert({
+      user_id: tenantData.manager_id,
+      type: "rent_received",
+      title: "Payment Cleared",
+      message: `$${amountInDollars.toFixed(2)} from ${tenantName} has cleared and the tenant ledger was updated.`,
+      metadata: {
+        amount: amountInDollars,
+        payment_type: paymentType || "unknown",
+        tenant: tenantName,
+        tenant_id: tenantId,
+        payment_id: paymentId,
+      },
+    });
+
     await sendDiscordNotificationIfEnabled(supabaseAdmin, tenantData.manager_id, {
-      title: "ACH Payment Cleared",
+      title: "Payment Cleared",
       message: `$${amountInDollars.toFixed(2)} from ${tenantName} has cleared`,
       type: "rent_received",
       metadata: {
@@ -937,9 +953,6 @@ async function applyLateFeeIfApplicable(
 ) {
   logStep("Checking if late fee should be applied", { tenantId });
 
-  const today = new Date();
-  const currentDay = today.getDate();
-
   const { data: tenantBalance } = await supabaseAdmin
     .from("tenants")
     .select("current_balance")
@@ -967,96 +980,75 @@ async function applyLateFeeIfApplicable(
     return;
   }
 
-  const { data: tenantProperties, error: tpError } = await supabaseAdmin
-    .from("tenant_properties")
-    .select(`
-      id,
-      property_id,
-      rent_amount,
-      rent_due_day,
-      grace_period_days,
-      late_fee_type,
-      late_fee_percentage,
-      late_fee_flat_amount,
-      property:properties(address)
-    `)
-    .eq("tenant_id", tenantId);
+  const { data: rentCharges, error: rentChargeError } = await supabaseAdmin
+    .from("rent_charges")
+    .select("id, rent_period, rent_amount")
+    .eq("tenant_id", tenantId)
+    .eq("status", "pending")
+    .eq("late_fee_applied", false)
+    .eq("late_fee_waived", false)
+    .order("rent_period", { ascending: true });
 
-  if (tpError || !tenantProperties || tenantProperties.length === 0) {
-    logStep("No tenant properties found for late fee calculation", { error: tpError?.message });
+  if (rentChargeError) {
+    logStep("Unable to load rent charges for late fee", { error: rentChargeError.message });
     return;
   }
 
-  let totalLateFee = 0;
-  const lateFeeDetails: string[] = [];
-  let remainingFeeBasis = effectiveBalance;
-
-  for (const tp of tenantProperties) {
-    if (remainingFeeBasis <= 0) break;
-
-    const rentDueDay = tp.rent_due_day || 1;
-    const gracePeriodDays = tp.grace_period_days || 5;
-    const graceEndDay = rentDueDay + Math.max(gracePeriodDays - 1, 0);
-
-    if (currentDay > graceEndDay) {
-      const rentAmount = tp.rent_amount || 0;
-      const feeBasis = Math.min(rentAmount, remainingFeeBasis);
-      let lateFee = 0;
-
-      if (tp.late_fee_type === "percentage") {
-        const percentage = tp.late_fee_percentage || 5;
-        lateFee = feeBasis * (percentage / 100);
-      } else if (tp.late_fee_type === "flat") {
-        lateFee = tp.late_fee_flat_amount || 0;
-      } else {
-        lateFee = rentAmount * 0.05;
-      }
-
-      if (lateFee > 0) {
-        totalLateFee += lateFee;
-        remainingFeeBasis -= feeBasis;
-        const propertyAddress = (tp.property as { address?: string } | null)?.address || "Unknown property";
-        lateFeeDetails.push(`$${lateFee.toFixed(2)} for ${propertyAddress}`);
-      }
-    }
+  if (!rentCharges || rentCharges.length === 0) {
+    logStep("No pending rent charges need a late fee; skipping duplicate failed-payment fee", { tenantId });
+    return;
   }
 
-  if (totalLateFee > 0) {
-    logStep("Applying total late fee via RPC", { totalLateFee, details: lateFeeDetails });
+  let totalLateFeeApplied = 0;
+  const lateFeeDetails: string[] = [];
 
-    const { error: rpcError } = await supabaseAdmin.rpc("apply_balance_adjustment", {
-      _tenant_id: tenantId,
-      _adjustment_type: "late_fee",
-      _amount: totalLateFee,
-      _description: `Late fee applied after failed ACH payment: ${lateFeeDetails.join(", ")}`,
+  for (const rentCharge of rentCharges) {
+    const { data: result, error: rpcError } = await supabaseAdmin.rpc("apply_rent_late_fee", {
+      _rent_charge_id: rentCharge.id,
+      _created_by: managerId,
     });
 
     if (rpcError) {
-      logStep("Failed to apply late fee", { error: rpcError.message });
-      return;
+      logStep("Failed to apply rent-charge late fee", { rentChargeId: rentCharge.id, error: rpcError.message });
+      continue;
     }
 
-    logStep("Late fee applied successfully", { totalLateFee });
+    const typedResult = result as { success?: boolean; late_fee?: number; error?: string; reason?: string } | null;
+    if (typedResult?.success) {
+      const fee = Number(typedResult.late_fee || 0);
+      totalLateFeeApplied += fee;
+      lateFeeDetails.push(`$${fee.toFixed(2)} for ${rentCharge.rent_period}`);
+    } else {
+      logStep("Late fee skipped by source-of-truth RPC", {
+        rentChargeId: rentCharge.id,
+        reason: typedResult?.reason,
+        error: typedResult?.error,
+      });
+    }
+  }
+
+  if (totalLateFeeApplied > 0) {
+    logStep("Late fee applied through rent-charge source of truth", { totalLateFeeApplied, details: lateFeeDetails });
 
     await supabaseAdmin.from("notifications").insert({
       user_id: managerId,
       type: "rent_received",
       title: "Late Fee Applied",
-      message: `$${totalLateFee.toFixed(2)} late fee applied to ${tenantName}'s balance after failed payment`,
+      message: `$${totalLateFeeApplied.toFixed(2)} late fee applied to ${tenantName}'s balance after failed payment`,
       metadata: {
         tenant_id: tenantId,
-        late_fee: totalLateFee,
+        late_fee: totalLateFeeApplied,
         details: lateFeeDetails,
       },
     });
 
     await sendDiscordNotificationIfEnabled(supabaseAdmin, managerId, {
       title: "💰 Late Fee Applied",
-      message: `$${totalLateFee.toFixed(2)} late fee added to ${tenantName}'s balance`,
+      message: `$${totalLateFeeApplied.toFixed(2)} late fee added to ${tenantName}'s balance`,
       type: "rent_received",
       metadata: {
         tenant: tenantName,
-        late_fee: totalLateFee,
+        late_fee: totalLateFeeApplied,
         details: lateFeeDetails,
       },
     });

@@ -54,10 +54,21 @@ export interface PropertySummary {
   manager_id?: string | null;
 }
 
+export interface TenantAssignedProperty {
+  id: string;
+  is_primary: boolean | null;
+  rent_amount: number | null;
+  lease_start_date: string | null;
+  lease_end_date: string | null;
+  property: PropertySummary | null;
+}
+
 export interface TenantRecord extends Tables<'tenants'> {
   user?: ProfileSummary | null;
   primary_property?: PropertySummary | null;
   property?: PropertySummary | null;
+  assigned_properties?: TenantAssignedProperty[];
+  assigned_property_summary?: string | null;
   primary_rent_amount?: number | null;
   assignment_rent_total?: number | null;
   active_assignment_count?: number | null;
