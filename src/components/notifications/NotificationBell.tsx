@@ -8,6 +8,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { getNotificationUrl } from '@/lib/notificationRouting';
 
 export function NotificationBell() {
   const {
@@ -40,42 +41,8 @@ export function NotificationBell() {
     // Close the notification panel
     setOpen(false);
     
-    // Determine which dashboard we're on
-    const isAdminDashboard = location.pathname === '/dashboard';
-    const isTenantPortal = location.pathname.startsWith('/tenant');
-    
-    // Map notification type to tab
-    let targetTab = '';
-    switch (notification.type) {
-      case 'application_received':
-        targetTab = 'applications';
-        break;
-      case 'application_approved':
-      case 'application_rejected':
-        targetTab = 'applications';
-        break;
-      case 'rent_received':
-        targetTab = isTenantPortal ? 'payments' : 'audit';
-        break;
-      case 'lease_signed':
-        targetTab = 'leases';
-        break;
-      case 'message_received':
-        targetTab = 'messages';
-        break;
-      case 'maintenance_request':
-        targetTab = 'properties';
-        break;
-      default:
-        return;
-    }
-    
-    // Navigate with query param to set the tab
-    if (isAdminDashboard) {
-      navigate(`/dashboard?tab=${targetTab}`);
-    } else if (isTenantPortal) {
-      navigate(`/tenant?tab=${targetTab}`);
-    }
+    const portal = location.pathname.startsWith('/tenant') ? 'tenant' : 'admin';
+    navigate(getNotificationUrl(notification, portal));
   }, [location.pathname, navigate]);
 
   const bellButton = (
@@ -162,7 +129,7 @@ export function NotificationBell() {
             <div className="mx-auto mt-3 h-1.5 w-16 rounded-full bg-muted-foreground/25" />
             <SheetHeader className="border-b border-border/50 px-4 py-3 text-left">
               <SheetTitle className="text-base font-semibold">Notifications</SheetTitle>
-              <p className="text-xs text-muted-foreground">Swipe down to close. Swipe a notification right to dismiss it.</p>
+              <p className="text-xs text-muted-foreground">Swipe down to close. Swipe a notification sideways to dismiss it.</p>
             </SheetHeader>
           </div>
           <div className="h-[calc(88dvh-98px)] min-h-0">

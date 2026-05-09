@@ -3,6 +3,7 @@ import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
 type SupabaseAdminClient = ReturnType<typeof createClient>;
+type PaymentNotificationType = "payment_received" | "payment_processing" | "payment_failed" | "payment_incomplete";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,6 +12,25 @@ const corsHeaders = {
 
 interface VerifyRequest {
   session_id: string;
+}
+
+function getPaymentNotificationType(stripeStatus: string): PaymentNotificationType {
+  const normalized = String(stripeStatus || "").toLowerCase();
+
+  if (normalized === "succeeded" || normalized === "completed" || normalized === "paid") return "payment_received";
+  if (normalized === "processing" || normalized === "pending") return "payment_processing";
+  if (
+    normalized === "requires_payment_method" ||
+    normalized === "requires_action" ||
+    normalized === "requires_confirmation" ||
+    normalized === "incomplete" ||
+    normalized === "canceled" ||
+    normalized === "cancelled"
+  ) {
+    return "payment_incomplete";
+  }
+
+  return "payment_failed";
 }
 
 async function applyCompletedPaymentToBalance(
@@ -68,7 +88,7 @@ async function notifyTenantPaymentStatus(
       .from('notifications')
       .select('id')
       .eq('user_id', tenantData.user_id)
-      .eq('type', 'rent_received')
+      .eq('type', getPaymentNotificationType(input.stripeStatus))
       .eq('metadata->>payment_id', input.paymentId)
       .eq('metadata->>tenant_payment_status', input.stripeStatus)
       .limit(1)
@@ -78,7 +98,7 @@ async function notifyTenantPaymentStatus(
 
     await supabaseAdmin.from('notifications').insert({
       user_id: tenantData.user_id,
-      type: 'rent_received',
+      type: getPaymentNotificationType(input.stripeStatus),
       title: input.title,
       message: input.message,
       metadata: {

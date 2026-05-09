@@ -12,8 +12,83 @@ const logStep = (step: string, details?: unknown) => {
   console.log(`[RECONCILE-ACH] ${step}${detailsStr}`);
 };
 
+type SupabaseAdminClient = ReturnType<typeof createClient>;
+type PaymentNotificationType =
+  | "payment_received"
+  | "payment_processing"
+  | "payment_failed"
+  | "payment_incomplete";
+
+function getPaymentNotificationType(stripeStatus: string): PaymentNotificationType {
+  const normalized = String(stripeStatus || "").toLowerCase();
+
+  if (normalized === "succeeded" || normalized === "completed") return "payment_received";
+  if (normalized === "processing" || normalized === "pending") return "payment_processing";
+  if (
+    normalized === "requires_payment_method" ||
+    normalized === "requires_action" ||
+    normalized === "requires_confirmation" ||
+    normalized === "incomplete" ||
+    normalized === "canceled" ||
+    normalized === "cancelled"
+  ) {
+    return "payment_incomplete";
+  }
+
+  return "payment_failed";
+}
+
+async function insertNotificationOnce(
+  supabaseAdmin: SupabaseAdminClient,
+  input: {
+    userId: string | null | undefined;
+    type: PaymentNotificationType;
+    title: string;
+    message: string;
+    metadata: Record<string, unknown>;
+    paymentId: string;
+    tenantPaymentStatus?: string;
+  }
+) {
+  if (!input.userId) return false;
+
+  let query = supabaseAdmin
+    .from("notifications")
+    .select("id")
+    .eq("user_id", input.userId)
+    .eq("type", input.type)
+    .eq("metadata->>payment_id", input.paymentId)
+    .limit(1);
+
+  if (input.tenantPaymentStatus) {
+    query = query.eq("metadata->>tenant_payment_status", input.tenantPaymentStatus);
+  }
+
+  const { data: existingNotification } = await query.maybeSingle();
+  if (existingNotification?.id) return false;
+
+  const { error } = await supabaseAdmin.from("notifications").insert({
+    user_id: input.userId,
+    type: input.type,
+    title: input.title,
+    message: input.message,
+    metadata: input.metadata,
+  });
+
+  if (error) {
+    logStep("Notification insert failed", {
+      type: input.type,
+      paymentId: input.paymentId,
+      error: error.message,
+    });
+    return false;
+  }
+
+  return true;
+}
+
 async function recordReconciliationAudit(
-  supabaseAdmin: ReturnType<typeof createClient>,
+  supabaseAdmin: SupabaseAdminClient,
   input: {
     actorId: string;
     tenantId?: string;
@@ -51,7 +126,7 @@ async function recordReconciliationAudit(
 }
 
 async function notifyManagerPaymentStatus(
-  supabaseAdmin: ReturnType<typeof createClient>,
+  supabaseAdmin: SupabaseAdminClient,
   input: {
     tenantId: string | null;
     paymentId: string;
@@ -71,53 +146,45 @@ async function notifyManagerPaymentStatus(
       .single();
 
     if (!tenantData) return;
+    const notificationType = getPaymentNotificationType(input.stripeStatus);
     const tenantTitle = input.stripeStatus === "succeeded"
       ? "Payment Cleared"
-      : input.stripeStatus === "requires_payment_method"
+      : notificationType === "payment_incomplete"
         ? "Payment Incomplete"
         : "Payment Did Not Clear";
     const tenantMessage = input.stripeStatus === "succeeded"
       ? `$${Number(input.amount || 0).toFixed(2)} payment was verified by Stripe and applied to your Sterling Gate ledger.`
-      : input.stripeStatus === "requires_payment_method"
+      : notificationType === "payment_incomplete"
         ? `$${Number(input.amount || 0).toFixed(2)} payment never completed in Stripe. No money moved.`
         : `$${Number(input.amount || 0).toFixed(2)} payment did not clear in Stripe. Please retry or contact management if this looks wrong.`;
 
     if (tenantData.user_id) {
-      const { data: existingTenantNotification } = await supabaseAdmin
-        .from("notifications")
-        .select("id")
-        .eq("user_id", tenantData.user_id)
-        .eq("type", "rent_received")
-        .eq("metadata->>payment_id", input.paymentId)
-        .eq("metadata->>tenant_payment_status", input.stripeStatus)
-        .limit(1)
-        .maybeSingle();
-
-      if (!existingTenantNotification?.id) {
-        await supabaseAdmin.from("notifications").insert({
-          user_id: tenantData.user_id,
-          type: "rent_received",
-          title: tenantTitle,
-          message: tenantMessage,
-          metadata: {
-            tenant_id: input.tenantId,
-            payment_id: input.paymentId,
-            amount: input.amount,
-            stripe_status: input.stripeStatus,
-            tenant_payment_status: input.stripeStatus,
-            source: "ach_reconciliation",
-          },
-        });
-      }
+      await insertNotificationOnce(supabaseAdmin, {
+        userId: tenantData.user_id,
+        type: notificationType,
+        title: tenantTitle,
+        message: tenantMessage,
+        paymentId: input.paymentId,
+        tenantPaymentStatus: input.stripeStatus,
+        metadata: {
+          tenant_id: input.tenantId,
+          payment_id: input.paymentId,
+          amount: input.amount,
+          stripe_status: input.stripeStatus,
+          tenant_payment_status: input.stripeStatus,
+          source: "ach_reconciliation",
+        },
+      });
     }
 
     if (!tenantData.manager_id) return;
 
-    await supabaseAdmin.from("notifications").insert({
-      user_id: tenantData.manager_id,
-      type: "rent_received",
+    await insertNotificationOnce(supabaseAdmin, {
+      userId: tenantData.manager_id,
+      type: notificationType,
       title: input.title,
       message: input.message,
+      paymentId: input.paymentId,
       metadata: {
         tenant_id: input.tenantId,
         payment_id: input.paymentId,

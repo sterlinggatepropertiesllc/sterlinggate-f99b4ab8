@@ -35,11 +35,12 @@ function formatPushError(error: unknown) {
 }
 
 function getNotificationUrl(type?: string) {
-  if (type === "rent_received") return "/dashboard?tab=audit";
-  if (type === "application_received") return "/dashboard?tab=applications";
+  if (type === "rent_received" || type?.startsWith("payment_")) return "/dashboard?tab=audit";
+  if (type?.startsWith("application_")) return "/dashboard?tab=applications";
   if (type === "maintenance_request") return "/dashboard?tab=maintenance";
   if (type === "message_received") return "/dashboard?tab=messages";
   if (type === "lease_signed") return "/dashboard?tab=leases";
+  if (type === "inquiry_received") return "/dashboard?tab=inquiries";
   return "/dashboard";
 }
 

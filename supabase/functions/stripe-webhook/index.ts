@@ -14,6 +14,90 @@ const logStep = (step: string, details?: unknown) => {
   console.log(`[STRIPE-WEBHOOK] ${step}${detailsStr}`);
 };
 
+type PaymentNotificationType =
+  | "payment_received"
+  | "payment_processing"
+  | "payment_failed"
+  | "payment_incomplete"
+  | "payment_late";
+
+function getPaymentNotificationType(stripeStatus: string): PaymentNotificationType {
+  const normalized = String(stripeStatus || "").toLowerCase();
+
+  if (normalized === "succeeded" || normalized === "completed") return "payment_received";
+  if (normalized === "processing" || normalized === "pending") return "payment_processing";
+  if (
+    normalized === "requires_payment_method" ||
+    normalized === "requires_action" ||
+    normalized === "requires_confirmation" ||
+    normalized === "incomplete" ||
+    normalized === "canceled" ||
+    normalized === "cancelled"
+  ) {
+    return "payment_incomplete";
+  }
+
+  return "payment_failed";
+}
+
+async function insertNotificationOnce(
+  supabaseAdmin: SupabaseAdminClient,
+  input: {
+    userId: string | null | undefined;
+    type: PaymentNotificationType;
+    title: string;
+    message: string;
+    metadata: Record<string, unknown>;
+    paymentId?: string;
+    tenantPaymentStatus?: string;
+    dedupeKey?: string;
+  }
+) {
+  if (!input.userId) return false;
+
+  let query = supabaseAdmin
+    .from("notifications")
+    .select("id")
+    .eq("user_id", input.userId)
+    .eq("type", input.type)
+    .limit(1);
+
+  if (input.paymentId) {
+    query = query.eq("metadata->>payment_id", input.paymentId);
+  }
+
+  if (input.tenantPaymentStatus) {
+    query = query.eq("metadata->>tenant_payment_status", input.tenantPaymentStatus);
+  }
+
+  if (input.dedupeKey) {
+    query = query.eq("metadata->>dedupe_key", input.dedupeKey);
+  }
+
+  const { data: existingNotification } = await query.maybeSingle();
+  if (existingNotification?.id) return false;
+
+  const { error } = await supabaseAdmin.from("notifications").insert({
+    user_id: input.userId,
+    type: input.type,
+    title: input.title,
+    message: input.message,
+    metadata: input.metadata,
+  });
+
+  if (error) {
+    logStep("Notification insert failed", {
+      userId: input.userId,
+      type: input.type,
+      paymentId: input.paymentId,
+      error: error.message,
+    });
+    return false;
+  }
+
+  return true;
+}
+
 function extractStripeReferences(event: Stripe.Event) {
   const object = event.data.object as {
     id?: string;
@@ -547,29 +631,14 @@ async function notifyTenantPaymentStatus(
 
     if (!tenantData?.user_id) return;
 
-    const { data: existingNotification } = await supabaseAdmin
-      .from("notifications")
-      .select("id")
-      .eq("user_id", tenantData.user_id)
-      .eq("type", "rent_received")
-      .eq("metadata->>payment_id", input.paymentId)
-      .eq("metadata->>tenant_payment_status", input.stripeStatus)
-      .limit(1)
-      .maybeSingle();
-
-    if (existingNotification?.id) {
-      logStep("Tenant payment notification already exists", {
-        paymentId: input.paymentId,
-        stripeStatus: input.stripeStatus,
-      });
-      return;
-    }
-
-    await supabaseAdmin.from("notifications").insert({
-      user_id: tenantData.user_id,
-      type: "rent_received",
+    const type = getPaymentNotificationType(input.stripeStatus);
+    const inserted = await insertNotificationOnce(supabaseAdmin, {
+      userId: tenantData.user_id,
+      type,
       title: input.title,
       message: input.message,
+      paymentId: input.paymentId,
+      tenantPaymentStatus: input.stripeStatus,
       metadata: {
         tenant_id: input.tenantId,
         payment_id: input.paymentId,
@@ -579,6 +648,14 @@ async function notifyTenantPaymentStatus(
         source: input.source,
       },
     });
+
+    if (!inserted) {
+      logStep("Tenant payment notification already exists", {
+        paymentId: input.paymentId,
+        stripeStatus: input.stripeStatus,
+      });
+      return;
+    }
 
     logStep("Tenant payment notification created", {
       paymentId: input.paymentId,
@@ -847,17 +924,20 @@ async function notifyPaymentCleared(
   }
 
   if (tenantData?.manager_id) {
-    await supabaseAdmin.from("notifications").insert({
-      user_id: tenantData.manager_id,
-      type: "rent_received",
+    await insertNotificationOnce(supabaseAdmin, {
+      userId: tenantData.manager_id,
+      type: "payment_received",
       title: "Payment Cleared",
       message: `$${amountInDollars.toFixed(2)} from ${tenantName} has cleared and the tenant ledger was updated.`,
+      paymentId,
       metadata: {
         amount: amountInDollars,
         payment_type: paymentType || "unknown",
         tenant: tenantName,
         tenant_id: tenantId,
         payment_id: paymentId,
+        stripe_status: "succeeded",
+        source: "stripe_webhook",
       },
     });
 
@@ -1028,6 +1108,7 @@ async function notifyFailedPaymentSideEffects(
     .single();
 
   const tenantName = profileData?.full_name || "A tenant";
+  const managerNotificationType = getPaymentNotificationType(stripeStatus);
 
   const tenantTitle = stripeStatus === "requires_payment_method" ? "Payment Incomplete" : "Payment Failed";
   const tenantMessage = stripeStatus === "requires_payment_method"
@@ -1046,18 +1127,20 @@ async function notifyFailedPaymentSideEffects(
 
   if (!tenantData.manager_id) return;
 
-  await supabaseAdmin.from("notifications").insert({
-    user_id: tenantData.manager_id,
-    type: "rent_received",
+  await insertNotificationOnce(supabaseAdmin, {
+    userId: tenantData.manager_id,
+    type: managerNotificationType,
     title: stripeStatus === "requires_payment_method" ? "Payment Incomplete" : "Payment Failed",
     message: stripeStatus === "requires_payment_method"
       ? `${tenantName}'s payment was incomplete in Stripe. No money moved.`
       : `${tenantName}'s ACH payment has failed. Please follow up.`,
+    paymentId,
     metadata: {
       payment_id: paymentId,
       tenant_id: tenantId,
       failure_reason: failureReason,
       stripe_status: stripeStatus,
+      source: "stripe_webhook",
     },
   });
 
@@ -1165,16 +1248,20 @@ async function applyLateFeeIfApplicable(
 
   if (totalLateFeeApplied > 0) {
     logStep("Late fee applied through rent-charge source of truth", { totalLateFeeApplied, details: lateFeeDetails });
+    const dedupeKey = `late-fee:${tenantId}:${lateFeeDetails.join("|")}`;
 
-    await supabaseAdmin.from("notifications").insert({
-      user_id: managerId,
-      type: "rent_received",
+    await insertNotificationOnce(supabaseAdmin, {
+      userId: managerId,
+      type: "payment_late",
       title: "Late Fee Applied",
       message: `$${totalLateFeeApplied.toFixed(2)} late fee applied to ${tenantName}'s balance after failed payment`,
+      dedupeKey,
       metadata: {
         tenant_id: tenantId,
         late_fee: totalLateFeeApplied,
         details: lateFeeDetails,
+        dedupe_key: dedupeKey,
+        source: "stripe_webhook",
       },
     });
 

@@ -3,15 +3,9 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { showNativeAppNotification } from '@/lib/nativeNotifications';
+import type { AppNotificationType } from '@/lib/notificationRouting';
 
-export type NotificationType = 
-  | 'application_received'
-  | 'application_approved'
-  | 'application_rejected'
-  | 'rent_received'
-  | 'maintenance_request'
-  | 'lease_signed'
-  | 'message_received';
+export type NotificationType = AppNotificationType;
 
 export interface Notification {
   id: string;

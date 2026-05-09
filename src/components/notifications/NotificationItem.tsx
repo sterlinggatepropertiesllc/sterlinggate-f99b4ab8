@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react';
-import { X, FileText, DollarSign, Wrench, FileSignature, MessageSquare, CheckCircle, XCircle, ChevronRight, AlertCircle, Clock } from 'lucide-react';
+import { useRef, useState } from 'react';
+import type { PointerEvent } from 'react';
+import { X, FileText, DollarSign, Wrench, FileSignature, MessageSquare, CheckCircle, XCircle, ChevronRight, AlertCircle, Clock, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Notification, NotificationType } from '@/hooks/useNotifications';
 import { formatDistanceToNow } from 'date-fns';
@@ -17,9 +18,16 @@ const typeConfig: Record<NotificationType, { icon: React.ElementType; color: str
   application_approved: { icon: CheckCircle, color: 'text-success', bg: 'bg-success/10' },
   application_rejected: { icon: XCircle, color: 'text-destructive', bg: 'bg-destructive/10' },
   rent_received: { icon: DollarSign, color: 'text-success', bg: 'bg-success/10' },
+  payment_received: { icon: DollarSign, color: 'text-success', bg: 'bg-success/10' },
+  payment_processing: { icon: Clock, color: 'text-warning', bg: 'bg-warning/10' },
+  payment_failed: { icon: XCircle, color: 'text-destructive', bg: 'bg-destructive/10' },
+  payment_incomplete: { icon: AlertCircle, color: 'text-warning', bg: 'bg-warning/10' },
+  payment_late: { icon: AlertTriangle, color: 'text-destructive', bg: 'bg-destructive/10' },
+  payment_missing: { icon: AlertTriangle, color: 'text-destructive', bg: 'bg-destructive/10' },
   maintenance_request: { icon: Wrench, color: 'text-warning', bg: 'bg-warning/10' },
   lease_signed: { icon: FileSignature, color: 'text-primary', bg: 'bg-primary/10' },
   message_received: { icon: MessageSquare, color: 'text-accent-foreground', bg: 'bg-accent/10' },
+  inquiry_received: { icon: MessageSquare, color: 'text-blue-500', bg: 'bg-blue-500/10' },
 };
 
 function getNotificationConfig(notification: Notification) {
@@ -46,8 +54,10 @@ function getNotificationConfig(notification: Notification) {
 }
 
 export function NotificationItem({ notification, onDismiss, onMarkAsRead, onNavigate, isMobile }: NotificationItemProps) {
-  const [touchStart, setTouchStart] = useState<number | null>(null);
-  const [touchDelta, setTouchDelta] = useState(0);
+  const dragStart = useRef<{ x: number; y: number; pointerId: number } | null>(null);
+  const hasHorizontalDrag = useRef(false);
+  const suppressClick = useRef(false);
+  const [dragDelta, setDragDelta] = useState(0);
   const [isDismissing, setIsDismissing] = useState(false);
   const itemRef = useRef<HTMLDivElement>(null);
 
@@ -55,34 +65,52 @@ export function NotificationItem({ notification, onDismiss, onMarkAsRead, onNavi
   const Icon = config.icon;
   const timeAgo = formatDistanceToNow(new Date(notification.created_at), { addSuffix: true });
 
-  const handleTouchStart = (e: React.TouchEvent) => {
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (!isMobile) return;
-    setTouchStart(e.touches[0].clientX);
+    dragStart.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+    hasHorizontalDrag.current = false;
+    suppressClick.current = false;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isMobile || touchStart === null) return;
-    const currentX = e.touches[0].clientX;
-    const delta = currentX - touchStart;
-    // Only allow swiping right (positive delta)
-    if (delta > 0) {
-      setTouchDelta(Math.min(delta, 200));
+  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!isMobile || !dragStart.current) return;
+
+    const deltaX = event.clientX - dragStart.current.x;
+    const deltaY = event.clientY - dragStart.current.y;
+
+    if (!hasHorizontalDrag.current && Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.15) {
+      hasHorizontalDrag.current = true;
+    }
+
+    if (hasHorizontalDrag.current) {
+      event.preventDefault();
+      suppressClick.current = true;
+      setDragDelta(Math.max(Math.min(deltaX, 220), -220));
     }
   };
 
-  const handleTouchEnd = () => {
-    if (!isMobile) return;
-    
-    if (touchDelta > 100) {
+  const finishDrag = (event?: PointerEvent<HTMLDivElement>) => {
+    if (!isMobile || !dragStart.current) return;
+
+    event?.currentTarget.releasePointerCapture?.(dragStart.current.pointerId);
+    const shouldDismiss = Math.abs(dragDelta) > 84;
+    dragStart.current = null;
+    hasHorizontalDrag.current = false;
+
+    if (shouldDismiss) {
       setIsDismissing(true);
       setTimeout(() => onDismiss(notification.id), 200);
     } else {
-      setTouchDelta(0);
+      setDragDelta(0);
     }
-    setTouchStart(null);
   };
 
   const handleClick = () => {
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      return;
+    }
     if (!notification.is_read) {
       onMarkAsRead(notification.id);
     }
@@ -97,18 +125,23 @@ export function NotificationItem({ notification, onDismiss, onMarkAsRead, onNavi
         'relative overflow-hidden transition-all duration-200',
         isDismissing && 'opacity-0 translate-x-full'
       )}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishDrag}
+      onPointerCancel={finishDrag}
       onClick={handleClick}
     >
       {/* Swipe background indicator */}
-      {isMobile && touchDelta > 0 && (
-        <div 
-          className="absolute inset-y-0 left-0 bg-destructive/20 flex items-center justify-start pl-4"
-          style={{ width: touchDelta }}
+      {isMobile && dragDelta !== 0 && (
+        <div
+          className={cn(
+            'absolute inset-y-0 flex items-center bg-destructive/20 px-4 text-xs font-semibold uppercase tracking-[0.18em] text-destructive',
+            dragDelta > 0 ? 'left-0 justify-start' : 'right-0 justify-end'
+          )}
+          style={{ width: Math.max(Math.abs(dragDelta), 64) }}
         >
           <X className="h-5 w-5 text-destructive" />
+          {Math.abs(dragDelta) > 72 && <span className="ml-2">Dismiss</span>}
         </div>
       )}
 
@@ -116,11 +149,12 @@ export function NotificationItem({ notification, onDismiss, onMarkAsRead, onNavi
         className={cn(
           'flex items-start gap-3 p-4 border-b border-border/50 transition-colors cursor-pointer',
           !notification.is_read && 'bg-primary/5',
-          'hover:bg-muted/50'
+          'hover:bg-muted/50',
+          isMobile && 'select-none touch-pan-y'
         )}
         style={{ 
-          transform: isMobile ? `translateX(${touchDelta}px)` : undefined,
-          transition: touchStart !== null ? 'none' : 'transform 0.2s ease-out'
+          transform: isMobile ? `translateX(${dragDelta}px)` : undefined,
+          transition: dragStart.current ? 'none' : 'transform 0.2s ease-out'
         }}
       >
         {/* Icon */}

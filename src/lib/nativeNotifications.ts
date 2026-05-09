@@ -1,4 +1,5 @@
 import { registerSterlingServiceWorker } from '@/registerServiceWorker';
+import { getNotificationUrl } from './notificationRouting';
 
 export interface AppNotificationPayload {
   id?: string;
@@ -6,15 +7,6 @@ export interface AppNotificationPayload {
   title: string;
   message: string;
   metadata?: Record<string, unknown> | null;
-}
-
-function getNotificationUrl(notification: AppNotificationPayload) {
-  if (notification.type === 'rent_received') return '/dashboard?tab=audit';
-  if (notification.type === 'application_received') return '/dashboard?tab=applications';
-  if (notification.type === 'maintenance_request') return '/dashboard?tab=maintenance';
-  if (notification.type === 'message_received') return '/dashboard?tab=messages';
-  if (notification.type === 'lease_signed') return '/dashboard?tab=leases';
-  return '/dashboard';
 }
 
 export async function showNativeAppNotification(notification: AppNotificationPayload) {

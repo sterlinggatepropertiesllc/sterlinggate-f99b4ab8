@@ -2,6 +2,16 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
+const paymentNotificationTypes = [
+  'rent_received',
+  'payment_received',
+  'payment_processing',
+  'payment_failed',
+  'payment_incomplete',
+  'payment_late',
+  'payment_missing',
+] as const;
+
 export function useUnreadPaymentNotifications() {
   const { user } = useAuth();
   const [unreadPaymentCount, setUnreadPaymentCount] = useState(0);
@@ -14,7 +24,7 @@ export function useUnreadPaymentNotifications() {
         .from('notifications')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
-        .eq('type', 'rent_received')
+        .in('type', [...paymentNotificationTypes])
         .eq('is_read', false);
 
       if (error) throw error;
@@ -32,7 +42,7 @@ export function useUnreadPaymentNotifications() {
         .from('notifications')
         .update({ is_read: true })
         .eq('user_id', user.id)
-        .eq('type', 'rent_received')
+        .in('type', [...paymentNotificationTypes])
         .eq('is_read', false);
 
       if (error) throw error;
@@ -62,8 +72,8 @@ export function useUnreadPaymentNotifications() {
           filter: `user_id=eq.${user.id}`
         },
         (payload) => {
-          // Check if it's a rent_received notification
-          if (payload.new && (payload.new as any).type === 'rent_received') {
+          const type = String((payload.new as { type?: string } | null)?.type || '');
+          if (paymentNotificationTypes.includes(type as (typeof paymentNotificationTypes)[number])) {
             setUnreadPaymentCount(prev => prev + 1);
           }
         }
@@ -77,8 +87,8 @@ export function useUnreadPaymentNotifications() {
           filter: `user_id=eq.${user.id}`
         },
         (payload) => {
-          // If a rent_received notification was marked as read, refetch count
-          if (payload.new && (payload.new as any).type === 'rent_received') {
+          const type = String((payload.new as { type?: string } | null)?.type || '');
+          if (paymentNotificationTypes.includes(type as (typeof paymentNotificationTypes)[number])) {
             fetchUnreadCount();
           }
         }

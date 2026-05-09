@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sterling-gate-pwa-v2';
+const CACHE_NAME = 'sterling-gate-pwa-v3';
 const APP_SHELL = [
   '/',
   '/dashboard',
@@ -87,6 +87,16 @@ function normalizeNotificationPayload(event) {
   }
 }
 
+function getNotificationUrl(type) {
+  if (type === 'rent_received' || String(type || '').startsWith('payment_')) return '/dashboard?tab=audit';
+  if (String(type || '').startsWith('application_')) return '/dashboard?tab=applications';
+  if (type === 'maintenance_request') return '/dashboard?tab=maintenance';
+  if (type === 'message_received') return '/dashboard?tab=messages';
+  if (type === 'lease_signed') return '/dashboard?tab=leases';
+  if (type === 'inquiry_received') return '/dashboard?tab=inquiries';
+  return '/dashboard';
+}
+
 self.addEventListener('push', (event) => {
   const payload = normalizeNotificationPayload(event);
   const title = payload.title || 'Sterling Gate Properties';
@@ -97,7 +107,7 @@ self.addEventListener('push', (event) => {
     tag: payload.tag || payload.notification_id || 'sterling-gate-notification',
     renotify: Boolean(payload.renotify),
     data: {
-      url: payload.url || '/dashboard',
+      url: payload.url || getNotificationUrl(payload.type),
       notification_id: payload.notification_id || null,
       type: payload.type || null,
       metadata: payload.metadata || {},
