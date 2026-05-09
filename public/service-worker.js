@@ -1,11 +1,14 @@
-const CACHE_NAME = 'sterling-gate-pwa-v1';
+const CACHE_NAME = 'sterling-gate-pwa-v2';
 const APP_SHELL = [
   '/',
   '/dashboard',
   '/manifest.webmanifest',
-  '/favicon.jpg',
+  '/favicon.png',
+  '/icons/apple-touch-icon.png',
   '/icons/icon-192.png',
+  '/icons/maskable-192.png',
   '/icons/icon-512.png',
+  '/icons/maskable-512.png',
 ];
 
 self.addEventListener('install', (event) => {
