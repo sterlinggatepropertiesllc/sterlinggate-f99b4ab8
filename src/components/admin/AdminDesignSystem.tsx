@@ -63,13 +63,13 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <section className={cn('flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between', className)}>
+    <section className={cn('flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-end lg:justify-between', className)}>
       <div className="min-w-0">
         {eyebrow && <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">{eyebrow}</p>}
         <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-[28px]">{title}</h1>
         {subtitle && <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">{subtitle}</p>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      {actions && <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">{actions}</div>}
     </section>
   );
 }
@@ -92,12 +92,12 @@ export function SectionCard({
   return (
     <section className={cn('ops-panel', className)}>
       {(title || subtitle || action) && (
-        <div className="flex items-start justify-between gap-3 border-b border-border/55 px-4 py-3">
+        <div className="flex flex-col gap-3 border-b border-border/55 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             {title && <h2 className="text-sm font-semibold tracking-tight text-foreground">{title}</h2>}
             {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
           </div>
-          {action}
+          {action && <div className="shrink-0">{action}</div>}
         </div>
       )}
       <div className={cn('p-4', contentClassName)}>{children}</div>
@@ -152,7 +152,7 @@ export function StatCard({
       <button
         type="button"
         onClick={onClick}
-        className={cn('ops-panel group min-h-[104px] w-full p-4 text-left transition-colors hover:border-primary/35', className)}
+        className={cn('ops-panel tap-feedback group min-h-[104px] w-full p-4 text-left transition-colors hover:border-primary/35', className)}
       >
         {content}
       </button>
@@ -192,7 +192,7 @@ export function FilterTabs<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="mobile-scroll-x flex flex-nowrap items-center gap-2 sm:flex-wrap sm:overflow-visible">
       {items.map((item) => (
         <Button
           key={item.id}
@@ -201,7 +201,7 @@ export function FilterTabs<T extends string>({
           variant="outline"
           onClick={() => onChange(item.id)}
           className={cn(
-            'h-8 rounded-md border px-3 text-[11px]',
+            'h-8 shrink-0 rounded-md border px-3 text-[11px]',
             value === item.id
               ? 'border-primary/45 bg-primary/15 text-primary hover:bg-primary/20'
               : 'border-border/70 bg-card text-muted-foreground hover:border-primary/30 hover:bg-muted/25 hover:text-primary'
@@ -250,7 +250,7 @@ export function AdminButton({
   }[variant];
 
   return (
-    <Button {...props} variant="ghost" className={cn('h-9 rounded-md px-3 text-xs font-medium', variantClass, className)}>
+    <Button {...props} variant="ghost" className={cn('tap-feedback h-9 rounded-md px-3 text-xs font-medium', variantClass, className)}>
       {children}
     </Button>
   );

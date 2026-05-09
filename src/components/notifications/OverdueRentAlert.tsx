@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, ChevronRight, X, CheckCheck } from "lucide-react";
 import { useOverdueTenants } from "@/hooks/useOverdueTenants";
@@ -25,6 +25,7 @@ interface OverdueRentAlertProps {
 export function OverdueRentAlert({ managerId }: OverdueRentAlertProps) {
   const { overdueTenants, count, isLoading, dismissAlert, clearAllAlerts } = useOverdueTenants(managerId);
   const [isOpen, setIsOpen] = useState(false);
+  const touchStartY = useRef<number | null>(null);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
 
@@ -40,6 +41,17 @@ export function OverdueRentAlert({ managerId }: OverdueRentAlertProps) {
   const handleDismiss = (e: React.MouseEvent, tenantId: string, amount: number) => {
     e.stopPropagation();
     dismissAlert(tenantId, amount);
+  };
+
+  const handlePanelTouchStart = (event: React.TouchEvent) => {
+    touchStartY.current = event.touches[0].clientY;
+  };
+
+  const handlePanelTouchEnd = (event: React.TouchEvent) => {
+    if (touchStartY.current === null) return;
+    const deltaY = event.changedTouches[0].clientY - touchStartY.current;
+    touchStartY.current = null;
+    if (deltaY > 90) setIsOpen(false);
   };
 
   const OverdueList = () => (
@@ -114,15 +126,22 @@ export function OverdueRentAlert({ managerId }: OverdueRentAlertProps) {
         <SheetTrigger asChild>
           {AlertButton}
         </SheetTrigger>
-        <SheetContent side="bottom" className="h-[70vh] rounded-t-xl">
-          <SheetHeader className="pb-4 border-b border-amber-500/20">
+        <SheetContent side="bottom" className="h-[76dvh] rounded-t-2xl border-amber-500/20 bg-card px-4 pb-4">
+          <div
+            className="touch-pan-y"
+            onTouchStart={handlePanelTouchStart}
+            onTouchEnd={handlePanelTouchEnd}
+          >
+            <div className="mx-auto mt-3 h-1.5 w-16 rounded-full bg-muted-foreground/25" />
+          </div>
+          <SheetHeader className="border-b border-amber-500/20 px-0 pb-4 pt-3 text-left">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="p-2 rounded-full bg-amber-500/10">
                   <AlertTriangle className="h-5 w-5 text-amber-500" />
                 </div>
                 <div>
-                  <SheetTitle className="text-lg">Overdue Rent Alerts</SheetTitle>
+                  <SheetTitle className="text-base">Overdue Rent Alerts</SheetTitle>
                   <p className="text-sm text-muted-foreground">
                     {count} {count === 1 ? 'tenant' : 'tenants'} with overdue balances
                   </p>
@@ -139,7 +158,7 @@ export function OverdueRentAlert({ managerId }: OverdueRentAlertProps) {
               </Button>
             </div>
           </SheetHeader>
-          <ScrollArea className="h-full py-4">
+          <ScrollArea className="h-[calc(76dvh-112px)] py-4">
             <OverdueList />
           </ScrollArea>
         </SheetContent>

@@ -38,7 +38,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { toast } from 'sonner';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { OverdueRentAlert } from '@/components/notifications/OverdueRentAlert';
@@ -571,6 +571,9 @@ export default function Dashboard() {
         {isMobile && (
           <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
             <SheetContent side="left" className="flex w-72 flex-col border-sidebar-border bg-sidebar p-3">
+              <SheetHeader className="sr-only">
+                <SheetTitle>Admin navigation</SheetTitle>
+              </SheetHeader>
               <SidebarContent onNavClick={() => setIsMobileMenuOpen(false)} />
             </SheetContent>
           </Sheet>
@@ -584,7 +587,7 @@ export default function Dashboard() {
         )}
 
         {/* Main Content */}
-        <main className="min-w-0 flex-1 overflow-auto">
+        <main className="min-w-0 flex-1 overflow-auto overscroll-contain">
           {/* Top Header Bar */}
           <div className="sticky top-0 z-10 border-b border-border/35 bg-background px-3 py-3 md:px-5">
             <div className="flex items-center justify-between gap-3">
@@ -628,7 +631,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="relative z-20 overflow-hidden p-3 pt-4 md:p-5">
+          <div className="relative z-20 overflow-visible p-3 pt-4 md:p-5">
           {/* Overview Tab */}
           {activeTab === 'overview' && (
             <AdminCommandCenter
@@ -659,7 +662,7 @@ export default function Dashboard() {
                 actions={<AdminButton onClick={() => setIsAddPropertyOpen(true)}>Add Property</AdminButton>}
               />
 
-              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                 <StatCard label="Total properties" value={propertySummary.total} detail="Portfolio records" tone="gold" />
                 <StatCard label="Occupied units" value={propertySummary.occupied} detail={`${propertySummary.total ? Math.round((propertySummary.occupied / propertySummary.total) * 100) : 0}% occupied`} tone="success" />
                 <StatCard label="Available units" value={propertySummary.available} detail="Ready or needs leasing" tone="warning" />
@@ -678,17 +681,17 @@ export default function Dashboard() {
                       { id: 'off_market', label: 'Setup Needed', count: (properties || []).filter((property) => property.status === 'off_market').length },
                     ]}
                   />
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
                     <Input
                       value={propertySearch}
                       onChange={(event) => setPropertySearch(event.target.value)}
                       placeholder="Search properties..."
-                      className="h-9 min-w-[260px] rounded-md border-border/70 bg-card text-xs"
+                      className="h-9 w-full rounded-md border-border/70 bg-card text-xs sm:min-w-[260px]"
                     />
                     <select
                       value={propertySortMode}
                       onChange={(event) => setPropertySortMode(event.target.value as PropertySortMode)}
-                      className="h-9 rounded-md border border-border/70 bg-card px-3 text-xs text-muted-foreground outline-none"
+                      className="h-9 w-full rounded-md border border-border/70 bg-card px-3 text-xs text-muted-foreground outline-none sm:w-auto"
                     >
                       <option value="newest">Sort: Newest</option>
                       <option value="address">Sort: Address</option>
@@ -747,7 +750,7 @@ export default function Dashboard() {
                 actions={<AdminButton onClick={() => handleNavigateTab('applications')}>Review Queue</AdminButton>}
               />
 
-              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                 <StatCard label="Pending review" value={applications?.filter((app) => ['pending', 'under_review'].includes(app.status)).length || 0} detail="Needs manager attention" tone="warning" />
                 <StatCard label="Approved" value={applications?.filter((app) => app.status === 'approved').length || 0} detail="Ready for leasing" tone="success" />
                 <StatCard label="Denied" value={applications?.filter((app) => app.status === 'rejected').length || 0} detail="Closed applications" tone="danger" />
@@ -877,7 +880,7 @@ export default function Dashboard() {
                 actions={<AdminButton onClick={() => setIsCreateLeaseOpen(true)}>Create Lease</AdminButton>}
               />
 
-              <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
                 <StatCard label="Active leases" value={leases?.filter((lease) => lease.status === 'completed').length || 0} detail="Fully signed lease records" tone="success" />
                 <StatCard label="Expiring soon" value={leases?.filter((lease) => lease.status === 'completed' && differenceInDays(new Date(lease.end_date), new Date()) <= 60).length || 0} detail="Next 60 days" tone="warning" />
                 <StatCard label="Pending signatures" value={leases?.filter((lease) => lease.status.includes('pending')).length || 0} detail="Tenant or manager action" tone="gold" />
@@ -894,7 +897,7 @@ export default function Dashboard() {
                 </div>
               ) : leases && leases.length > 0 ? (
                 <div className="ops-panel overflow-hidden">
-                  <div className="overflow-x-auto">
+                  <div className="mobile-scroll-x overflow-x-auto">
                     <Table className="min-w-[980px]">
                       <TableHeader>
                         <TableRow className="border-border/60 bg-muted/15 hover:bg-muted/15">

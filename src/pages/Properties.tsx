@@ -135,15 +135,15 @@ export default function Properties() {
     <div className="min-h-screen bg-background">
       {/* Navigation */}
       <nav className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border">
-        <div className="w-full px-4 py-2 flex items-center justify-between">
+        <div className="flex w-full items-center justify-between gap-2 px-3 py-2 sm:px-4">
           <Link to="/" className="flex items-center">
-            <img src={logo} alt="Sterling Gate Properties" className="h-24 w-auto object-contain" />
+            <img src={logo} alt="Sterling Gate Properties" className="h-16 w-auto object-contain sm:h-24" />
           </Link>
-          <div className="flex items-center gap-4 ml-auto">
+          <div className="ml-auto flex min-w-0 items-center gap-1.5 sm:gap-4">
             <Link to="/">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Home
+                <span className="hidden sm:inline">Back to Home</span>
               </Button>
             </Link>
             {user ? (
@@ -154,7 +154,8 @@ export default function Properties() {
                   </Button>
                 </Link>
                 <Button variant="ghost" size="sm" onClick={() => signOut()} className="text-muted-foreground hover:text-foreground">
-                  Sign Out
+                  <span className="hidden sm:inline">Sign Out</span>
+                  <span className="sm:hidden">Out</span>
                 </Button>
               </>
             ) : (
@@ -169,7 +170,7 @@ export default function Properties() {
       </nav>
 
       {/* Header */}
-      <section className="py-16 md:py-24 bg-secondary/30">
+      <section className="bg-secondary/30 py-12 md:py-24">
         <div className="container mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto">
             <div className="flex items-center justify-center gap-3 mb-6">

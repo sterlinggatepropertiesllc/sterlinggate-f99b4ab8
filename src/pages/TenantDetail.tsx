@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
   LogOut,
   Mail,
+  Menu,
   MessageSquare,
   Phone,
   Receipt,
@@ -30,6 +31,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { OverdueRentAlert } from '@/components/notifications/OverdueRentAlert';
 import { SettingsDialog } from '@/components/settings/SettingsDialog';
@@ -45,11 +47,13 @@ import { useAllPayments, usePayments, type Payment } from '@/hooks/usePayments';
 import { useUnreadCount } from '@/hooks/useMessages';
 import { useUnreadPaymentNotifications } from '@/hooks/useUnreadPaymentNotifications';
 import { useUnreadInquiriesCount } from '@/hooks/useInquiries';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useProfile } from '@/hooks/useProfiles';
 import { useApplyLateFee, useRentCharges } from '@/hooks/useRentCharges';
 import { computeTenantFinancialHealth, isFailedPaymentStatus, paymentAffectsTenantBalance } from '@/lib/paymentReliability';
 import { formatDisplayDate, parseDisplayDate } from '@/lib/dateUtils';
 import { getPaymentStatusDisplay, isIncompleteStripePayment } from '@/lib/paymentDisplay';
+import { cn } from '@/lib/utils';
 import type { AdminDashboardTab, TenantAssignedProperty, TenantRecord } from '@/components/admin/adminTypes';
 import logo from '@/assets/logo.png';
 
@@ -193,7 +197,7 @@ function KpiTile({
   const toneClass = tone === 'red' ? 'text-destructive border-destructive/30 bg-destructive/10' : tone === 'green' ? 'text-success border-success/30 bg-success/10' : 'text-primary border-primary/30 bg-primary/10';
 
   return (
-    <div className="ops-panel h-[92px] p-3.5">
+    <div className="ops-panel min-h-[96px] p-3.5">
       <div className="flex items-start justify-between gap-3">
         <p className="ops-label">{label}</p>
         <span className={`mt-1 h-1.5 w-8 rounded-full ${toneClass}`} />
@@ -241,7 +245,7 @@ function InfoPanel({
 
 function DetailRow({ icon: Icon, label, value, tone }: { icon: typeof Mail; label: string; value: string; tone?: string }) {
   return (
-    <div className="grid grid-cols-[120px_1fr] items-center gap-2 border-b border-border/35 py-1.5 text-xs last:border-b-0">
+    <div className="grid grid-cols-[minmax(90px,0.85fr)_1fr] items-center gap-2 border-b border-border/35 py-1.5 text-xs last:border-b-0 sm:grid-cols-[120px_1fr]">
       <span className="text-muted-foreground">{label}</span>
       <span className={`truncate text-right font-medium ${tone || 'text-foreground'}`}>{value}</span>
     </div>
@@ -254,12 +258,14 @@ function AdminSidebar({
   managerEmail,
   counts,
   onSignOut,
+  mobilePanel = false,
 }: {
   active: AdminDashboardTab;
   managerName: string;
   managerEmail: string;
   counts: Partial<Record<AdminDashboardTab, number>>;
   onSignOut: () => void;
+  mobilePanel?: boolean;
 }) {
   const initials = managerName
     .split(/\s|@/)
@@ -281,7 +287,13 @@ function AdminSidebar({
   ];
 
   return (
-    <aside className="sticky top-5 hidden h-[calc(100vh-2.5rem)] w-[190px] flex-shrink-0 flex-col rounded-xl border border-sidebar-border/85 bg-sidebar/95 p-2 shadow-[0_20px_60px_-42px_rgba(0,0,0,0.9)] lg:flex">
+    <aside
+      className={cn(
+        mobilePanel
+          ? 'flex h-full w-full flex-col bg-sidebar p-0'
+          : 'sticky top-5 hidden h-[calc(100vh-2.5rem)] w-[190px] flex-shrink-0 flex-col rounded-xl border border-sidebar-border/85 bg-sidebar/95 p-2 shadow-[0_20px_60px_-42px_rgba(0,0,0,0.9)] lg:flex'
+      )}
+    >
       <Link to="/" className="mb-7 flex h-20 w-full items-center justify-center rounded-xl border border-sidebar-border/80 bg-black/20 px-2">
         <img src={logo} alt="Sterling Gate Properties" className="h-16 w-auto scale-150 object-contain" />
       </Link>
@@ -349,6 +361,8 @@ export default function TenantDetail() {
       ? tabParam as DetailTab
       : 'overview';
   });
+  const isMobile = useIsMobile();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     if (searchParams.get('tab')) {
@@ -595,6 +609,24 @@ export default function TenantDetail() {
   return (
     <div className="min-h-screen ops-shell p-0 md:p-3">
       <div className="flex min-h-screen w-full gap-3 md:min-h-[calc(100vh-1.5rem)] md:rounded-2xl md:border md:border-border/70 md:bg-background/25 md:p-2 md:shadow-[0_30px_100px_-60px_rgba(0,0,0,0.95)]">
+        {isMobile && (
+          <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+            <SheetContent side="left" className="flex w-72 flex-col border-sidebar-border bg-sidebar p-3">
+              <SheetHeader className="sr-only">
+                <SheetTitle>Admin navigation</SheetTitle>
+              </SheetHeader>
+              <AdminSidebar
+                active="tenants"
+                managerName={managerName}
+                managerEmail={managerEmail}
+                counts={navCounts}
+                onSignOut={signOut}
+                mobilePanel
+              />
+            </SheetContent>
+          </Sheet>
+        )}
+
         <AdminSidebar
           active="tenants"
           managerName={managerName}
@@ -603,9 +635,20 @@ export default function TenantDetail() {
           onSignOut={signOut}
         />
 
-        <main className="min-w-0 flex-1 overflow-auto">
+        <main className="min-w-0 flex-1 overflow-auto overscroll-contain">
           <div className="sticky top-0 z-10 border-b border-border/35 bg-background px-3 py-3 md:px-5">
             <div className="flex items-center justify-between gap-3">
+              {isMobile && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsMobileMenuOpen(true)}
+                  className="min-h-[44px] min-w-[44px]"
+                  aria-label="Open navigation"
+                >
+                  <Menu className="h-5 w-5" />
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -613,7 +656,7 @@ export default function TenantDetail() {
                 className="h-9 gap-2 text-xs text-muted-foreground hover:bg-primary/10 hover:text-primary"
               >
                 <ArrowLeft className="h-4 w-4" />
-                Back to Tenants
+                <span className="hidden sm:inline">Back to Tenants</span>
               </Button>
 
               <div className="hidden flex-1 justify-center md:flex">
@@ -628,7 +671,7 @@ export default function TenantDetail() {
                 />
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 md:gap-2">
                 <OverdueRentAlert managerId={user.id} />
                 <NotificationBell />
                 <Button
@@ -644,7 +687,7 @@ export default function TenantDetail() {
             </div>
           </div>
 
-          <div className="p-3 pt-1 md:-mt-2 md:p-5">
+          <div className="p-3 pt-3 md:-mt-2 md:p-5">
             <section className="ops-panel p-4">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div className="flex min-w-0 items-center gap-4">
@@ -676,7 +719,7 @@ export default function TenantDetail() {
                   </div>
                 </div>
 
-                <div className="grid gap-3 sm:min-w-[360px] md:grid-cols-2">
+                <div className="grid grid-cols-2 gap-3 sm:min-w-[360px]">
                   <KpiTile label="Current Balance" value={formatCurrency(displayBalance)} detail={balanceDetail} icon={Wallet} tone={hasBalanceDue ? 'red' : 'green'} />
                   <KpiTile label="Monthly Rent" value={formatCurrency(monthlyRent)} detail={assignmentCount > 1 ? `${assignmentCount} assigned units` : assignmentCount === 1 ? '1 assigned unit' : 'No active billing source'} icon={Home} tone="gold" />
                   <KpiTile label="Last Payment" value={lastPayment ? formatCurrency(Number(lastPayment.amount)) : '--'} detail={lastPayment ? formatDate(lastPayment.payment_date) : 'No payment recorded'} icon={CheckCircle2} tone="green" />
@@ -686,18 +729,21 @@ export default function TenantDetail() {
             </section>
 
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as DetailTab)} className="mt-3">
-              <TabsList className="grid h-9 w-full grid-cols-4 rounded-lg border border-border/70 bg-card p-1">
-                <TabsTrigger value="overview" className="h-7 text-[11px] data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
+              <TabsList className="mobile-tab-scroll h-auto w-full gap-1 rounded-lg border border-border/70 bg-card p-1 sm:grid sm:h-9 sm:grid-cols-4 sm:gap-0">
+                <TabsTrigger value="overview" className="h-8 min-w-[104px] shrink-0 text-[11px] data-[state=active]:bg-primary/15 data-[state=active]:text-primary sm:h-7 sm:min-w-0">
                   Overview
                 </TabsTrigger>
-                <TabsTrigger value="properties" className="h-7 text-[11px] data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
-                  Lease & Property
+                <TabsTrigger value="properties" className="h-8 min-w-[118px] shrink-0 text-[11px] data-[state=active]:bg-primary/15 data-[state=active]:text-primary sm:h-7 sm:min-w-0">
+                  <span className="sm:hidden">Lease</span>
+                  <span className="hidden sm:inline">Lease & Property</span>
                 </TabsTrigger>
-                <TabsTrigger value="balance" className="h-7 text-[11px] data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
-                  Billing & Ledger
+                <TabsTrigger value="balance" className="h-8 min-w-[118px] shrink-0 text-[11px] data-[state=active]:bg-primary/15 data-[state=active]:text-primary sm:h-7 sm:min-w-0">
+                  <span className="sm:hidden">Ledger</span>
+                  <span className="hidden sm:inline">Billing & Ledger</span>
                 </TabsTrigger>
-                <TabsTrigger value="history" className="h-7 text-[11px] data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
-                  Communication / Activity
+                <TabsTrigger value="history" className="h-8 min-w-[132px] shrink-0 text-[11px] data-[state=active]:bg-primary/15 data-[state=active]:text-primary sm:h-7 sm:min-w-0">
+                  <span className="sm:hidden">Activity</span>
+                  <span className="hidden sm:inline">Communication / Activity</span>
                 </TabsTrigger>
               </TabsList>
 

@@ -139,7 +139,7 @@ export function AnalyticsDashboard() {
         }
       />
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         <StatCard label="MTD collected" value={formatCurrency(analytics.currentMonthRevenue)} detail={`${analytics.currentMonthPaymentCount} completed this month`} tone="success" />
         <StatCard label="Collection rate" value={formatPercent(analytics.collectionRate)} detail={`${formatCurrency(analytics.expectedMonthlyRent)} expected rent`} tone={analytics.collectionRate >= 90 ? 'success' : 'warning'} progress={analytics.collectionRate} />
         <StatCard label="Occupancy rate" value={formatPercent(analytics.occupancyRate)} detail={`${analytics.occupiedProperties} of ${analytics.totalProperties} properties`} tone="teal" progress={analytics.occupancyRate} />

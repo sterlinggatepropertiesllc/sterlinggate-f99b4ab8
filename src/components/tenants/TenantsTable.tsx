@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useHardDeleteTenant } from '@/hooks/useTenants';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { AdminButton, EmptyState, FilterTabs } from '@/components/admin/AdminDesignSystem';
+import { AdminButton, FilterTabs } from '@/components/admin/AdminDesignSystem';
 import type { Payment } from '@/hooks/usePayments';
 import type { TenantHealthFilter, TenantRecord } from '@/components/admin/adminTypes';
 import { computeTenantFinancialHealth } from '@/lib/paymentReliability';
@@ -135,7 +135,7 @@ function MetricCard({
   const toneClass = tone === 'red' ? 'text-destructive border-destructive/25 bg-destructive/10' : tone === 'green' ? 'text-success border-success/25 bg-success/10' : 'text-primary border-primary/25 bg-primary/10';
 
   return (
-    <div className="ops-panel h-[92px] p-4">
+    <div className="ops-panel min-h-[96px] p-4">
       <div className="flex items-start justify-between gap-3">
         <p className="ops-label">{label}</p>
         <span className={`mt-1 h-1.5 w-8 rounded-full ${toneClass}`} />
@@ -295,43 +295,134 @@ export function TenantsTable({
 
   if (isMobile) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-start justify-between gap-4">
+      <div className="space-y-4 animate-fade-in">
+        <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Tenants</h1>
             <p className="mt-1 text-sm text-muted-foreground">Manage and support your active tenant base.</p>
           </div>
-        <AdminButton onClick={onAddTenant} className="shrink-0">Add</AdminButton>
+          <AdminButton onClick={onAddTenant} className="shrink-0">Add</AdminButton>
         </div>
 
+        <section className="grid grid-cols-2 gap-3">
+          <MetricCard label="Tenants" value={String(tenants.length)} detail={`${healthCounts['paid-up']} current`} icon={Users} tone="gold" />
+          <MetricCard label="Balance due" value={formatCurrency(balanceDue)} detail="Open balance" icon={WalletCards} tone="red" />
+          <MetricCard label="Pending ACH" value={formatCurrency(pendingAch)} detail="Processing" icon={Banknote} tone="gold" />
+          <MetricCard label="At risk" value={String(atRisk)} detail="Needs review" icon={UserRound} tone="green" />
+        </section>
+
+        <FilterTabs items={filterItems} value={healthFilter} onChange={(item) => onHealthFilterChange?.(item)} />
+
+        <section className="ops-panel p-3">
+          <div className="space-y-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search tenants..."
+                className="h-10 rounded-md border-border/70 bg-card pl-9 text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value as 'all' | LeaseStatus)}
+                className="h-10 rounded-md border border-border/70 bg-card px-3 text-xs text-muted-foreground outline-none"
+              >
+                <option value="all">Lease status</option>
+                <option value="active">Active</option>
+                <option value="pending">Pending</option>
+                <option value="expired">Past due</option>
+                <option value="unassigned">Unassigned</option>
+              </select>
+              <select
+                value={sortMode}
+                onChange={(event) => setSortMode(event.target.value as SortMode)}
+                className="h-10 rounded-md border border-border/70 bg-card px-3 text-xs text-muted-foreground outline-none"
+              >
+                <option value="name">Name A-Z</option>
+                <option value="balance">Balance due</option>
+                <option value="payment">Last payment</option>
+                <option value="due">Next due</option>
+              </select>
+            </div>
+          </div>
+        </section>
+
         <div className="grid gap-3">
-          {visibleTenants.map(({ tenant, health, status }) => (
-            <button
-              key={tenant.id}
-              type="button"
-              className="ops-panel p-4 text-left"
-              onClick={() => onNavigate(tenant.id)}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="grid h-10 w-10 place-items-center rounded-full border border-primary/30 bg-primary/10 text-primary">
-                    <UserRound className="h-5 w-5" />
+          {visibleTenants.map(({ tenant, health, status }) => {
+            const lastPayment = health.lastCompletedPayment;
+            const needsSetup = health.needsSetupReview || status === 'unassigned';
+            const financialStatus = needsSetup
+              ? 'Setup review'
+              : health.hasBalanceDue
+                ? 'Balance due'
+                : health.pendingACH > 0
+                  ? 'ACH pending'
+                  : 'Healthy';
+            const financialClass = needsSetup
+              ? 'border-warning/30 bg-warning/10 text-warning'
+              : health.hasBalanceDue
+                ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                : health.pendingACH > 0
+                  ? 'border-warning/30 bg-warning/10 text-warning'
+                  : 'border-success/30 bg-success/10 text-success';
+
+            return (
+              <button
+                key={tenant.id}
+                type="button"
+                className="ops-panel tap-feedback p-4 text-left"
+                onClick={() => onNavigate(tenant.id)}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-primary/30 bg-primary/10 text-primary">
+                      <UserRound className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold">{tenantName(tenant)}</p>
+                      <p className="truncate text-xs text-muted-foreground">{tenant.user?.email || 'No contact email'}</p>
+                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{assignedPropertyLabel(tenant)}</p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold">{tenantName(tenant)}</p>
-                    <p className="truncate text-xs text-muted-foreground">{tenant.user?.email || 'No contact email'}</p>
+                  <StatusBadge status={status} />
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-lg border border-border/55 bg-muted/10 p-2">
+                    <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Balance</p>
+                    <p className={health.hasBalanceDue ? 'mt-1 font-semibold text-destructive' : 'mt-1 font-semibold text-success'}>
+                      {health.needsSetupReview ? `${formatCurrency(health.currentBalance)} review` : balanceLabel(health.effectiveBalance)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/55 bg-muted/10 p-2">
+                    <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Rent</p>
+                    <p className="mt-1 font-semibold text-foreground">{rentLabel(tenant)}</p>
                   </div>
                 </div>
-                <StatusBadge status={status} />
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                <span className="text-muted-foreground">{assignedPropertyLabel(tenant)}</span>
-                <span className="text-right font-medium">
-                  {health.needsSetupReview ? `${formatCurrency(health.currentBalance)} setup review` : balanceLabel(health.effectiveBalance)}
-                </span>
-              </div>
-            </button>
-          ))}
+
+                <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/45 pt-3 text-xs">
+                  <div className="min-w-0">
+                    <Badge variant="outline" className={`rounded-md border px-2 py-0.5 text-[10px] ${financialClass}`}>
+                      {financialStatus}
+                    </Badge>
+                    <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                      {lastPayment ? `Last paid ${formatCurrency(Number(lastPayment.amount))} on ${formatDate(lastPayment.payment_date)}` : 'No completed payment on file'}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-primary">Open</span>
+                </div>
+              </button>
+            );
+          })}
+
+          {visibleTenants.length === 0 && (
+            <div className="ops-panel border-dashed p-6 text-center text-sm text-muted-foreground">
+              No tenants match this mobile view.
+            </div>
+          )}
         </div>
       </div>
     );

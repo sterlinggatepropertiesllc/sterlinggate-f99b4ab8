@@ -220,7 +220,7 @@ function CompactSystemHealth({ onOpenSystem }: { onOpenSystem: () => void }) {
   return (
     <Card className="border-border/70 bg-card/70">
       <CardContent className="p-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
             <div className={cn(
               'mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl border',
@@ -251,7 +251,7 @@ function CompactSystemHealth({ onOpenSystem }: { onOpenSystem: () => void }) {
             </div>
           </div>
 
-          <Button variant="outline" size="sm" onClick={onOpenSystem} className="self-start lg:self-auto">
+          <Button variant="outline" size="sm" onClick={onOpenSystem} className="w-full self-start sm:w-auto lg:self-auto">
             Open system health
           </Button>
         </div>
@@ -526,7 +526,7 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
         }
       />
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-5">
           {[
             {
               id: 'all' as PaymentControlFilter,
@@ -587,17 +587,17 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
       <Tabs value={workspaceTab} onValueChange={(value) => setWorkspaceTab(value as PaymentWorkspaceTab)} className="space-y-4">
         <Card className="border-border/70 bg-card/70">
           <CardContent className="flex flex-col gap-3 p-2 lg:flex-row lg:items-center lg:justify-between">
-            <TabsList className="h-auto flex-wrap justify-start gap-1 bg-transparent p-0">
-              <TabsTrigger value="overview" className="rounded-lg px-4 py-2 data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
+            <TabsList className="mobile-tab-scroll h-auto w-full justify-start gap-1 bg-transparent p-0 lg:w-auto lg:flex-wrap lg:overflow-visible">
+              <TabsTrigger value="overview" className="shrink-0 rounded-lg px-4 py-2 data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
                 Overview
               </TabsTrigger>
-              <TabsTrigger value="ledger" className="rounded-lg px-4 py-2 data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
+              <TabsTrigger value="ledger" className="shrink-0 rounded-lg px-4 py-2 data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
                 Ledger
               </TabsTrigger>
-              <TabsTrigger value="review" className="rounded-lg px-4 py-2 data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
+              <TabsTrigger value="review" className="shrink-0 rounded-lg px-4 py-2 data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
                 Review queue
               </TabsTrigger>
-              <TabsTrigger value="system" className="rounded-lg px-4 py-2 data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
+              <TabsTrigger value="system" className="shrink-0 rounded-lg px-4 py-2 data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
                 System health
               </TabsTrigger>
             </TabsList>

@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from 'sonner';
@@ -607,6 +607,9 @@ export default function TenantPortal() {
         {isMobile && (
           <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
             <SheetContent side="left" className="w-72 p-4 bg-sidebar flex flex-col">
+              <SheetHeader className="sr-only">
+                <SheetTitle>Tenant portal navigation</SheetTitle>
+              </SheetHeader>
               <SidebarContent onNavClick={() => setIsMobileMenuOpen(false)} />
             </SheetContent>
           </Sheet>
@@ -646,7 +649,7 @@ export default function TenantPortal() {
             </div>
           </div>
 
-          <div className="p-4 md:p-8 overflow-hidden">
+          <div className="overflow-visible p-4 md:p-8">
             {/* Dashboard Tab */}
             {activeTab === 'dashboard' && (
               <div className="animate-fade-in space-y-6">
@@ -908,7 +911,7 @@ export default function TenantPortal() {
                     </div>
                     <div className="divide-y divide-warning/10">
                       {pendingLeases.map((lease: any) => (
-                        <div key={lease.id} className="p-4 md:p-5 flex items-center justify-between gap-4">
+                        <div key={lease.id} className="flex flex-col items-stretch gap-4 p-4 sm:flex-row sm:items-center sm:justify-between md:p-5">
                           <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
                             <div className="w-10 h-10 md:w-12 md:h-12 bg-warning/10 rounded-lg flex items-center justify-center flex-shrink-0">
                               <FileText className="h-5 w-5 md:h-6 md:w-6 text-warning" />
@@ -920,8 +923,8 @@ export default function TenantPortal() {
                               </p>
                             </div>
                           </div>
-                          <Link to={`/sign-lease/${lease.id}`}>
-                            <Button size="sm" className="gap-1.5 whitespace-nowrap">
+                          <Link to={`/sign-lease/${lease.id}`} className="sm:shrink-0">
+                            <Button size="sm" className="w-full gap-1.5 whitespace-nowrap sm:w-auto">
                               Sign Now <ArrowRight className="h-4 w-4" />
                             </Button>
                           </Link>
@@ -996,7 +999,7 @@ export default function TenantPortal() {
                           .join(', ');
 
                         return (
-                          <div key={tp.id} className="p-4 md:p-5 flex items-center justify-between gap-4">
+                          <div key={tp.id} className="flex flex-col items-stretch gap-4 p-4 sm:flex-row sm:items-center sm:justify-between md:p-5">
                             <div className="flex items-center gap-3 md:gap-4 min-w-0 flex-1">
                               <div className="w-10 h-10 md:w-12 md:h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
                                 <Building2 className="h-5 w-5 md:h-6 md:w-6 text-primary" />
@@ -1010,7 +1013,7 @@ export default function TenantPortal() {
                                 )}
                               </div>
                             </div>
-                            <div className="text-right flex-shrink-0">
+                            <div className="flex-shrink-0 text-left sm:text-right">
                               <p className="text-xl md:text-2xl font-serif">${rentAmount.toLocaleString()}</p>
                               {rentAmount > 0 && (
                                 currentBalance > 0 ? (
@@ -1101,7 +1104,7 @@ export default function TenantPortal() {
                   <div className="space-y-4">
                     {myApplications.map((app: any) => (
                       <Card key={app.id} className="p-6">
-                        <div className="flex items-start justify-between">
+                        <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start sm:justify-between">
                           <div className="flex gap-4">
                             <div className="w-20 h-20 bg-muted rounded-lg flex items-center justify-center flex-shrink-0">
                               <Building2 className="h-8 w-8 text-muted-foreground/50" />
@@ -1119,7 +1122,7 @@ export default function TenantPortal() {
                               </p>
                             </div>
                           </div>
-                          <div className="text-right">
+                          <div className="text-left sm:text-right">
                             <Badge 
                               variant="outline"
                               className={`text-base px-4 py-1 ${

@@ -170,7 +170,7 @@ function KpiCard({
     <button
       type="button"
       onClick={onClick}
-      className="ops-panel group h-[104px] p-3.5 text-left transition-colors hover:border-primary/35"
+      className="ops-panel group min-h-[108px] p-3.5 text-left transition-colors hover:border-primary/35"
     >
       <div className="flex items-start justify-between gap-3">
         <p className="ops-label max-w-[116px] leading-tight">{label}</p>
@@ -230,7 +230,7 @@ function HealthItem({
 }) {
   const toneClass = toneStyle(tone);
   return (
-    <div className="min-w-0 border-r border-border/50 px-3 last:border-r-0">
+    <div className="min-w-0 border-b border-border/50 px-3 pb-3 last:border-b-0 md:border-b-0 md:border-r md:pb-0 md:last:border-r-0">
       <div className={`mb-2 h-1 w-8 rounded-full ${toneClass.bg}`} />
       <p className="truncate text-[10px] text-muted-foreground">{label}</p>
       <p className={`mt-1 text-sm font-semibold ${toneClass.text}`}>{value}</p>
@@ -537,7 +537,7 @@ export function AdminCommandCenter({
         </Button>
       </section>
 
-      <section className="-mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+      <section className="-mt-2 grid grid-cols-2 gap-3 lg:grid-cols-6">
         <KpiCard
           label="Collected this month"
           value={formatCurrency(model.currentMonthCollected)}
@@ -666,7 +666,7 @@ export function AdminCommandCenter({
               <p className="ops-label text-primary">Quick Actions</p>
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
             <QuickAction label="Payments" icon={FilePlus2} onClick={() => onNavigateTab('audit')} />
             <QuickAction label="Ledger Review" icon={DollarSign} onClick={() => onNavigateTab('audit', { paymentFilter: 'all' as PaymentControlFilter })} />
             <QuickAction label="Work Orders" icon={Wrench} onClick={() => onNavigateTab('maintenance')} />
