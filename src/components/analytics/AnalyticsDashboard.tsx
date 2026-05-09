@@ -1,7 +1,11 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAnalytics } from '@/hooks/useAnalytics';
 import { AdminButton, AdminStatusBadge, PageHeader, SectionCard, StatCard } from '@/components/admin/AdminDesignSystem';
+
+const PROPERTY_PERFORMANCE_PAGE_SIZE = 10;
 
 function formatCurrency(amount: number) {
   return new Intl.NumberFormat('en-US', {
@@ -68,17 +72,49 @@ function BreakdownRow({
 export function AnalyticsDashboard() {
   const { user } = useAuth();
   const analytics = useAnalytics(user?.id);
+  const [isPropertyPerformanceOpen, setIsPropertyPerformanceOpen] = useState(false);
+  const [propertyPerformancePage, setPropertyPerformancePage] = useState(1);
   const collectionMax = Math.max(
     analytics.currentMonthRevenue,
     analytics.pendingAchTotal,
     analytics.outstandingBalanceDue,
     1
   );
-  const topProperties = analytics.revenueByProperty.slice(0, 6);
-  const topPropertyMax = Math.max(...topProperties.map((property) => property.revenue), 1);
+  const propertyPerformanceItems = analytics.revenueByProperty;
+  const propertyPerformancePageCount = Math.max(
+    Math.ceil(propertyPerformanceItems.length / PROPERTY_PERFORMANCE_PAGE_SIZE),
+    1
+  );
+  const propertyPerformanceStart = (propertyPerformancePage - 1) * PROPERTY_PERFORMANCE_PAGE_SIZE;
+  const visiblePropertyPerformance = useMemo(
+    () => propertyPerformanceItems.slice(
+      propertyPerformanceStart,
+      propertyPerformanceStart + PROPERTY_PERFORMANCE_PAGE_SIZE
+    ),
+    [propertyPerformanceItems, propertyPerformanceStart]
+  );
+  const propertyPerformanceSummary = useMemo(() => {
+    const totalRevenue = propertyPerformanceItems.reduce((sum, property) => sum + property.revenue, 0);
+    const occupiedCount = propertyPerformanceItems.filter((property) => property.status === 'occupied').length;
+    const availableCount = propertyPerformanceItems.filter((property) => property.status === 'available').length;
+    const setupNeededCount = Math.max(propertyPerformanceItems.length - occupiedCount - availableCount, 0);
+
+    return {
+      totalRevenue,
+      occupiedCount,
+      availableCount,
+      setupNeededCount,
+      topProperty: propertyPerformanceItems[0],
+    };
+  }, [propertyPerformanceItems]);
+  const topPropertyMax = Math.max(...propertyPerformanceItems.map((property) => property.revenue), 1);
   const leaseActive = analytics.activeLeases;
   const leasePending = analytics.pendingLeases;
   const leaseTotal = Math.max(leaseActive + leasePending, 1);
+
+  useEffect(() => {
+    setPropertyPerformancePage((page) => Math.min(page, propertyPerformancePageCount));
+  }, [propertyPerformancePageCount]);
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -152,23 +188,100 @@ export function AnalyticsDashboard() {
         </SectionCard>
       </section>
 
-      <SectionCard title="Top Property Performance" subtitle="Collected revenue by property with current occupancy state.">
-        <div className="space-y-3">
-          {topProperties.length > 0 ? topProperties.map((property) => {
-            const percent = topPropertyMax > 0 ? (property.revenue / topPropertyMax) * 100 : 0;
-            return (
-              <div key={property.id} className="grid gap-3 rounded-lg border border-border/45 bg-muted/10 p-3 md:grid-cols-[1fr_140px_150px] md:items-center">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{property.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{property.status === 'occupied' ? 'Occupied' : property.status === 'available' ? 'Available' : 'Setup needed'}</p>
+      <SectionCard
+        title="Top Property Performance"
+        subtitle="Collected revenue by property with current occupancy state."
+        action={
+          <AdminButton
+            type="button"
+            variant="secondary"
+            onClick={() => setIsPropertyPerformanceOpen((open) => !open)}
+          >
+            {isPropertyPerformanceOpen ? 'Collapse' : 'View details'}
+            {isPropertyPerformanceOpen ? <ChevronUp className="ml-2 h-3.5 w-3.5" /> : <ChevronDown className="ml-2 h-3.5 w-3.5" />}
+          </AdminButton>
+        }
+      >
+        <div className="space-y-4">
+          {propertyPerformanceItems.length > 0 ? (
+            <>
+              <div className="grid gap-3 md:grid-cols-4">
+                <div className="rounded-lg border border-border/55 bg-muted/10 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Tracked</p>
+                  <p className="mt-2 text-xl font-semibold">{propertyPerformanceItems.length}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">properties in portfolio</p>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-muted/70">
-                  <div className="h-full rounded-full bg-success" style={{ width: `${Math.max(percent, property.revenue > 0 ? 4 : 0)}%` }} />
+                <div className="rounded-lg border border-success/25 bg-success/5 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Collected</p>
+                  <p className="mt-2 text-xl font-semibold text-success">{formatCurrency(propertyPerformanceSummary.totalRevenue)}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">from property ledger</p>
                 </div>
-                <p className="text-right text-sm font-semibold">{formatCurrency(property.revenue)}</p>
+                <div className="rounded-lg border border-primary/25 bg-primary/5 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Top performer</p>
+                  <p className="mt-2 truncate text-sm font-semibold">{propertyPerformanceSummary.topProperty?.name || 'No data'}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{formatCurrency(propertyPerformanceSummary.topProperty?.revenue || 0)}</p>
+                </div>
+                <div className="rounded-lg border border-border/55 bg-muted/10 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Status mix</p>
+                  <p className="mt-2 text-sm font-semibold">
+                    {propertyPerformanceSummary.occupiedCount} occupied · {propertyPerformanceSummary.availableCount} available
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">{propertyPerformanceSummary.setupNeededCount} setup needed</p>
+                </div>
               </div>
-            );
-          }) : (
+
+              {isPropertyPerformanceOpen && (
+                <div className="space-y-3">
+                  <div className="flex flex-col gap-2 border-t border-border/55 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Showing {propertyPerformanceStart + 1}-{Math.min(propertyPerformanceStart + PROPERTY_PERFORMANCE_PAGE_SIZE, propertyPerformanceItems.length)} of {propertyPerformanceItems.length} properties.
+                    </p>
+                    {propertyPerformancePageCount > 1 && (
+                      <div className="flex items-center gap-2">
+                        <AdminButton
+                          type="button"
+                          variant="secondary"
+                          disabled={propertyPerformancePage === 1}
+                          onClick={() => setPropertyPerformancePage((page) => Math.max(page - 1, 1))}
+                        >
+                          <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+                          Previous
+                        </AdminButton>
+                        <span className="rounded-md border border-border/60 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
+                          Page {propertyPerformancePage} of {propertyPerformancePageCount}
+                        </span>
+                        <AdminButton
+                          type="button"
+                          variant="secondary"
+                          disabled={propertyPerformancePage === propertyPerformancePageCount}
+                          onClick={() => setPropertyPerformancePage((page) => Math.min(page + 1, propertyPerformancePageCount))}
+                        >
+                          Next
+                          <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                        </AdminButton>
+                      </div>
+                    )}
+                  </div>
+
+                  {visiblePropertyPerformance.map((property) => {
+                    const percent = topPropertyMax > 0 ? (property.revenue / topPropertyMax) * 100 : 0;
+                    return (
+                      <div key={property.id} className="grid gap-3 rounded-lg border border-border/45 bg-muted/10 p-3 md:grid-cols-[1fr_140px_150px] md:items-center">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{property.name}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{property.status === 'occupied' ? 'Occupied' : property.status === 'available' ? 'Available' : 'Setup needed'}</p>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-muted/70">
+                          <div className="h-full rounded-full bg-success" style={{ width: `${Math.max(percent, property.revenue > 0 ? 4 : 0)}%` }} />
+                        </div>
+                        <p className="text-right text-sm font-semibold">{formatCurrency(property.revenue)}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          ) : (
             <div className="rounded-lg border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">No property revenue yet.</div>
           )}
         </div>
