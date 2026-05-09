@@ -1,6 +1,6 @@
-import { lazy, Suspense, useState, useEffect, useCallback, useMemo } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo, useLayoutEffect, useRef } from 'react';
 import { differenceInDays } from 'date-fns';
-import { Navigate, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useManagerProperties, useCreateProperty, useUpdateProperty, useDeleteProperty } from '@/hooks/useProperties';
@@ -43,6 +43,7 @@ import { toast } from 'sonner';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { OverdueRentAlert } from '@/components/notifications/OverdueRentAlert';
 import { PwaInstallPrompt } from '@/components/pwa/PwaInstallPrompt';
+import { PwaNotificationBanner } from '@/components/pwa/PwaNotificationBanner';
 import { SettingsDialog } from '@/components/settings/SettingsDialog';
 import { ImageUploader } from '@/components/properties/ImageUploader';
 import { PropertyCard } from '@/components/properties/PropertyCard';
@@ -132,7 +133,9 @@ function DashboardTabFallback({ label }: { label: string }) {
 export default function Dashboard() {
   const { user, role, loading, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const mainContentRef = useRef<HTMLElement | null>(null);
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [paymentQuickFilter, setPaymentQuickFilter] = useState<PaymentControlFilter>('all');
   const [tenantHealthFilter, setTenantHealthFilter] = useState<TenantHealthFilter>('all');
@@ -195,6 +198,15 @@ export default function Dashboard() {
       setActiveTab('overview');
     }
   }, [searchParams]);
+
+  useLayoutEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      mainContentRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, location.pathname]);
 
   // Realtime subscription for properties
   useEffect(() => {
@@ -587,7 +599,7 @@ export default function Dashboard() {
         )}
 
         {/* Main Content */}
-        <main className="min-w-0 flex-1 overflow-auto overscroll-contain">
+        <main ref={mainContentRef} className="min-w-0 flex-1 overflow-auto overscroll-contain">
           {/* Top Header Bar */}
           <div className="sticky top-0 z-10 border-b border-border/35 bg-background px-3 py-3 md:px-5">
             <div className="flex items-center justify-between gap-3">
@@ -632,6 +644,7 @@ export default function Dashboard() {
           </div>
 
           <div className="relative z-20 overflow-visible p-3 pt-4 md:p-5">
+          <PwaNotificationBanner className="mb-4" />
           {/* Overview Tab */}
           {activeTab === 'overview' && (
             <AdminCommandCenter

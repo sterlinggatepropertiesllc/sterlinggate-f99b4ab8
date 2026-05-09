@@ -133,10 +133,13 @@ export function usePwaNotifications() {
         return;
       }
 
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-      });
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+        });
+      }
       const serialized = serializeSubscription(subscription);
 
       if (!serialized.endpoint || !serialized.p256dh || !serialized.auth) {
@@ -180,6 +183,7 @@ export function usePwaNotifications() {
     isStandalone,
     isSubscribed,
     permission,
+    refreshState,
     support,
   };
 }
