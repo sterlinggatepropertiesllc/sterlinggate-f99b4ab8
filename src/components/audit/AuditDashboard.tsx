@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   AlertTriangle,
   Banknote,
@@ -28,22 +29,26 @@ import {
   TrendingDown,
   XCircle
 } from 'lucide-react';
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, startOfYear, endOfYear, subDays, isWithinInterval, parseISO } from 'date-fns';
+import { format, formatDistanceToNow, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, startOfYear, endOfYear, subDays, isWithinInterval, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 import { AdminReliabilityPanel } from '@/components/admin/AdminReliabilityPanel';
 import { AdminButton, PageHeader, StatCard } from '@/components/admin/AdminDesignSystem';
 import type { PaymentControlFilter, TenantRecord } from '@/components/admin/adminTypes';
+import { useReliabilitySummary, useStripeWebhookEvents } from '@/hooks/useReliabilityMonitoring';
+import { getPaymentStatusDisplay } from '@/lib/paymentDisplay';
 import {
   getPaymentAgeDays,
   hasPaymentBalanceApplied,
-  isFailedPaymentStatus,
   isStaleProcessingACH,
 } from '@/lib/paymentReliability';
 
 type ViewMode = 'property' | 'tenant';
 type DatePreset = 'all_time' | 'this_week' | 'this_month' | 'this_quarter' | 'this_year' | 'last_30_days' | 'custom';
+type PaymentWorkspaceTab = 'overview' | 'ledger' | 'review' | 'system';
+
+const NO_MONEY_MOVED_LABELS = new Set(['Incomplete', 'Failed', 'Canceled']);
 
 interface AuditDashboardProps {
   quickFilter?: PaymentControlFilter;
@@ -59,6 +64,202 @@ function formatCurrency(amount: number) {
   }).format(amount);
 }
 
+function formatRelativeWebhookTime(value: string | null) {
+  if (!value) return 'No webhook events yet';
+  return formatDistanceToNow(parseISO(value), { addSuffix: true });
+}
+
+function getWebhookStatusLine(value: string | null) {
+  if (!value) return 'No webhook events yet';
+  return `Last received ${formatRelativeWebhookTime(value)}`;
+}
+
+function didPaymentMoveNoMoney(payment: Payment) {
+  return NO_MONEY_MOVED_LABELS.has(getPaymentStatusDisplay(payment).label);
+}
+
+function PaymentLedgerTable({
+  payments,
+  properties,
+  tenants,
+  quickFilter,
+  onClearFilter,
+  title = 'Transaction Ledger',
+  description,
+}: {
+  payments: Payment[];
+  properties: Array<{ id: string; address?: string | null; city?: string | null }>;
+  tenants: TenantRecord[];
+  quickFilter: PaymentControlFilter;
+  onClearFilter: () => void;
+  title?: string;
+  description?: string;
+}) {
+  return (
+    <Card className="overflow-hidden border-border/70 bg-card/80">
+      <CardHeader className="border-b border-border/60 bg-muted/15">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="text-lg font-serif">{title}</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {description || `Showing ${payments.length} payment${payments.length === 1 ? '' : 's'} for the selected view.`}
+            </p>
+          </div>
+          {quickFilter !== 'all' && (
+            <Button size="sm" variant="ghost" onClick={onClearFilter}>
+              Clear filter
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        {payments.length === 0 ? (
+          <div className="px-6 py-14 text-center text-muted-foreground">
+            <DollarSign className="h-12 w-12 mx-auto mb-4 opacity-30" />
+            <p>No transactions found for the selected filters.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <div className="min-w-[980px]">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-border/60">
+                    <TableHead className="pl-6">Date</TableHead>
+                    <TableHead>Tenant</TableHead>
+                    <TableHead>Property</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Method</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Balance</TableHead>
+                    <TableHead className="pr-6">Stripe</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {payments.slice(0, 75).map((payment) => {
+                    const property = properties.find(p => p.id === payment.property_id);
+                    const tenant = tenants.find((t: TenantRecord) => t.id === payment.tenant_id);
+                    const age = getPaymentAgeDays(payment);
+                    const balanceApplied = hasPaymentBalanceApplied(payment);
+                    const paymentDisplay = getPaymentStatusDisplay(payment);
+                    const noMoneyMoved = NO_MONEY_MOVED_LABELS.has(paymentDisplay.label);
+                    const rowNeedsAttention = noMoneyMoved || !balanceApplied || (age >= 5 && payment.status === 'processing');
+                    const statusClass =
+                      paymentDisplay.tone === 'success'
+                        ? 'border-success/40 bg-success/10 text-success'
+                        : paymentDisplay.tone === 'warning'
+                          ? 'border-warning/40 bg-warning/10 text-warning'
+                          : paymentDisplay.tone === 'destructive'
+                            ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                            : 'border-border text-muted-foreground';
+                    const balanceLabel = payment.status === 'processing'
+                      ? 'Pending'
+                      : noMoneyMoved
+                        ? 'No movement'
+                        : balanceApplied
+                          ? 'Applied'
+                          : 'Review';
+                    const balanceClass = noMoneyMoved
+                      ? 'border-muted bg-muted/35 text-muted-foreground'
+                      : balanceApplied
+                        ? 'border-success/40 bg-success/10 text-success'
+                        : 'border-warning/40 bg-warning/10 text-warning';
+
+                    return (
+                      <TableRow key={payment.id} className={rowNeedsAttention ? 'bg-warning/5' : undefined}>
+                        <TableCell className="pl-6 font-medium">
+                          <div>{format(parseISO(payment.payment_date), 'MMM d, yyyy')}</div>
+                          <div className="text-xs text-muted-foreground">{age}d old</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium">{tenant?.user?.full_name || 'Unknown'}</div>
+                          <div className="text-xs text-muted-foreground">{tenant?.user?.email}</div>
+                        </TableCell>
+                        <TableCell>
+                          {property ? `${property.address}, ${property.city}` : 'Unknown'}
+                        </TableCell>
+                        <TableCell className="font-semibold text-success">
+                          {formatCurrency(Number(payment.amount))}
+                        </TableCell>
+                        <TableCell className="capitalize">
+                          {payment.payment_type?.replace('_', ' ') || 'payment'}
+                        </TableCell>
+                        <TableCell className="capitalize">
+                          {payment.payment_method_type || payment.payment_method?.replace('_', ' ') || 'manual'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={statusClass}>
+                            {paymentDisplay.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={balanceClass}>
+                            {balanceLabel}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="max-w-[150px] truncate pr-6 text-xs text-muted-foreground">
+                          {payment.stripe_payment_intent_id || payment.stripe_session_id || 'manual'}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CompactSystemHealth({ onOpenSystem }: { onOpenSystem: () => void }) {
+  const { data: events = [] } = useStripeWebhookEvents(8);
+  const summary = useReliabilitySummary(events);
+
+  return (
+    <Card className="border-border/70 bg-card/70">
+      <CardContent className="p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-3">
+            <div className={cn(
+              'mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl border',
+              summary.healthy ? 'border-success/30 bg-success/10 text-success' : 'border-destructive/30 bg-destructive/10 text-destructive'
+            )}>
+              {summary.healthy ? <ShieldCheck className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">System status</p>
+              <p className="text-sm text-muted-foreground">
+                Webhook {summary.healthy ? 'healthy' : 'needs review'} · {getWebhookStatusLine(summary.lastReceived)}
+              </p>
+            </div>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[420px]">
+            <div className="rounded-lg border border-border/60 bg-background/40 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Events 24h</p>
+              <p className="mt-1 text-sm font-semibold">{summary.recentCount}</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-background/40 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Failed</p>
+              <p className={cn('mt-1 text-sm font-semibold', summary.failedCount > 0 && 'text-destructive')}>{summary.failedCount}</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-background/40 px-3 py-2">
+              <p className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Retried</p>
+              <p className={cn('mt-1 text-sm font-semibold', summary.retriedCount > 0 && 'text-warning')}>{summary.retriedCount}</p>
+            </div>
+          </div>
+
+          <Button variant="outline" size="sm" onClick={onOpenSystem} className="self-start lg:self-auto">
+            Open system health
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: AuditDashboardProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -71,6 +272,7 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [selectedProperty, setSelectedProperty] = useState<string>('all');
   const [selectedTenant, setSelectedTenant] = useState<string>('all');
+  const [workspaceTab, setWorkspaceTab] = useState<PaymentWorkspaceTab>('overview');
   const [isReconciling, setIsReconciling] = useState(false);
 
   // Realtime subscription for payments (admin view)
@@ -131,14 +333,14 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
       (payment) => payment.status === 'processing' && payment.payment_method_type === 'ach'
     );
     const staleProcessing = processingACH.filter((payment) => isStaleProcessingACH(payment));
-    const failed = payments.filter((payment) => isFailedPaymentStatus(payment.status));
+    const notCompleted = payments.filter((payment) => didPaymentMoveNoMoney(payment));
     const needsReview = payments.filter((payment) => !hasPaymentBalanceApplied(payment));
 
     return {
       completed,
       processingACH,
       staleProcessing,
-      failed,
+      notCompleted,
       needsReview,
       totalProcessingACH: processingACH.reduce((sum, payment) => sum + Number(payment.amount), 0),
       totalCompleted: completed.reduce((sum, payment) => sum + Number(payment.amount), 0),
@@ -159,7 +361,7 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
         case 'needs-review':
           return !hasPaymentBalanceApplied(payment) || isStaleProcessingACH(payment);
         case 'failed':
-          return isFailedPaymentStatus(payment.status);
+          return didPaymentMoveNoMoney(payment);
         default:
           return true;
       }
@@ -195,7 +397,7 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
   const summary = useMemo(() => {
     const completedPayments = filteredPayments.filter((p) => p.status === 'completed');
     const pendingPayments = filteredPayments.filter((p) => p.status === 'processing' && p.payment_method_type === 'ach');
-    const failedPayments = filteredPayments.filter((p) => isFailedPaymentStatus(p.status));
+    const failedPayments = filteredPayments.filter((p) => didPaymentMoveNoMoney(p));
     const needsReviewPayments = filteredPayments.filter((p) => !hasPaymentBalanceApplied(p));
     const totalCollected = completedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
     const pendingACH = pendingPayments.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -236,6 +438,12 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
       groupedData,
     };
   }, [filteredPayments, properties, tenants, viewMode]);
+
+  const reviewPayments = useMemo(() => {
+    return filteredPayments.filter((payment) => {
+      return !hasPaymentBalanceApplied(payment) || isStaleProcessingACH(payment) || didPaymentMoveNoMoney(payment);
+    });
+  }, [filteredPayments]);
 
   const exportToCSV = () => {
     const headers = ['Date', 'Tenant', 'Property', 'Amount', 'Type', 'Method', 'Status', 'Stripe Payment Intent', 'Balance Applied'];
@@ -350,9 +558,9 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
             },
             {
               id: 'failed' as PaymentControlFilter,
-              label: 'Failed',
-              value: statusSummary.failed.length,
-              detail: 'Canceled or failed',
+              label: 'Not Completed',
+              value: statusSummary.notCompleted.length,
+              detail: 'Incomplete, canceled, or failed',
               icon: XCircle,
             },
           ].map((item) => (
@@ -376,290 +584,269 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
           ))}
       </section>
 
-      <AdminReliabilityPanel />
-
-      <section className="grid gap-4 md:grid-cols-4">
-        <Card className="border-success/20 bg-success/5">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Collected In View</CardTitle>
-            <DollarSign className="h-4 w-4 text-success" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-success">{formatCurrency(summary.totalCollected)}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {dateRange?.from && dateRange?.to
-                ? `${format(dateRange.from, 'MMM d')} - ${format(dateRange.to, 'MMM d, yyyy')}`
-                : 'All time'}
+      <Tabs value={workspaceTab} onValueChange={(value) => setWorkspaceTab(value as PaymentWorkspaceTab)} className="space-y-4">
+        <Card className="border-border/70 bg-card/70">
+          <CardContent className="flex flex-col gap-3 p-2 lg:flex-row lg:items-center lg:justify-between">
+            <TabsList className="h-auto flex-wrap justify-start gap-1 bg-transparent p-0">
+              <TabsTrigger value="overview" className="rounded-lg px-4 py-2 data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
+                Overview
+              </TabsTrigger>
+              <TabsTrigger value="ledger" className="rounded-lg px-4 py-2 data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
+                Ledger
+              </TabsTrigger>
+              <TabsTrigger value="review" className="rounded-lg px-4 py-2 data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
+                Review queue
+              </TabsTrigger>
+              <TabsTrigger value="system" className="rounded-lg px-4 py-2 data-[state=active]:bg-primary/15 data-[state=active]:text-primary">
+                System health
+              </TabsTrigger>
+            </TabsList>
+            <p className="px-2 text-xs text-muted-foreground">
+              Keep daily payment work separate from webhook diagnostics and audit history.
             </p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Completed Transactions</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary.transactionCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">Average {formatCurrency(summary.avgTransaction)}</p>
-          </CardContent>
-        </Card>
+        <TabsContent value="overview" className="mt-0 space-y-4">
+          <CompactSystemHealth onOpenSystem={() => setWorkspaceTab('system')} />
 
-        <Card className="border-warning/20 bg-warning/5">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Pending ACH</CardTitle>
-            <TrendingDown className="h-4 w-4 text-warning" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-warning">{formatCurrency(summary.pendingACH)}</div>
-            <p className="text-xs text-muted-foreground mt-1">{statusSummary.staleProcessing.length} older than 5 days</p>
-          </CardContent>
-        </Card>
+          <section className="grid gap-4 md:grid-cols-4">
+            <Card className="border-success/20 bg-success/5">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Collected In View</CardTitle>
+                <DollarSign className="h-4 w-4 text-success" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-success">{formatCurrency(summary.totalCollected)}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {dateRange?.from && dateRange?.to
+                    ? `${format(dateRange.from, 'MMM d')} - ${format(dateRange.to, 'MMM d, yyyy')}`
+                    : 'All time'}
+                </p>
+              </CardContent>
+            </Card>
 
-        <Card className={summary.needsReviewCount || summary.failedCount ? 'border-destructive/20 bg-destructive/5' : 'border-success/20 bg-success/5'}>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Ledger Trust</CardTitle>
-            <ShieldCheck className={summary.needsReviewCount || summary.failedCount ? 'h-4 w-4 text-destructive' : 'h-4 w-4 text-success'} />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary.needsReviewCount + summary.failedCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">Items requiring admin review</p>
-          </CardContent>
-        </Card>
-      </section>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Completed Transactions</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{summary.transactionCount}</div>
+                <p className="text-xs text-muted-foreground mt-1">Average {formatCurrency(summary.avgTransaction)}</p>
+              </CardContent>
+            </Card>
 
-      <Card className="border-border/60 bg-card/70">
-        <CardContent className="pt-6">
-          <div className="flex flex-wrap gap-4 items-end">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">View By</label>
-              <div className="flex gap-1">
-                <Button variant={viewMode === 'property' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('property')}>
-                  <Building2 className="mr-2 h-4 w-4" />
-                  Property
-                </Button>
-                <Button variant={viewMode === 'tenant' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('tenant')}>
-                  <Users className="mr-2 h-4 w-4" />
-                  Tenant
-                </Button>
-              </div>
-            </div>
+            <Card className="border-warning/20 bg-warning/5">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Pending ACH</CardTitle>
+                <TrendingDown className="h-4 w-4 text-warning" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-warning">{formatCurrency(summary.pendingACH)}</div>
+                <p className="text-xs text-muted-foreground mt-1">{statusSummary.staleProcessing.length} older than 5 days</p>
+              </CardContent>
+            </Card>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Date Range</label>
-              <Select value={datePreset} onValueChange={(v) => handlePresetChange(v as DatePreset)}>
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="this_week">This Week</SelectItem>
-                  <SelectItem value="this_month">This Month</SelectItem>
-                  <SelectItem value="this_quarter">This Quarter</SelectItem>
-                  <SelectItem value="this_year">This Year</SelectItem>
-                  <SelectItem value="last_30_days">Last 30 Days</SelectItem>
-                  <SelectItem value="all_time">All Time</SelectItem>
-                  <SelectItem value="custom">Custom Range</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Card className={summary.needsReviewCount || summary.failedCount ? 'border-destructive/20 bg-destructive/5' : 'border-success/20 bg-success/5'}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Ledger Trust</CardTitle>
+                <ShieldCheck className={summary.needsReviewCount || summary.failedCount ? 'h-4 w-4 text-destructive' : 'h-4 w-4 text-success'} />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{summary.needsReviewCount + summary.failedCount}</div>
+                <p className="text-xs text-muted-foreground mt-1">Items requiring admin review</p>
+              </CardContent>
+            </Card>
+          </section>
 
-            {datePreset === 'custom' && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">Custom Range</label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn('w-[280px] justify-start text-left font-normal')}>
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {dateRange?.from ? (
-                        dateRange.to ? (
-                          <>{format(dateRange.from, 'LLL dd, yyyy')} - {format(dateRange.to, 'LLL dd, yyyy')}</>
-                        ) : (
-                          format(dateRange.from, 'LLL dd, yyyy')
-                        )
-                      ) : (
-                        <span>Pick a date range</span>
-                      )}
+          <PaymentLedgerTable
+            payments={filteredPayments.slice(0, 8)}
+            properties={properties}
+            tenants={tenants as TenantRecord[]}
+            quickFilter={quickFilter}
+            onClearFilter={() => setQuickFilter('all')}
+            title="Recent Payments"
+            description="Latest matching transactions. Open Ledger for filters and the full table."
+          />
+        </TabsContent>
+
+        <TabsContent value="ledger" className="mt-0 space-y-4">
+          <Card className="border-border/60 bg-card/70">
+            <CardContent className="pt-6">
+              <div className="flex flex-wrap gap-4 items-end">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-muted-foreground">View By</label>
+                  <div className="flex gap-1">
+                    <Button variant={viewMode === 'property' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('property')}>
+                      <Building2 className="mr-2 h-4 w-4" />
+                      Property
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="range"
-                      defaultMonth={dateRange?.from}
-                      selected={dateRange}
-                      onSelect={setDateRange}
-                      numberOfMonths={2}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-            )}
-
-            {viewMode === 'property' ? (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">Property</label>
-                <Select value={selectedProperty} onValueChange={setSelectedProperty}>
-                  <SelectTrigger className="w-[220px]">
-                    <SelectValue placeholder="All Properties" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Properties</SelectItem>
-                    {properties.map(property => (
-                      <SelectItem key={property.id} value={property.id}>
-                        {property.address}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">Tenant</label>
-                <Select value={selectedTenant} onValueChange={setSelectedTenant}>
-                  <SelectTrigger className="w-[220px]">
-                    <SelectValue placeholder="All Tenants" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Tenants</SelectItem>
-                    {tenants.map((tenant: TenantRecord) => (
-                      <SelectItem key={tenant.id} value={tenant.id}>
-                        {tenant.user?.full_name || tenant.user?.email || 'Unnamed Tenant'}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {summary.groupedData.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-serif">
-              {viewMode === 'property' ? 'Revenue by Property' : 'Payments by Tenant'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {summary.groupedData.slice(0, 8).map((item) => (
-                <div key={item.id} className="flex items-center justify-between gap-4">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{item.name}</p>
-                    <p className="text-xs text-muted-foreground">{item.count} completed payment{item.count === 1 ? '' : 's'}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold">{formatCurrency(item.amount)}</p>
+                    <Button variant={viewMode === 'tenant' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('tenant')}>
+                      <Users className="mr-2 h-4 w-4" />
+                      Tenant
+                    </Button>
                   </div>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="text-lg font-serif">Transaction Ledger</CardTitle>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Showing {filteredPayments.length} payment{filteredPayments.length === 1 ? '' : 's'} for the selected view.
-              </p>
-            </div>
-            {quickFilter !== 'all' && (
-              <Button size="sm" variant="ghost" onClick={() => setQuickFilter('all')}>
-                Clear filter
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {filteredPayments.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <DollarSign className="h-12 w-12 mx-auto mb-4 opacity-30" />
-              <p>No transactions found for the selected filters.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto -mx-6">
-              <div className="min-w-[980px] px-6">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Tenant</TableHead>
-                      <TableHead>Property</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Method</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Balance</TableHead>
-                      <TableHead>Stripe</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredPayments.slice(0, 75).map((payment) => {
-                      const property = properties.find(p => p.id === payment.property_id);
-                      const tenant = tenants.find((t: TenantRecord) => t.id === payment.tenant_id);
-                      const age = getPaymentAgeDays(payment);
-                      const balanceApplied = hasPaymentBalanceApplied(payment);
-                      const statusClass =
-                        payment.status === 'completed'
-                          ? 'border-success/40 bg-success/10 text-success'
-                          : payment.status === 'processing'
-                            ? 'border-warning/40 bg-warning/10 text-warning'
-                            : isFailedPaymentStatus(payment.status)
-                              ? 'border-destructive/40 bg-destructive/10 text-destructive'
-                              : 'border-border text-muted-foreground';
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-muted-foreground">Date Range</label>
+                  <Select value={datePreset} onValueChange={(v) => handlePresetChange(v as DatePreset)}>
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="this_week">This Week</SelectItem>
+                      <SelectItem value="this_month">This Month</SelectItem>
+                      <SelectItem value="this_quarter">This Quarter</SelectItem>
+                      <SelectItem value="this_year">This Year</SelectItem>
+                      <SelectItem value="last_30_days">Last 30 Days</SelectItem>
+                      <SelectItem value="all_time">All Time</SelectItem>
+                      <SelectItem value="custom">Custom Range</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-                      return (
-                        <TableRow key={payment.id} className={!balanceApplied || age >= 5 && payment.status === 'processing' ? 'bg-warning/5' : undefined}>
-                          <TableCell className="font-medium">
-                            <div>{format(parseISO(payment.payment_date), 'MMM d, yyyy')}</div>
-                            <div className="text-xs text-muted-foreground">{age}d old</div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="font-medium">{tenant?.user?.full_name || 'Unknown'}</div>
-                            <div className="text-xs text-muted-foreground">{tenant?.user?.email}</div>
-                          </TableCell>
-                          <TableCell>
-                            {property ? `${property.address}, ${property.city}` : 'Unknown'}
-                          </TableCell>
-                          <TableCell className="font-semibold text-success">
-                            {formatCurrency(Number(payment.amount))}
-                          </TableCell>
-                          <TableCell className="capitalize">
-                            {payment.payment_type?.replace('_', ' ') || 'payment'}
-                          </TableCell>
-                          <TableCell className="capitalize">
-                            {payment.payment_method_type || payment.payment_method?.replace('_', ' ') || 'manual'}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={statusClass}>
-                              {payment.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant="outline"
-                              className={balanceApplied ? 'border-success/40 bg-success/10 text-success' : 'border-warning/40 bg-warning/10 text-warning'}
-                            >
-                              {balanceApplied ? 'Applied' : 'Review'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="max-w-[150px] truncate text-xs text-muted-foreground">
-                            {payment.stripe_payment_intent_id || payment.stripe_session_id || 'manual'}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                {datePreset === 'custom' && (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">Custom Range</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className={cn('w-[280px] justify-start text-left font-normal')}>
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {dateRange?.from ? (
+                            dateRange.to ? (
+                              <>{format(dateRange.from, 'LLL dd, yyyy')} - {format(dateRange.to, 'LLL dd, yyyy')}</>
+                            ) : (
+                              format(dateRange.from, 'LLL dd, yyyy')
+                            )
+                          ) : (
+                            <span>Pick a date range</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="range"
+                          defaultMonth={dateRange?.from}
+                          selected={dateRange}
+                          onSelect={setDateRange}
+                          numberOfMonths={2}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                )}
+
+                {viewMode === 'property' ? (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">Property</label>
+                    <Select value={selectedProperty} onValueChange={setSelectedProperty}>
+                      <SelectTrigger className="w-[220px]">
+                        <SelectValue placeholder="All Properties" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Properties</SelectItem>
+                        {properties.map(property => (
+                          <SelectItem key={property.id} value={property.id}>
+                            {property.address}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-muted-foreground">Tenant</label>
+                    <Select value={selectedTenant} onValueChange={setSelectedTenant}>
+                      <SelectTrigger className="w-[220px]">
+                        <SelectValue placeholder="All Tenants" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Tenants</SelectItem>
+                        {tenants.map((tenant: TenantRecord) => (
+                          <SelectItem key={tenant.id} value={tenant.id}>
+                            {tenant.user?.full_name || tenant.user?.email || 'Unnamed Tenant'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
-            </div>
+            </CardContent>
+          </Card>
+
+          {summary.groupedData.length > 0 && (
+            <Card className="border-border/70 bg-card/80">
+              <CardHeader>
+                <CardTitle className="text-lg font-serif">
+                  {viewMode === 'property' ? 'Revenue by Property' : 'Payments by Tenant'}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {summary.groupedData.slice(0, 8).map((item) => (
+                    <div key={item.id} className="flex items-center justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">{item.count} completed payment{item.count === 1 ? '' : 's'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold">{formatCurrency(item.amount)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
+
+          <PaymentLedgerTable
+            payments={filteredPayments}
+            properties={properties}
+            tenants={tenants as TenantRecord[]}
+            quickFilter={quickFilter}
+            onClearFilter={() => setQuickFilter('all')}
+          />
+        </TabsContent>
+
+        <TabsContent value="review" className="mt-0 space-y-4">
+          <section className="grid gap-3 md:grid-cols-3">
+            <StatCard
+              label="Needs Review"
+              value={summary.needsReviewCount}
+              detail="Ledger-unapplied or unlinked"
+              tone={summary.needsReviewCount > 0 ? 'warning' : 'success'}
+            />
+            <StatCard
+              label="Not Completed"
+              value={summary.failedCount}
+              detail="Incomplete, canceled, or failed"
+              tone={summary.failedCount > 0 ? 'danger' : 'success'}
+            />
+            <StatCard
+              label="Stale ACH"
+              value={statusSummary.staleProcessing.length}
+              detail="Processing longer than 5 days"
+              tone={statusSummary.staleProcessing.length > 0 ? 'warning' : 'success'}
+            />
+          </section>
+          <PaymentLedgerTable
+            payments={reviewPayments}
+            properties={properties}
+            tenants={tenants as TenantRecord[]}
+            quickFilter={quickFilter}
+            onClearFilter={() => setQuickFilter('all')}
+            title="Review Queue"
+            description="Only payments that are incomplete, canceled, failed, stale, or not applied to the ledger."
+          />
+        </TabsContent>
+
+        <TabsContent value="system" className="mt-0">
+          <AdminReliabilityPanel />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
