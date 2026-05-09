@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { showNativeAppNotification } from '@/lib/nativeNotifications';
 
 export type NotificationType = 
   | 'application_received'
@@ -152,6 +154,10 @@ export function useNotifications() {
           const newNotification = payload.new as Notification;
           setNotifications(prev => [newNotification, ...prev]);
           setHasNewNotification(true);
+          toast(newNotification.title, {
+            description: newNotification.message,
+          });
+          void showNativeAppNotification(newNotification);
           
           // Auto-reset the pulse after 3 seconds
           setTimeout(() => setHasNewNotification(false), 3000);

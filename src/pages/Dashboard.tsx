@@ -42,6 +42,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { toast } from 'sonner';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { OverdueRentAlert } from '@/components/notifications/OverdueRentAlert';
+import { PwaInstallPrompt } from '@/components/pwa/PwaInstallPrompt';
 import { SettingsDialog } from '@/components/settings/SettingsDialog';
 import { ImageUploader } from '@/components/properties/ImageUploader';
 import { PropertyCard } from '@/components/properties/PropertyCard';
@@ -612,6 +613,7 @@ export default function Dashboard() {
               </div>
               <div className="flex items-center gap-1.5 md:gap-2">
                 <OverdueRentAlert managerId={user?.id} />
+                <PwaInstallPrompt />
                 <NotificationBell />
                 <Button
                   variant="ghost"
