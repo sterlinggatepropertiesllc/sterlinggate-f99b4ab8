@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import type { KeyboardEvent, PointerEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertTriangle, ChevronRight, X, CheckCheck } from "lucide-react";
 import { useOverdueTenants } from "@/hooks/useOverdueTenants";
@@ -22,6 +23,170 @@ interface OverdueRentAlertProps {
   managerId: string | undefined;
 }
 
+interface OverdueAlertRowProps {
+  tenant: {
+    id: string;
+    name: string;
+    propertyAddress: string | null;
+    amountOwed: number;
+    daysOverdue: number;
+  };
+  isMobile: boolean;
+  onTenantClick: (tenantId: string) => void;
+  onDismiss: (tenantId: string, amount: number) => void;
+}
+
+function OverdueAlertRow({ tenant, isMobile, onTenantClick, onDismiss }: OverdueAlertRowProps) {
+  const dragStart = useRef<{ x: number; y: number; pointerId: number } | null>(null);
+  const dragDeltaRef = useRef(0);
+  const hasHorizontalDrag = useRef(false);
+  const suppressClick = useRef(false);
+  const [dragDelta, setDragDelta] = useState(0);
+  const [isDismissing, setIsDismissing] = useState(false);
+
+  const dismiss = () => {
+    setIsDismissing(true);
+    setTimeout(() => onDismiss(tenant.id, tenant.amountOwed), 180);
+  };
+
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (!isMobile) return;
+    dragStart.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+    dragDeltaRef.current = 0;
+    hasHorizontalDrag.current = false;
+    suppressClick.current = false;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  };
+
+  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!isMobile || !dragStart.current) return;
+
+    const deltaX = event.clientX - dragStart.current.x;
+    const deltaY = event.clientY - dragStart.current.y;
+
+    if (!hasHorizontalDrag.current && Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.15) {
+      hasHorizontalDrag.current = true;
+    }
+
+    if (hasHorizontalDrag.current) {
+      event.preventDefault();
+      suppressClick.current = true;
+      const clampedDelta = Math.max(Math.min(deltaX, 220), -220);
+      dragDeltaRef.current = clampedDelta;
+      setDragDelta(clampedDelta);
+    }
+  };
+
+  const finishDrag = (event?: PointerEvent<HTMLDivElement>) => {
+    if (!isMobile || !dragStart.current) return;
+
+    event?.currentTarget.releasePointerCapture?.(dragStart.current.pointerId);
+    const shouldDismiss = Math.abs(dragDeltaRef.current) > 84;
+    dragStart.current = null;
+    hasHorizontalDrag.current = false;
+
+    if (shouldDismiss) {
+      dismiss();
+    } else {
+      dragDeltaRef.current = 0;
+      setDragDelta(0);
+    }
+  };
+
+  const handleClick = () => {
+    if (suppressClick.current) {
+      suppressClick.current = false;
+      return;
+    }
+
+    onTenantClick(tenant.id);
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onTenantClick(tenant.id);
+    }
+  };
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishDrag}
+      onPointerCancel={finishDrag}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      className={[
+        "relative overflow-hidden rounded-lg transition-all duration-200",
+        isDismissing ? "translate-x-full opacity-0" : "",
+      ].join(" ")}
+    >
+      {isMobile && dragDelta !== 0 && (
+        <div
+          className={[
+            "absolute inset-y-0 flex items-center bg-amber-500/15 px-4 text-xs font-semibold uppercase tracking-[0.18em] text-amber-400",
+            dragDelta > 0 ? "left-0 justify-start" : "right-0 justify-end",
+          ].join(" ")}
+          style={{ width: Math.max(Math.abs(dragDelta), 64) }}
+        >
+          <X className="h-5 w-5" />
+          {Math.abs(dragDelta) > 72 && <span className="ml-2">Dismiss</span>}
+        </div>
+      )}
+
+      <div
+        className={[
+          "w-full p-3 rounded-lg text-left transition-all duration-200 hover:bg-amber-500/10 group border border-transparent hover:border-amber-500/20 cursor-pointer",
+          isMobile ? "select-none touch-pan-y active:bg-amber-500/10" : "",
+        ].join(" ")}
+        style={{
+          transform: isMobile ? `translateX(${dragDelta}px)` : undefined,
+          transition: dragStart.current ? "none" : "transform 0.2s ease-out",
+        }}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-foreground truncate">
+              {tenant.name}
+            </p>
+            {tenant.propertyAddress && (
+              <p className="text-sm text-muted-foreground truncate">
+                {tenant.propertyAddress}
+              </p>
+            )}
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                ${tenant.amountOwed.toLocaleString()} overdue
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {tenant.daysOverdue} {tenant.daysOverdue === 1 ? "day" : "days"} past due
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                dismiss();
+              }}
+              className="h-8 w-8 rounded-full flex items-center justify-center opacity-100 transition-opacity hover:bg-muted sm:opacity-0 sm:group-hover:opacity-100"
+              title="Dismiss alert"
+              aria-label={`Dismiss overdue alert for ${tenant.name}`}
+            >
+              <X className="h-4 w-4 text-muted-foreground" />
+            </button>
+            <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-amber-500 transition-colors" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function OverdueRentAlert({ managerId }: OverdueRentAlertProps) {
   const { overdueTenants, count, isLoading, dismissAlert, clearAllAlerts } = useOverdueTenants(managerId);
   const [isOpen, setIsOpen] = useState(false);
@@ -38,11 +203,6 @@ export function OverdueRentAlert({ managerId }: OverdueRentAlertProps) {
     navigate(`/dashboard/tenant/${tenantId}?tab=balance`);
   };
 
-  const handleDismiss = (e: React.MouseEvent, tenantId: string, amount: number) => {
-    e.stopPropagation();
-    dismissAlert(tenantId, amount);
-  };
-
   const handlePanelTouchStart = (event: React.TouchEvent) => {
     touchStartY.current = event.touches[0].clientY;
   };
@@ -57,45 +217,13 @@ export function OverdueRentAlert({ managerId }: OverdueRentAlertProps) {
   const OverdueList = () => (
     <div className="space-y-1">
       {overdueTenants.map((tenant) => (
-        <button
+        <OverdueAlertRow
           key={tenant.id}
-          onClick={() => handleTenantClick(tenant.id)}
-          className="w-full p-3 rounded-lg text-left transition-all duration-200 hover:bg-amber-500/10 group border border-transparent hover:border-amber-500/20"
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-foreground truncate">
-                {tenant.name}
-              </p>
-              {tenant.propertyAddress && (
-                <p className="text-sm text-muted-foreground truncate">
-                  {tenant.propertyAddress}
-                </p>
-              )}
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-sm font-semibold text-amber-600 dark:text-amber-400">
-                  ${tenant.amountOwed.toLocaleString()} overdue
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  • {tenant.daysOverdue} {tenant.daysOverdue === 1 ? 'day' : 'days'} past due
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <span
-                role="button"
-                tabIndex={0}
-                onClick={(e) => handleDismiss(e, tenant.id, tenant.amountOwed)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleDismiss(e as any, tenant.id, tenant.amountOwed); }}
-                className="h-7 w-7 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
-                title="Dismiss alert"
-              >
-                <X className="h-4 w-4 text-muted-foreground" />
-              </span>
-              <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-amber-500 transition-colors" />
-            </div>
-          </div>
-        </button>
+          tenant={tenant}
+          isMobile={isMobile}
+          onTenantClick={handleTenantClick}
+          onDismiss={dismissAlert}
+        />
       ))}
     </div>
   );
@@ -144,6 +272,9 @@ export function OverdueRentAlert({ managerId }: OverdueRentAlertProps) {
                   <SheetTitle className="text-base">Overdue Rent Alerts</SheetTitle>
                   <p className="text-sm text-muted-foreground">
                     {count} {count === 1 ? 'tenant' : 'tenants'} with overdue balances
+                  </p>
+                  <p className="text-xs text-muted-foreground/75">
+                    Swipe an alert sideways to dismiss it.
                   </p>
                 </div>
               </div>
