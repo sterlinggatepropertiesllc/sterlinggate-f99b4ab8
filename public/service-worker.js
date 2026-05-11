@@ -87,14 +87,85 @@ function normalizeNotificationPayload(event) {
   }
 }
 
-function getNotificationUrl(type) {
-  if (type === 'rent_received' || String(type || '').startsWith('payment_')) return '/dashboard?tab=audit';
-  if (String(type || '').startsWith('application_')) return '/dashboard?tab=applications';
-  if (type === 'maintenance_request') return '/dashboard?tab=maintenance';
-  if (type === 'message_received') return '/dashboard?tab=messages';
-  if (type === 'lease_signed') return '/dashboard?tab=leases';
-  if (type === 'inquiry_received') return '/dashboard?tab=inquiries';
+const PAYMENT_ATTENTION_FILTERS = {
+  payment_failed: 'failed',
+  payment_incomplete: 'needs-review',
+  payment_missing: 'needs-review',
+  payment_late: 'needs-review',
+};
+
+function getTenantId(metadata) {
+  const rawTenantId = metadata?.tenant_id ?? metadata?.tenantId;
+
+  if (typeof rawTenantId === 'string') {
+    const tenantId = rawTenantId.trim();
+    return tenantId.length > 0 ? tenantId : null;
+  }
+
+  if (typeof rawTenantId === 'number' && Number.isFinite(rawTenantId)) {
+    return String(rawTenantId);
+  }
+
+  return null;
+}
+
+function getNotificationUrl(type, metadata, portal = 'admin') {
+  const notificationType = String(type || '');
+
+  if (portal === 'tenant') {
+    if (notificationType.startsWith('payment_') || notificationType === 'rent_received') return '/tenant?tab=payments';
+    if (notificationType === 'message_received') return '/tenant?tab=messages';
+    if (notificationType === 'lease_signed') return '/tenant?tab=lease';
+    return '/tenant';
+  }
+
+  if (notificationType === 'payment_received' || notificationType === 'rent_received') return '/dashboard?tab=audit';
+
+  if (notificationType === 'payment_processing') return '/dashboard?tab=audit&filter=processing-ach';
+
+  if (notificationType in PAYMENT_ATTENTION_FILTERS) {
+    const tenantId = getTenantId(metadata);
+
+    if (tenantId) {
+      return `/dashboard/tenant/${encodeURIComponent(tenantId)}?tab=balance`;
+    }
+
+    return `/dashboard?tab=audit&filter=${PAYMENT_ATTENTION_FILTERS[notificationType]}`;
+  }
+
+  if (notificationType.startsWith('application_')) return '/dashboard?tab=applications';
+  if (notificationType === 'maintenance_request') return '/dashboard?tab=maintenance';
+  if (notificationType === 'message_received') return '/dashboard?tab=messages';
+  if (notificationType === 'lease_signed') return '/dashboard?tab=leases';
+  if (notificationType === 'inquiry_received') return '/dashboard?tab=inquiries';
   return '/dashboard';
+}
+
+function inferNotificationPortal(payload) {
+  const metadata = payload.metadata || {};
+  const explicitUrl = typeof payload.url === 'string' ? payload.url : '';
+
+  if (explicitUrl.startsWith('/tenant')) return 'tenant';
+  if (payload.portal === 'tenant' || payload.recipient_role === 'tenant') return 'tenant';
+  if (metadata.portal === 'tenant' || metadata.recipient_role === 'tenant' || metadata.role === 'tenant') return 'tenant';
+
+  return 'admin';
+}
+
+function resolveNotificationUrl(payload) {
+  const explicitUrl = typeof payload.url === 'string' && payload.url.length > 0 ? payload.url : null;
+
+  if (!payload.type) {
+    return explicitUrl || '/dashboard';
+  }
+
+  const portal = inferNotificationPortal(payload);
+
+  if (portal === 'tenant' && explicitUrl?.startsWith('/tenant')) {
+    return explicitUrl;
+  }
+
+  return getNotificationUrl(payload.type, payload.metadata || {}, portal);
 }
 
 self.addEventListener('push', (event) => {
@@ -107,7 +178,7 @@ self.addEventListener('push', (event) => {
     tag: payload.tag || payload.notification_id || 'sterling-gate-notification',
     renotify: Boolean(payload.renotify),
     data: {
-      url: payload.url || getNotificationUrl(payload.type),
+      url: resolveNotificationUrl(payload),
       notification_id: payload.notification_id || null,
       type: payload.type || null,
       metadata: payload.metadata || {},

@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   AlertTriangle,
+  ArrowRight,
   Banknote,
   CalendarIcon, 
   Building2, 
@@ -27,6 +28,7 @@ import {
   ShieldCheck,
   TrendingUp,
   TrendingDown,
+  UserRound,
   XCircle
 } from 'lucide-react';
 import { format, formatDistanceToNow, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter, startOfYear, endOfYear, subDays, isWithinInterval, parseISO } from 'date-fns';
@@ -35,8 +37,10 @@ import { DateRange } from 'react-day-picker';
 import { toast } from 'sonner';
 import { AdminReliabilityPanel } from '@/components/admin/AdminReliabilityPanel';
 import { AdminButton, PageHeader, StatCard } from '@/components/admin/AdminDesignSystem';
+import { MobileSwipeActions } from '@/components/admin/MobileSwipeActions';
 import type { PaymentControlFilter, TenantRecord } from '@/components/admin/adminTypes';
 import { useReliabilitySummary, useStripeWebhookEvents } from '@/hooks/useReliabilityMonitoring';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { getPaymentStatusDisplay } from '@/lib/paymentDisplay';
 import {
   getPaymentAgeDays,
@@ -78,12 +82,89 @@ function didPaymentMoveNoMoney(payment: Payment) {
   return NO_MONEY_MOVED_LABELS.has(getPaymentStatusDisplay(payment).label);
 }
 
+function getPaymentStatusClass(tone: ReturnType<typeof getPaymentStatusDisplay>['tone']) {
+  if (tone === 'success') return 'border-success/40 bg-success/10 text-success';
+  if (tone === 'warning') return 'border-warning/40 bg-warning/10 text-warning';
+  if (tone === 'destructive') return 'border-destructive/40 bg-destructive/10 text-destructive';
+  return 'border-border bg-muted/30 text-muted-foreground';
+}
+
+function getPaymentLedgerState(payment: Payment, noMoneyMoved: boolean, balanceApplied: boolean) {
+  if (payment.status === 'processing') {
+    return {
+      label: 'Pending',
+      className: 'border-warning/40 bg-warning/10 text-warning',
+    };
+  }
+
+  if (noMoneyMoved) {
+    return {
+      label: 'No movement',
+      className: 'border-muted bg-muted/35 text-muted-foreground',
+    };
+  }
+
+  if (balanceApplied) {
+    return {
+      label: 'Applied',
+      className: 'border-success/40 bg-success/10 text-success',
+    };
+  }
+
+  return {
+    label: 'Review',
+    className: 'border-warning/40 bg-warning/10 text-warning',
+  };
+}
+
+function getPaymentAmountClass(payment: Payment, noMoneyMoved: boolean) {
+  if (noMoneyMoved) return 'text-muted-foreground';
+  if (payment.status === 'processing') return 'text-warning';
+  if (payment.status === 'completed') return 'text-success';
+  return 'text-foreground';
+}
+
+function getPaymentAmountNote(payment: Payment, noMoneyMoved: boolean) {
+  if (noMoneyMoved) return 'Not collected';
+  if (payment.status === 'processing') return 'Processing';
+  if (payment.status === 'completed') return 'Collected';
+  return cleanStatusLabel(payment.status || 'Review');
+}
+
+function cleanPaymentLabel(value: string | null | undefined, fallback: string) {
+  return value?.replace(/_/g, ' ') || fallback;
+}
+
+function cleanStatusLabel(value: string) {
+  return cleanPaymentLabel(value, 'Review').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getPaymentReference(payment: Payment) {
+  return payment.stripe_payment_intent_id || payment.stripe_session_id || 'manual';
+}
+
+function shortPaymentReference(payment: Payment) {
+  const reference = getPaymentReference(payment);
+  if (reference.length <= 18) return reference;
+  return `${reference.slice(0, 10)}...${reference.slice(-4)}`;
+}
+
+function getPaymentReviewReason(payment: Payment, age: number, noMoneyMoved: boolean, balanceApplied: boolean) {
+  if (noMoneyMoved) return 'No money moved; keep it out of collected totals.';
+  if (!balanceApplied) return 'Completed rent payment has not been applied to the ledger.';
+  if (age >= 5 && payment.status === 'processing') return 'ACH has been processing for 5+ days.';
+  return null;
+}
+
 function PaymentLedgerTable({
   payments,
   properties,
   tenants,
   quickFilter,
   onClearFilter,
+  onOpenLedger,
+  onOpenReview,
+  onOpenTenant,
   title = 'Transaction Ledger',
   description,
 }: {
@@ -92,9 +173,14 @@ function PaymentLedgerTable({
   tenants: TenantRecord[];
   quickFilter: PaymentControlFilter;
   onClearFilter: () => void;
+  onOpenLedger?: () => void;
+  onOpenReview?: () => void;
+  onOpenTenant?: (tenantId: string) => void;
   title?: string;
   description?: string;
 }) {
+  const isMobile = useIsMobile();
+
   return (
     <Card className="overflow-hidden border-border/70 bg-card/80">
       <CardHeader className="border-b border-border/60 bg-muted/15">
@@ -117,6 +203,148 @@ function PaymentLedgerTable({
           <div className="px-6 py-14 text-center text-muted-foreground">
             <DollarSign className="h-12 w-12 mx-auto mb-4 opacity-30" />
             <p>No transactions found for the selected filters.</p>
+          </div>
+        ) : isMobile ? (
+          <div className="space-y-3 p-3">
+            {payments.slice(0, 50).map((payment) => {
+              const property = properties.find(p => p.id === payment.property_id);
+              const tenant = tenants.find((t: TenantRecord) => t.id === payment.tenant_id);
+              const age = getPaymentAgeDays(payment);
+              const balanceApplied = hasPaymentBalanceApplied(payment);
+              const paymentDisplay = getPaymentStatusDisplay(payment);
+              const noMoneyMoved = NO_MONEY_MOVED_LABELS.has(paymentDisplay.label);
+              const rowNeedsAttention = noMoneyMoved || !balanceApplied || (age >= 5 && payment.status === 'processing');
+              const ledgerState = getPaymentLedgerState(payment, noMoneyMoved, balanceApplied);
+              const reviewReason = getPaymentReviewReason(payment, age, noMoneyMoved, balanceApplied);
+              const tenantLabel = tenant?.user?.full_name || tenant?.user?.email || 'Unknown tenant';
+              const propertyLabel = property ? `${property.address}, ${property.city}` : 'Unknown property';
+              const openTenant = () => {
+                if (tenant) onOpenTenant?.(tenant.id);
+              };
+              const openReview = () => {
+                if (rowNeedsAttention) {
+                  onOpenReview?.();
+                } else {
+                  onOpenLedger?.();
+                }
+              };
+
+              return (
+                <MobileSwipeActions
+                  key={payment.id}
+                  ariaLabel={`Open payment actions for ${tenantLabel}`}
+                  hasInteractiveChildren
+                  onTap={tenant ? openTenant : openReview}
+                  actions={[
+                    {
+                      key: 'tenant',
+                      label: tenant ? 'Tenant' : 'Ledger',
+                      icon: tenant ? UserRound : Receipt,
+                      tone: 'primary',
+                      onClick: tenant ? openTenant : () => onOpenLedger?.(),
+                    },
+                    {
+                      key: rowNeedsAttention ? 'review' : 'ledger',
+                      label: rowNeedsAttention ? 'Review' : 'Ledger',
+                      icon: rowNeedsAttention ? AlertTriangle : ShieldCheck,
+                      tone: rowNeedsAttention ? 'warning' : 'success',
+                      onClick: openReview,
+                    },
+                  ]}
+                >
+                  <article className="ops-panel tap-feedback p-4 text-left">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                          {format(parseISO(payment.payment_date), 'MMM d, yyyy')} · {age}d old
+                        </p>
+                        <h3 className="mt-1 truncate text-base font-semibold text-foreground">{tenantLabel}</h3>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{propertyLabel}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className={cn('text-lg font-semibold', getPaymentAmountClass(payment, noMoneyMoved))}>
+                          {formatCurrency(Number(payment.amount))}
+                        </p>
+                        <p className="mt-0.5 text-[10px] text-muted-foreground">
+                          {getPaymentAmountNote(payment, noMoneyMoved)}
+                        </p>
+                        <Badge variant="outline" className={cn('mt-1 rounded-md px-2 py-0.5 text-[10px]', getPaymentStatusClass(paymentDisplay.tone))}>
+                          {cleanStatusLabel(paymentDisplay.label)}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                      <div className="rounded-lg border border-border/55 bg-muted/10 p-2">
+                        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Method</p>
+                        <p className="mt-1 truncate font-semibold capitalize text-foreground">
+                          {cleanPaymentLabel(payment.payment_method_type || payment.payment_method, 'manual')}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-border/55 bg-muted/10 p-2">
+                        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Type</p>
+                        <p className="mt-1 truncate font-semibold capitalize text-foreground">
+                          {cleanPaymentLabel(payment.payment_type, 'payment')}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-border/55 bg-muted/10 p-2">
+                        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">Ledger</p>
+                        <Badge variant="outline" className={cn('mt-1 rounded-md px-1.5 py-0 text-[10px]', ledgerState.className)}>
+                          {ledgerState.label}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    {reviewReason && (
+                      <div className="mt-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+                        {reviewReason}
+                      </div>
+                    )}
+
+                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/45 pt-3">
+                      <p className="min-w-0 truncate text-[11px] text-muted-foreground">
+                        Stripe: {shortPaymentReference(payment)}
+                      </p>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {tenant && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-10 rounded-md border-border/70 px-3 text-xs"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openTenant();
+                            }}
+                          >
+                            Tenant
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={rowNeedsAttention ? 'default' : 'outline'}
+                          className="h-10 rounded-md px-3 text-xs"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            openReview();
+                          }}
+                        >
+                          {rowNeedsAttention ? 'Review' : 'Ledger'}
+                          <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </article>
+                </MobileSwipeActions>
+              );
+            })}
+
+            {payments.length > 50 && (
+              <div className="rounded-xl border border-border/60 bg-muted/15 px-4 py-3 text-center text-xs text-muted-foreground">
+                Showing the latest 50 payments. Use filters to narrow the mobile view.
+              </div>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -144,26 +372,7 @@ function PaymentLedgerTable({
                     const paymentDisplay = getPaymentStatusDisplay(payment);
                     const noMoneyMoved = NO_MONEY_MOVED_LABELS.has(paymentDisplay.label);
                     const rowNeedsAttention = noMoneyMoved || !balanceApplied || (age >= 5 && payment.status === 'processing');
-                    const statusClass =
-                      paymentDisplay.tone === 'success'
-                        ? 'border-success/40 bg-success/10 text-success'
-                        : paymentDisplay.tone === 'warning'
-                          ? 'border-warning/40 bg-warning/10 text-warning'
-                          : paymentDisplay.tone === 'destructive'
-                            ? 'border-destructive/40 bg-destructive/10 text-destructive'
-                            : 'border-border text-muted-foreground';
-                    const balanceLabel = payment.status === 'processing'
-                      ? 'Pending'
-                      : noMoneyMoved
-                        ? 'No movement'
-                        : balanceApplied
-                          ? 'Applied'
-                          : 'Review';
-                    const balanceClass = noMoneyMoved
-                      ? 'border-muted bg-muted/35 text-muted-foreground'
-                      : balanceApplied
-                        ? 'border-success/40 bg-success/10 text-success'
-                        : 'border-warning/40 bg-warning/10 text-warning';
+                    const ledgerState = getPaymentLedgerState(payment, noMoneyMoved, balanceApplied);
 
                     return (
                       <TableRow key={payment.id} className={rowNeedsAttention ? 'bg-warning/5' : undefined}>
@@ -178,23 +387,26 @@ function PaymentLedgerTable({
                         <TableCell>
                           {property ? `${property.address}, ${property.city}` : 'Unknown'}
                         </TableCell>
-                        <TableCell className="font-semibold text-success">
+                        <TableCell className={cn('font-semibold', getPaymentAmountClass(payment, noMoneyMoved))}>
                           {formatCurrency(Number(payment.amount))}
+                          {noMoneyMoved && (
+                            <div className="text-xs font-normal text-muted-foreground">Not collected</div>
+                          )}
                         </TableCell>
                         <TableCell className="capitalize">
-                          {payment.payment_type?.replace('_', ' ') || 'payment'}
+                          {cleanPaymentLabel(payment.payment_type, 'payment')}
                         </TableCell>
                         <TableCell className="capitalize">
-                          {payment.payment_method_type || payment.payment_method?.replace('_', ' ') || 'manual'}
+                          {cleanPaymentLabel(payment.payment_method_type || payment.payment_method, 'manual')}
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={statusClass}>
-                            {paymentDisplay.label}
+                          <Badge variant="outline" className={getPaymentStatusClass(paymentDisplay.tone)}>
+                            {cleanStatusLabel(paymentDisplay.label)}
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={balanceClass}>
-                            {balanceLabel}
+                          <Badge variant="outline" className={ledgerState.className}>
+                            {ledgerState.label}
                           </Badge>
                         </TableCell>
                         <TableCell className="max-w-[150px] truncate pr-6 text-xs text-muted-foreground">
@@ -274,6 +486,17 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
   const [selectedTenant, setSelectedTenant] = useState<string>('all');
   const [workspaceTab, setWorkspaceTab] = useState<PaymentWorkspaceTab>('overview');
   const [isReconciling, setIsReconciling] = useState(false);
+
+  useEffect(() => {
+    if (quickFilter === 'failed' || quickFilter === 'needs-review') {
+      setWorkspaceTab('review');
+      return;
+    }
+
+    if (quickFilter === 'processing-ach' || quickFilter === 'completed') {
+      setWorkspaceTab('ledger');
+    }
+  }, [quickFilter]);
 
   // Realtime subscription for payments (admin view)
   useEffect(() => {
@@ -502,6 +725,19 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
     }
   };
 
+  const openTenantBalance = (tenantId: string) => {
+    window.location.href = `/dashboard/tenant/${tenantId}?tab=balance`;
+  };
+
+  const openLedger = () => {
+    setWorkspaceTab('ledger');
+  };
+
+  const openReviewQueue = () => {
+    setQuickFilter('needs-review');
+    setWorkspaceTab('review');
+  };
+
   return (
     <div className="space-y-5 animate-fade-in">
       <PageHeader
@@ -666,6 +902,9 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
             tenants={tenants as TenantRecord[]}
             quickFilter={quickFilter}
             onClearFilter={() => setQuickFilter('all')}
+            onOpenLedger={openLedger}
+            onOpenReview={openReviewQueue}
+            onOpenTenant={openTenantBalance}
             title="Recent Payments"
             description="Latest matching transactions. Open Ledger for filters and the full table."
           />
@@ -673,16 +912,26 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
 
         <TabsContent value="ledger" className="mt-0 space-y-4">
           <Card className="border-border/60 bg-card/70">
-            <CardContent className="pt-6">
-              <div className="flex flex-wrap gap-4 items-end">
-                <div className="space-y-2">
+            <CardContent className="p-3 sm:p-6">
+              <div className="grid gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end lg:gap-4">
+                <div className="space-y-2 sm:col-span-2 lg:col-span-1">
                   <label className="text-sm font-medium text-muted-foreground">View By</label>
-                  <div className="flex gap-1">
-                    <Button variant={viewMode === 'property' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('property')}>
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:gap-1">
+                    <Button
+                      variant={viewMode === 'property' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setViewMode('property')}
+                      className="h-11 sm:h-9"
+                    >
                       <Building2 className="mr-2 h-4 w-4" />
                       Property
                     </Button>
-                    <Button variant={viewMode === 'tenant' ? 'default' : 'outline'} size="sm" onClick={() => setViewMode('tenant')}>
+                    <Button
+                      variant={viewMode === 'tenant' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setViewMode('tenant')}
+                      className="h-11 sm:h-9"
+                    >
                       <Users className="mr-2 h-4 w-4" />
                       Tenant
                     </Button>
@@ -692,7 +941,7 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-muted-foreground">Date Range</label>
                   <Select value={datePreset} onValueChange={(v) => handlePresetChange(v as DatePreset)}>
-                    <SelectTrigger className="w-[160px]">
+                    <SelectTrigger className="h-11 w-full sm:h-10 sm:w-[160px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -708,11 +957,11 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
                 </div>
 
                 {datePreset === 'custom' && (
-                  <div className="space-y-2">
+                  <div className="space-y-2 sm:col-span-2 lg:col-span-1">
                     <label className="text-sm font-medium text-muted-foreground">Custom Range</label>
                     <Popover>
                       <PopoverTrigger asChild>
-                        <Button variant="outline" className={cn('w-[280px] justify-start text-left font-normal')}>
+                        <Button variant="outline" className={cn('h-11 w-full justify-start text-left font-normal sm:h-10 sm:w-[280px]')}>
                           <CalendarIcon className="mr-2 h-4 w-4" />
                           {dateRange?.from ? (
                             dateRange.to ? (
@@ -742,7 +991,7 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-muted-foreground">Property</label>
                     <Select value={selectedProperty} onValueChange={setSelectedProperty}>
-                      <SelectTrigger className="w-[220px]">
+                      <SelectTrigger className="h-11 w-full sm:h-10 sm:w-[220px]">
                         <SelectValue placeholder="All Properties" />
                       </SelectTrigger>
                       <SelectContent>
@@ -759,7 +1008,7 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-muted-foreground">Tenant</label>
                     <Select value={selectedTenant} onValueChange={setSelectedTenant}>
-                      <SelectTrigger className="w-[220px]">
+                      <SelectTrigger className="h-11 w-full sm:h-10 sm:w-[220px]">
                         <SelectValue placeholder="All Tenants" />
                       </SelectTrigger>
                       <SelectContent>
@@ -808,6 +1057,9 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
             tenants={tenants as TenantRecord[]}
             quickFilter={quickFilter}
             onClearFilter={() => setQuickFilter('all')}
+            onOpenLedger={openLedger}
+            onOpenReview={openReviewQueue}
+            onOpenTenant={openTenantBalance}
           />
         </TabsContent>
 
@@ -838,6 +1090,9 @@ export function AuditDashboard({ quickFilter = 'all', onQuickFilterChange }: Aud
             tenants={tenants as TenantRecord[]}
             quickFilter={quickFilter}
             onClearFilter={() => setQuickFilter('all')}
+            onOpenLedger={openLedger}
+            onOpenReview={openReviewQueue}
+            onOpenTenant={openTenantBalance}
             title="Review Queue"
             description="Only payments that are incomplete, canceled, failed, stale, or not applied to the ledger."
           />

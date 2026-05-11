@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
+import type { ApplicationRecord } from '@/components/admin/adminTypes';
 import { toast } from 'sonner';
 
 type Application = Database['public']['Tables']['applications']['Row'];
@@ -63,7 +64,7 @@ export function useApplications(propertyManagerId?: string) {
         console.error('[useApplications] Error:', error);
         throw error;
       }
-      return data;
+      return (data || []) as unknown as ApplicationRecord[];
     },
   });
 

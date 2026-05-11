@@ -54,6 +54,8 @@ import { AuditCertificate } from '@/components/leases/AuditCertificate';
 import { AdminCommandCenter } from '@/components/admin/AdminCommandCenter';
 import { AdminGlobalSearch } from '@/components/admin/AdminGlobalSearch';
 import { AdminButton, AdminStatusBadge, EmptyState, FilterTabs, PageHeader, StatCard } from '@/components/admin/AdminDesignSystem';
+import { MobileAdminNavigation, type MobileAdminNavItem } from '@/components/admin/MobileAdminNavigation';
+import { MobilePullToRefresh } from '@/components/admin/MobilePullToRefresh';
 import type {
   AdminDashboardTab,
   AdminNavigationOptions,
@@ -95,6 +97,35 @@ type Property = Database['public']['Tables']['properties']['Row'];
 type PropertyStatusFilter = 'all' | 'occupied' | 'available' | 'off_market';
 type PropertySortMode = 'newest' | 'rent-high' | 'rent-low' | 'address';
 
+const DASHBOARD_TABS: DashboardTab[] = [
+  'overview',
+  'properties',
+  'applications',
+  'tenants',
+  'leases',
+  'messages',
+  'inquiries',
+  'analytics',
+  'audit',
+  'maintenance',
+];
+
+const PAYMENT_FILTERS: PaymentControlFilter[] = [
+  'all',
+  'completed',
+  'processing-ach',
+  'needs-review',
+  'failed',
+];
+
+function isDashboardTab(value: string | null): value is DashboardTab {
+  return Boolean(value && DASHBOARD_TABS.includes(value as DashboardTab));
+}
+
+function isPaymentFilter(value: string | null): value is PaymentControlFilter {
+  return Boolean(value && PAYMENT_FILTERS.includes(value as PaymentControlFilter));
+}
+
 function formatAdminCurrency(value: number) {
   const amount = Number.isFinite(value) ? value : 0;
   const hasCents = Math.abs(amount % 1) > 0.001;
@@ -104,6 +135,64 @@ function formatAdminCurrency(value: number) {
     minimumFractionDigits: hasCents ? 2 : 0,
     maximumFractionDigits: hasCents ? 2 : 0,
   }).format(amount);
+}
+
+function getAdminRefreshQueryKeys(tab: DashboardTab, userId: string): Array<readonly unknown[]> {
+  const keys: Array<readonly unknown[]> = [];
+  const add = (queryKey: readonly unknown[]) => keys.push(queryKey);
+
+  add(['messages', 'unread', userId]);
+  add(['inquiries', 'unread', userId]);
+
+  switch (tab) {
+    case 'overview':
+      add(['properties']);
+      add(['applications']);
+      add(['tenants']);
+      add(['leases']);
+      add(['payments']);
+      add(['maintenance']);
+      add(['overdue-tenants', userId]);
+      break;
+    case 'properties':
+      add(['properties']);
+      break;
+    case 'applications':
+      add(['applications']);
+      break;
+    case 'tenants':
+      add(['tenants']);
+      add(['payments']);
+      add(['overdue-tenants', userId]);
+      break;
+    case 'leases':
+      add(['leases']);
+      break;
+    case 'messages':
+      add(['messages']);
+      break;
+    case 'inquiries':
+      add(['inquiries']);
+      break;
+    case 'analytics':
+      add(['properties']);
+      add(['applications']);
+      add(['tenants']);
+      add(['leases']);
+      add(['payments']);
+      break;
+    case 'audit':
+      add(['payments']);
+      add(['properties']);
+      add(['tenants']);
+      break;
+    case 'maintenance':
+      add(['maintenance']);
+      add(['properties']);
+      break;
+  }
+
+  return keys;
 }
 
 const AnalyticsDashboard = lazy(() =>
@@ -152,6 +241,7 @@ export default function Dashboard() {
   const [selectedLeaseForEdit, setSelectedLeaseForEdit] = useState<LeaseRecord | null>(null);
   const [isEditLeaseOpen, setIsEditLeaseOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileRefreshing, setIsMobileRefreshing] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<ApplicationRecord | null>(null);
   const [isApplicationDetailsOpen, setIsApplicationDetailsOpen] = useState(false);
   const [propertySearch, setPropertySearch] = useState('');
@@ -168,7 +258,7 @@ export default function Dashboard() {
   const { data: allPayments = [] } = useAllPayments();
   const { data: unreadCount } = useUnreadCount(user?.id);
   const { data: managerProfile } = useProfile(user?.id);
-  const { unreadPaymentCount, markAllPaymentNotificationsRead } = useUnreadPaymentNotifications();
+  const { unreadPaymentCount, markAllPaymentNotificationsRead, refetch: refetchPaymentNotifications } = useUnreadPaymentNotifications();
   const { data: unreadInquiriesCount } = useUnreadInquiriesCount(user?.id);
 
   const createProperty = useCreateProperty();
@@ -192,21 +282,29 @@ export default function Dashboard() {
   // Handle tab navigation from URL query params. The URL remains the source of truth for reloads.
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['overview', 'properties', 'applications', 'tenants', 'leases', 'messages', 'inquiries', 'analytics', 'audit', 'maintenance'].includes(tabParam)) {
-      setActiveTab(tabParam as DashboardTab);
+    const filterParam = searchParams.get('filter');
+
+    if (isDashboardTab(tabParam)) {
+      setActiveTab(tabParam);
     } else if (!tabParam) {
       setActiveTab('overview');
+    }
+
+    if (isPaymentFilter(filterParam)) {
+      setPaymentQuickFilter(filterParam);
     }
   }, [searchParams]);
 
   useLayoutEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
       mainContentRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [activeTab, location.pathname]);
+  }, [activeTab, location.pathname, location.search]);
 
   // Realtime subscription for properties
   useEffect(() => {
@@ -354,6 +452,50 @@ export default function Dashboard() {
       });
   }, [properties, propertySearch, propertySortMode, propertyStatusFilter]);
 
+  const handleNavigateTab = useCallback((tab: DashboardTab, options?: AdminNavigationOptions) => {
+    if (options?.paymentFilter) {
+      setPaymentQuickFilter(options.paymentFilter);
+    }
+    if (options?.tenantFilter) {
+      setTenantHealthFilter(options.tenantFilter);
+    }
+    setActiveTab(tab);
+    setSearchParams(tab === 'overview' ? {} : { tab });
+    setIsMobileMenuOpen(false);
+  }, [setSearchParams]);
+
+  const handleRefreshDashboardData = useCallback(async () => {
+    if (!user?.id || isMobileRefreshing) return;
+
+    setIsMobileRefreshing(true);
+    try {
+      await Promise.all([
+        ...getAdminRefreshQueryKeys(activeTab, user.id).map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey })
+        ),
+        refetchPaymentNotifications(),
+      ]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to refresh dashboard data.';
+      toast.error(message);
+    } finally {
+      setIsMobileRefreshing(false);
+    }
+  }, [activeTab, isMobileRefreshing, queryClient, refetchPaymentNotifications, user?.id]);
+
+  const handleRecordPayment = useCallback(() => {
+    const tenantForPayment =
+      (tenants || []).find((tenant) => Number(tenant.current_balance || 0) > 0) ||
+      (tenants || [])[0];
+
+    if (tenantForPayment) {
+      navigate(`/dashboard/tenant/${tenantForPayment.id}?tab=balance`);
+      return;
+    }
+
+    setIsAddTenantOpen(true);
+  }, [navigate, tenants]);
+
   // Wait for both auth and role to be fully loaded before redirecting
 
   if (loading || (user && role === null)) {
@@ -490,19 +632,7 @@ export default function Dashboard() {
     await updateProperty.mutateAsync({ id, status });
   };
 
-  const handleNavigateTab = (tab: DashboardTab, options?: AdminNavigationOptions) => {
-    if (options?.paymentFilter) {
-      setPaymentQuickFilter(options.paymentFilter);
-    }
-    if (options?.tenantFilter) {
-      setTenantHealthFilter(options.tenantFilter);
-    }
-    setActiveTab(tab);
-    setSearchParams(tab === 'overview' ? {} : { tab });
-    setIsMobileMenuOpen(false);
-  };
-
-  const navItems = [
+  const navItems: MobileAdminNavItem[] = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'properties', label: 'Properties', icon: Home },
     { id: 'applications', label: 'Applications', icon: ClipboardList, badge: stats.pendingApplications },
@@ -643,7 +773,14 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="relative z-20 overflow-visible p-3 pt-4 md:p-5">
+          <MobilePullToRefresh
+            enabled={isMobile}
+            isRefreshing={isMobileRefreshing}
+            label={`Pull to refresh ${navItems.find((item) => item.id === activeTab)?.label || 'dashboard'}`}
+            onRefresh={handleRefreshDashboardData}
+            scrollContainerRef={mainContentRef}
+          >
+          <div className="relative z-20 overflow-visible p-3 pb-36 pt-4 md:p-5">
           <PwaNotificationBanner className="mb-4" />
           {/* Overview Tab */}
           {activeTab === 'overview' && (
@@ -684,7 +821,7 @@ export default function Dashboard() {
 
               <section className="ops-panel p-3">
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                  <FilterTabs
+                  <FilterTabs<PropertyStatusFilter>
                     value={propertyStatusFilter}
                     onChange={setPropertyStatusFilter}
                     items={[
@@ -1104,8 +1241,23 @@ export default function Dashboard() {
             </Suspense>
           )}
           </div>
+          </MobilePullToRefresh>
         </main>
       </div>
+
+      {isMobile && (
+        <MobileAdminNavigation
+          activeTab={activeTab}
+          isRefreshing={isMobileRefreshing}
+          navItems={navItems}
+          onAddProperty={() => setIsAddPropertyOpen(true)}
+          onAddTenant={() => setIsAddTenantOpen(true)}
+          onCreateLease={() => setIsCreateLeaseOpen(true)}
+          onNavigateTab={handleNavigateTab}
+          onRecordPayment={handleRecordPayment}
+          onRefresh={handleRefreshDashboardData}
+        />
+      )}
 
       {/* Add Property Dialog */}
       <Dialog open={isAddPropertyOpen} onOpenChange={setIsAddPropertyOpen}>

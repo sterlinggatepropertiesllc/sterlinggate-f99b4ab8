@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { NotificationItem } from './NotificationItem';
 import { Notification } from '@/hooks/useNotifications';
+import { cn } from '@/lib/utils';
 
 interface NotificationCenterProps {
   notifications: Notification[];
@@ -50,17 +51,27 @@ export function NotificationCenter({
   return (
     <div className="flex flex-col h-full">
       {/* Header actions */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border/50">
-        <p className="text-sm font-medium text-foreground">
-          {notifications.length} notification{notifications.length !== 1 ? 's' : ''}
-        </p>
-        <div className="flex items-center gap-1">
+      <div className={cn(
+        'flex border-b border-border/50 px-4 py-2',
+        isMobile ? 'flex-col gap-2' : 'items-center justify-between'
+      )}>
+        <div>
+          <p className="text-sm font-medium text-foreground">
+            {notifications.length} notification{notifications.length !== 1 ? 's' : ''}
+          </p>
+          {isMobile && (
+            <p className="text-xs text-muted-foreground">
+              Tap to open. Swipe left or right to dismiss.
+            </p>
+          )}
+        </div>
+        <div className={cn('flex items-center gap-1', isMobile && 'rounded-xl bg-muted/30 p-1')}>
           {hasUnread && (
             <Button
               variant="ghost"
               size="sm"
               onClick={onMarkAllAsRead}
-              className="h-8 text-xs gap-1.5"
+              className={cn('h-8 text-xs gap-1.5', isMobile && 'flex-1')}
             >
               <Check className="h-3.5 w-3.5" />
               Mark all read
@@ -70,7 +81,10 @@ export function NotificationCenter({
             variant="ghost"
             size="sm"
             onClick={onClearAll}
-            className="h-8 text-xs gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+            className={cn(
+              'h-8 text-xs gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10',
+              isMobile && 'flex-1'
+            )}
           >
             <Trash2 className="h-3.5 w-3.5" />
             Clear all
@@ -80,7 +94,7 @@ export function NotificationCenter({
 
       {/* Notification list */}
       <ScrollArea className="flex-1">
-        <div className="divide-y divide-border/30">
+        <div className={cn(isMobile ? 'space-y-2 p-3' : 'divide-y divide-border/30')}>
           {notifications.map((notification) => (
             <div key={notification.id} className="group">
               <NotificationItem
@@ -99,7 +113,7 @@ export function NotificationCenter({
       {isMobile && notifications.length > 0 && (
         <div className="px-4 py-2 border-t border-border/50 bg-muted/30">
           <p className="text-xs text-muted-foreground text-center">
-            Swipe right to dismiss
+            Swipe left or right to dismiss
           </p>
         </div>
       )}

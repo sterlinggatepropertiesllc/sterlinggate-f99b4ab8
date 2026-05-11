@@ -1,7 +1,7 @@
 import { Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { NotificationCenter } from './NotificationCenter';
 import { useNotifications, Notification } from '@/hooks/useNotifications';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -129,7 +129,9 @@ export function NotificationBell() {
             <div className="mx-auto mt-3 h-1.5 w-16 rounded-full bg-muted-foreground/25" />
             <SheetHeader className="border-b border-border/50 px-4 py-3 text-left">
               <SheetTitle className="text-base font-semibold">Notifications</SheetTitle>
-              <p className="text-xs text-muted-foreground">Swipe down to close. Swipe a notification sideways to dismiss it.</p>
+              <SheetDescription className="text-xs text-muted-foreground">
+                Tap a notification to open it. Swipe down to close.
+              </SheetDescription>
             </SheetHeader>
           </div>
           <div className="h-[calc(88dvh-98px)] min-h-0">

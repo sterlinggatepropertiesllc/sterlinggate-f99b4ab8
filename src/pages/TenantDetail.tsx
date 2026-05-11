@@ -783,7 +783,7 @@ export default function TenantDetail() {
                   <InfoPanel title="Financial Summary" action="Open Ledger" onAction={() => setActiveTab('balance')}>
                     <DetailRow icon={Wallet} label="Current Balance" value={formatCurrency(displayBalance)} tone={hasBalanceDue ? 'text-destructive' : 'text-success'} />
                     <DetailRow icon={Receipt} label="Next Rent Charge" value={nextRentChargeLabel} />
-                    <DetailRow icon={BanknoteIcon} label="Pending ACH" value={tenantHealth.pendingACH ? `${formatCurrency(tenantHealth.pendingACH)} pending` : '--'} tone="text-primary" />
+                    <DetailRow icon={Wallet} label="Pending ACH" value={tenantHealth.pendingACH ? `${formatCurrency(tenantHealth.pendingACH)} pending` : '--'} tone="text-primary" />
                     <DetailRow icon={ShieldCheck} label="Available Credit" value={hasCredit ? formatCurrency(Math.abs(displayBalance)) : '$0'} />
                     <DetailRow icon={CheckCircle2} label="Autopay" value="Not configured" />
                     <DetailRow icon={ShieldCheck} label="Credit Health" value={needsSetupReview ? 'Setup review' : hasBalanceDue ? 'Balance due' : 'Healthy'} tone={needsSetupReview || hasBalanceDue ? 'text-warning' : 'text-success'} />
@@ -876,8 +876,4 @@ export default function TenantDetail() {
       </div>
     </div>
   );
-}
-
-function BanknoteIcon(props: React.ComponentProps<typeof Wallet>) {
-  return <Wallet {...props} />;
 }

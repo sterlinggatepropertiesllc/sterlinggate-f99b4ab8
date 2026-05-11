@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import {
-  AlertTriangle,
   Banknote,
   CheckCircle2,
   ChevronLeft,
@@ -8,7 +7,6 @@ import {
   Eye,
   MessageSquare,
   MoreHorizontal,
-  Phone,
   Search,
   Trash2,
   UserRound,
@@ -32,6 +30,7 @@ import {
 import { useHardDeleteTenant } from '@/hooks/useTenants';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { AdminButton, FilterTabs } from '@/components/admin/AdminDesignSystem';
+import { MobileSwipeActions } from '@/components/admin/MobileSwipeActions';
 import type { Payment } from '@/hooks/usePayments';
 import type { TenantHealthFilter, TenantRecord } from '@/components/admin/adminTypes';
 import { computeTenantFinancialHealth } from '@/lib/paymentReliability';
@@ -370,12 +369,30 @@ export function TenantsTable({
                   : 'border-success/30 bg-success/10 text-success';
 
             return (
-              <button
+              <MobileSwipeActions
                 key={tenant.id}
-                type="button"
-                className="ops-panel tap-feedback p-4 text-left"
-                onClick={() => onNavigate(tenant.id)}
+                ariaLabel={`Open tenant actions for ${tenantName(tenant)}`}
+                onTap={() => onNavigate(tenant.id)}
+                actions={[
+                  {
+                    key: 'open',
+                    label: 'Open',
+                    icon: Eye,
+                    tone: 'primary',
+                    onClick: () => onNavigate(tenant.id),
+                  },
+                  {
+                    key: 'message',
+                    label: 'Message',
+                    icon: MessageSquare,
+                    tone: 'success',
+                    onClick: () => {
+                      window.location.href = '/dashboard?tab=messages';
+                    },
+                  },
+                ]}
               >
+                <article className="ops-panel tap-feedback p-4 text-left">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-primary/30 bg-primary/10 text-primary">
@@ -412,9 +429,10 @@ export function TenantsTable({
                       {lastPayment ? `Last paid ${formatCurrency(Number(lastPayment.amount))} on ${formatDate(lastPayment.payment_date)}` : 'No completed payment on file'}
                     </p>
                   </div>
-                  <span className="shrink-0 text-primary">Open</span>
+                  <span className="shrink-0 text-primary">Tap / swipe</span>
                 </div>
-              </button>
+                </article>
+              </MobileSwipeActions>
             );
           })}
 

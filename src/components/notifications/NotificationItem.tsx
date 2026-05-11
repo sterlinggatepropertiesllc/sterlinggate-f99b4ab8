@@ -5,6 +5,9 @@ import { cn } from '@/lib/utils';
 import { Notification, NotificationType } from '@/hooks/useNotifications';
 import { formatDistanceToNow } from 'date-fns';
 
+const DISMISS_THRESHOLD = 88;
+const MAX_DRAG_DISTANCE = 220;
+
 interface NotificationItemProps {
   notification: Notification;
   onDismiss: (id: string) => void;
@@ -55,19 +58,23 @@ function getNotificationConfig(notification: Notification) {
 
 export function NotificationItem({ notification, onDismiss, onMarkAsRead, onNavigate, isMobile }: NotificationItemProps) {
   const dragStart = useRef<{ x: number; y: number; pointerId: number } | null>(null);
+  const dragDeltaRef = useRef(0);
   const hasHorizontalDrag = useRef(false);
   const suppressClick = useRef(false);
   const [dragDelta, setDragDelta] = useState(0);
   const [isDismissing, setIsDismissing] = useState(false);
+  const [dismissDirection, setDismissDirection] = useState<'left' | 'right'>('right');
   const itemRef = useRef<HTMLDivElement>(null);
 
   const config = getNotificationConfig(notification);
   const Icon = config.icon;
   const timeAgo = formatDistanceToNow(new Date(notification.created_at), { addSuffix: true });
+  const swipeActionLabel = Math.abs(dragDelta) > DISMISS_THRESHOLD ? 'Release to dismiss' : 'Swipe to dismiss';
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (!isMobile) return;
     dragStart.current = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+    dragDeltaRef.current = 0;
     hasHorizontalDrag.current = false;
     suppressClick.current = false;
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -86,7 +93,9 @@ export function NotificationItem({ notification, onDismiss, onMarkAsRead, onNavi
     if (hasHorizontalDrag.current) {
       event.preventDefault();
       suppressClick.current = true;
-      setDragDelta(Math.max(Math.min(deltaX, 220), -220));
+      const nextDelta = Math.max(Math.min(deltaX, MAX_DRAG_DISTANCE), -MAX_DRAG_DISTANCE);
+      dragDeltaRef.current = nextDelta;
+      setDragDelta(nextDelta);
     }
   };
 
@@ -94,11 +103,15 @@ export function NotificationItem({ notification, onDismiss, onMarkAsRead, onNavi
     if (!isMobile || !dragStart.current) return;
 
     event?.currentTarget.releasePointerCapture?.(dragStart.current.pointerId);
-    const shouldDismiss = Math.abs(dragDelta) > 84;
+    const finalDelta = dragDeltaRef.current;
+    const shouldDismiss = Math.abs(finalDelta) > DISMISS_THRESHOLD;
     dragStart.current = null;
+    dragDeltaRef.current = 0;
     hasHorizontalDrag.current = false;
 
     if (shouldDismiss) {
+      setDismissDirection(finalDelta < 0 ? 'left' : 'right');
+      setDragDelta(finalDelta < 0 ? -MAX_DRAG_DISTANCE : MAX_DRAG_DISTANCE);
       setIsDismissing(true);
       setTimeout(() => onDismiss(notification.id), 200);
     } else {
@@ -123,7 +136,9 @@ export function NotificationItem({ notification, onDismiss, onMarkAsRead, onNavi
       ref={itemRef}
       className={cn(
         'relative overflow-hidden transition-all duration-200',
-        isDismissing && 'opacity-0 translate-x-full'
+        isMobile && 'rounded-xl',
+        isDismissing && 'opacity-0',
+        isDismissing && (dismissDirection === 'left' ? '-translate-x-full' : 'translate-x-full')
       )}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -135,20 +150,30 @@ export function NotificationItem({ notification, onDismiss, onMarkAsRead, onNavi
       {isMobile && dragDelta !== 0 && (
         <div
           className={cn(
-            'absolute inset-y-0 flex items-center bg-destructive/20 px-4 text-xs font-semibold uppercase tracking-[0.18em] text-destructive',
+            'absolute inset-y-0 z-0 flex items-center bg-destructive/15 px-4 text-[10px] font-semibold uppercase tracking-[0.16em] text-destructive',
             dragDelta > 0 ? 'left-0 justify-start' : 'right-0 justify-end'
           )}
           style={{ width: Math.max(Math.abs(dragDelta), 64) }}
         >
-          <X className="h-5 w-5 text-destructive" />
-          {Math.abs(dragDelta) > 72 && <span className="ml-2">Dismiss</span>}
+          {dragDelta > 0 ? (
+            <>
+              <X className="h-5 w-5 shrink-0 text-destructive" />
+              <span className="ml-2 whitespace-nowrap">{swipeActionLabel}</span>
+            </>
+          ) : (
+            <>
+              <span className="mr-2 whitespace-nowrap">{swipeActionLabel}</span>
+              <X className="h-5 w-5 shrink-0 text-destructive" />
+            </>
+          )}
         </div>
       )}
 
       <div
         className={cn(
-          'flex items-start gap-3 p-4 border-b border-border/50 transition-colors cursor-pointer',
-          !notification.is_read && 'bg-primary/5',
+          'relative z-10 flex items-start gap-3 transition-colors cursor-pointer',
+          isMobile ? 'rounded-xl border border-border/60 bg-card/95 p-3 shadow-sm' : 'p-4 border-b border-border/50',
+          !notification.is_read && (isMobile ? 'border-primary/30 bg-primary/5' : 'bg-primary/5'),
           'hover:bg-muted/50',
           isMobile && 'select-none touch-pan-y'
         )}
