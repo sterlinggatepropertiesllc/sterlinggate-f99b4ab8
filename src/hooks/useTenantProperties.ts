@@ -143,8 +143,10 @@ export function useUpdateTenantProperty() {
 
   return useMutation({
     mutationFn: async ({ id, tenant_id, ...updates }: Partial<TenantProperty> & { id: string; tenant_id: string }) => {
+      const { property: _joinedProperty, ...writeUpdates } = updates;
+
       // If setting as primary, unset other primaries first
-      if (updates.is_primary) {
+      if (writeUpdates.is_primary) {
         await supabase
           .from('tenant_properties')
           .update({ is_primary: false })
@@ -154,7 +156,7 @@ export function useUpdateTenantProperty() {
 
       const { data, error } = await supabase
         .from('tenant_properties')
-        .update(updates)
+        .update(writeUpdates)
         .eq('id', id)
         .select(`
           *,
