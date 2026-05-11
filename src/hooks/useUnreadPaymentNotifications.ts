@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { createRealtimeChannelName } from '@/lib/realtimeChannel';
 
 const paymentNotificationTypes = [
   'rent_received',
@@ -62,7 +63,7 @@ export function useUnreadPaymentNotifications() {
     if (!user) return;
 
     const channel = supabase
-      .channel('payment-notifications-realtime')
+      .channel(createRealtimeChannelName('payment-notifications-realtime', user.id))
       .on(
         'postgres_changes',
         {

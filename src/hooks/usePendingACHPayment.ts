@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { createRealtimeChannelName } from '@/lib/realtimeChannel';
 
 export interface PendingACHPayment {
   id: string;
@@ -41,7 +42,7 @@ export function usePendingACHPayment(tenantId: string | undefined) {
     if (!tenantId) return;
 
     const channel = supabase
-      .channel(`pending-ach-${tenantId}`)
+      .channel(createRealtimeChannelName('pending-ach', tenantId))
       .on(
         'postgres_changes',
         {

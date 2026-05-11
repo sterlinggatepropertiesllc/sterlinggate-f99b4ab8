@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { showNativeAppNotification } from '@/lib/nativeNotifications';
 import type { AppNotificationType } from '@/lib/notificationRouting';
+import { createRealtimeChannelName } from '@/lib/realtimeChannel';
 
 export type NotificationType = AppNotificationType;
 
@@ -135,7 +136,7 @@ export function useNotifications() {
     if (!user) return;
 
     const channel = supabase
-      .channel('notifications-realtime')
+      .channel(createRealtimeChannelName('notifications-realtime', user.id))
       .on(
         'postgres_changes',
         {

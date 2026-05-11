@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { subHours } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
+import { createRealtimeChannelName } from '@/lib/realtimeChannel';
 
 export type StripeWebhookEvent = Tables<'stripe_webhook_events'>;
 export type AdminAuditLog = Tables<'admin_audit_logs'>;
@@ -12,7 +13,7 @@ export function useStripeWebhookEvents(limit = 20) {
 
   useEffect(() => {
     const channel = supabase
-      .channel('stripe-webhook-events-realtime')
+      .channel(createRealtimeChannelName('stripe-webhook-events-realtime', limit))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'stripe_webhook_events' },
@@ -23,7 +24,7 @@ export function useStripeWebhookEvents(limit = 20) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [limit, queryClient]);
 
   return useQuery({
     queryKey: ['stripe-webhook-events', limit],
@@ -45,7 +46,7 @@ export function useAdminAuditLogs(limit = 25) {
 
   useEffect(() => {
     const channel = supabase
-      .channel('admin-audit-logs-realtime')
+      .channel(createRealtimeChannelName('admin-audit-logs-realtime', limit))
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'admin_audit_logs' },
@@ -56,7 +57,7 @@ export function useAdminAuditLogs(limit = 25) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [limit, queryClient]);
 
   return useQuery({
     queryKey: ['admin-audit-logs', limit],

@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useState, useMemo, useCallback } from "react";
+import { createRealtimeChannelName } from "@/lib/realtimeChannel";
 
 export interface OverdueTenant {
   id: string;
@@ -156,7 +157,7 @@ export function useOverdueTenants(managerId: string | undefined) {
     if (!managerId) return;
 
     const channel = supabase
-      .channel('overdue-tenants-changes')
+      .channel(createRealtimeChannelName('overdue-tenants-changes', managerId))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tenants' }, () => {
         queryClient.invalidateQueries({ queryKey: ['overdue-tenants', managerId] });
       })
