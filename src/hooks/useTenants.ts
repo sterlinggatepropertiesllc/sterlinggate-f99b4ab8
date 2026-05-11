@@ -48,10 +48,13 @@ export function useTenants(managerId: string | undefined) {
             id,
             address,
             city,
-            state
+            state,
+            rent_amount,
+            manager_id
           )
         `)
-        .in('tenant_id', tenantIds);
+        .in('tenant_id', tenantIds)
+        .order('is_primary', { ascending: false });
 
       if (tpError) {
         console.error('Error fetching tenant properties:', tpError);
@@ -69,15 +72,29 @@ export function useTenants(managerId: string | undefined) {
 
       // Enhance tenants with primary property info from tenant_properties
       return tenants.map(tenant => {
-        const tenantProps = propertiesByTenant[tenant.id] || [];
+        const tenantProps = [...(propertiesByTenant[tenant.id] || [])].sort(
+          (a, b) => Number(Boolean(b.is_primary)) - Number(Boolean(a.is_primary))
+        );
         const primaryProp = tenantProps.find(tp => tp.is_primary) || tenantProps[0];
         const additionalPropsCount = Math.max(0, tenantProps.length - 1);
+        const assignmentRentTotal = tenantProps.reduce(
+          (sum, tp) => sum + Number(tp.rent_amount || tp.property?.rent_amount || 0),
+          0
+        );
+        const assignedPropertySummary = tenantProps
+          .map(tp => tp.property?.address)
+          .filter(Boolean)
+          .join(' + ') || null;
 
         return {
           ...tenant,
           // Primary property from tenant_properties
           primary_property: primaryProp?.property || null,
+          assigned_properties: tenantProps,
+          assigned_property_summary: assignedPropertySummary,
           primary_rent_amount: primaryProp?.rent_amount || null,
+          assignment_rent_total: assignmentRentTotal || primaryProp?.rent_amount || null,
+          active_assignment_count: tenantProps.length,
           primary_lease_start: primaryProp?.lease_start_date || null,
           primary_lease_end: primaryProp?.lease_end_date || null,
           additional_properties_count: additionalPropsCount,

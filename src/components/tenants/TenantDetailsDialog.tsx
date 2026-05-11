@@ -32,17 +32,17 @@ interface TenantWithRelations {
   current_balance: number | null;
   auto_charge_rent?: boolean;
   auto_apply_late_fees?: boolean;
-  user: {
+  user?: {
     id: string;
-    email: string;
+    email: string | null;
     full_name: string | null;
-    phone: string | null;
+    phone?: string | null;
   } | null;
-  property: {
+  property?: {
     id: string;
     address: string;
-    city: string;
-    state: string;
+    city: string | null;
+    state: string | null;
   } | null;
 }
 

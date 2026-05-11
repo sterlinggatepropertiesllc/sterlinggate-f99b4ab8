@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useEffect } from 'react';
+import { createRealtimeChannelName } from '@/lib/realtimeChannel';
 
 export interface RentCharge {
   id: string;
@@ -29,7 +30,7 @@ export function useRentCharges(tenantId: string | undefined) {
     if (!tenantId) return;
 
     const channel = supabase
-      .channel(`rent_charges_${tenantId}`)
+      .channel(createRealtimeChannelName('rent-charges', tenantId))
       .on(
         'postgres_changes',
         {

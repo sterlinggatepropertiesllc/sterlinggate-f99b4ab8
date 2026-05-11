@@ -1,15 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { showNativeAppNotification } from '@/lib/nativeNotifications';
+import type { AppNotificationType } from '@/lib/notificationRouting';
+import { createRealtimeChannelName } from '@/lib/realtimeChannel';
 
-export type NotificationType = 
-  | 'application_received'
-  | 'application_approved'
-  | 'application_rejected'
-  | 'rent_received'
-  | 'maintenance_request'
-  | 'lease_signed'
-  | 'message_received';
+export type NotificationType = AppNotificationType;
 
 export interface Notification {
   id: string;
@@ -139,7 +136,7 @@ export function useNotifications() {
     if (!user) return;
 
     const channel = supabase
-      .channel('notifications-realtime')
+      .channel(createRealtimeChannelName('notifications-realtime', user.id))
       .on(
         'postgres_changes',
         {
@@ -152,6 +149,10 @@ export function useNotifications() {
           const newNotification = payload.new as Notification;
           setNotifications(prev => [newNotification, ...prev]);
           setHasNewNotification(true);
+          toast(newNotification.title, {
+            description: newNotification.message,
+          });
+          void showNativeAppNotification(newNotification);
           
           // Auto-reset the pulse after 3 seconds
           setTimeout(() => setHasNewNotification(false), 3000);

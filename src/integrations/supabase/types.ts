@@ -38,6 +38,86 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_audit_logs: {
+        Row: {
+          action: string
+          actor_id: string | null
+          changed_fields: string[]
+          created_at: string
+          entity_id: string | null
+          entity_type: string
+          id: string
+          metadata: Json
+          new_data: Json | null
+          old_data: Json | null
+          payment_id: string | null
+          property_id: string | null
+          summary: string
+          tenant_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          changed_fields?: string[]
+          created_at?: string
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          metadata?: Json
+          new_data?: Json | null
+          old_data?: Json | null
+          payment_id?: string | null
+          property_id?: string | null
+          summary: string
+          tenant_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          changed_fields?: string[]
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          metadata?: Json
+          new_data?: Json | null
+          old_data?: Json | null
+          payment_id?: string | null
+          property_id?: string | null
+          summary?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_audit_logs_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_audit_logs_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_audit_logs_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_audit_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       applications: {
         Row: {
           applicant_id: string
@@ -640,6 +720,8 @@ export type Database = {
       payments: {
         Row: {
           amount: number
+          balance_adjustment_id: string | null
+          balance_applied_at: string | null
           convenience_fee: number | null
           created_at: string
           id: string
@@ -653,10 +735,13 @@ export type Database = {
           status: string
           stripe_payment_intent_id: string | null
           stripe_session_id: string | null
+          stripe_status: string | null
           tenant_id: string
         }
         Insert: {
           amount: number
+          balance_adjustment_id?: string | null
+          balance_applied_at?: string | null
           convenience_fee?: number | null
           created_at?: string
           id?: string
@@ -670,10 +755,13 @@ export type Database = {
           status?: string
           stripe_payment_intent_id?: string | null
           stripe_session_id?: string | null
+          stripe_status?: string | null
           tenant_id: string
         }
         Update: {
           amount?: number
+          balance_adjustment_id?: string | null
+          balance_applied_at?: string | null
           convenience_fee?: number | null
           created_at?: string
           id?: string
@@ -687,9 +775,17 @@ export type Database = {
           status?: string
           stripe_payment_intent_id?: string | null
           stripe_session_id?: string | null
+          stripe_status?: string | null
           tenant_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "payments_balance_adjustment_id_fkey"
+            columns: ["balance_adjustment_id"]
+            isOneToOne: false
+            referencedRelation: "balance_adjustments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "payments_lease_id_fkey"
             columns: ["lease_id"]
@@ -741,6 +837,74 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      stripe_webhook_events: {
+        Row: {
+          api_version: string | null
+          checkout_session_id: string | null
+          created_at: string
+          error_message: string | null
+          event_type: string
+          id: string
+          last_received_at: string
+          livemode: boolean | null
+          metadata: Json
+          payment_id: string | null
+          payment_intent_id: string | null
+          processed_at: string | null
+          received_at: string
+          retry_count: number
+          status: string
+          stripe_event_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          api_version?: string | null
+          checkout_session_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          event_type: string
+          id?: string
+          last_received_at?: string
+          livemode?: boolean | null
+          metadata?: Json
+          payment_id?: string | null
+          payment_intent_id?: string | null
+          processed_at?: string | null
+          received_at?: string
+          retry_count?: number
+          status?: string
+          stripe_event_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          api_version?: string | null
+          checkout_session_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          last_received_at?: string
+          livemode?: boolean | null
+          metadata?: Json
+          payment_id?: string | null
+          payment_intent_id?: string | null
+          processed_at?: string | null
+          received_at?: string
+          retry_count?: number
+          status?: string
+          stripe_event_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stripe_webhook_events_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       properties: {
         Row: {
@@ -1239,6 +1403,14 @@ export type Database = {
         }
         Returns: Json
       }
+      record_payment_balance_adjustment: {
+        Args: {
+          _created_by?: string
+          _description?: string
+          _payment_id: string
+        }
+        Returns: Json
+      }
       apply_rent_late_fee: {
         Args: {
           _created_by?: string
@@ -1327,6 +1499,12 @@ export type Database = {
         | "application_approved"
         | "application_rejected"
         | "rent_received"
+        | "payment_received"
+        | "payment_processing"
+        | "payment_failed"
+        | "payment_incomplete"
+        | "payment_late"
+        | "payment_missing"
         | "maintenance_request"
         | "lease_signed"
         | "message_received"

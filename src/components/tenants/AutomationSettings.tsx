@@ -92,24 +92,27 @@ export function AutomationSettings({
     const rentAmount = leaseInfo.rentAmount || 0;
     
     switch (leaseInfo.lateFeeType) {
-      case 'percentage':
+      case 'percentage': {
         const percentAmount = (rentAmount * (leaseInfo.lateFeePercentage || 5)) / 100;
         return rentAmount > 0 
           ? `$${percentAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${leaseInfo.lateFeePercentage || 5}% of $${rentAmount.toLocaleString()} rent)`
           : `${leaseInfo.lateFeePercentage || 5}% of rent`;
+      }
       case 'flat':
         return `$${(leaseInfo.lateFeeFlatAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} flat fee`;
-      case 'daily':
+      case 'daily': {
         const dailyAmount = leaseInfo.lateFeeDailyAmount || 0;
         const maxAmount = leaseInfo.lateFeeMaxAmount;
         return maxAmount 
           ? `$${dailyAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/day (max $${maxAmount.toLocaleString()})`
           : `$${dailyAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/day`;
-      default:
+      }
+      default: {
         const defaultAmount = (rentAmount * (leaseInfo.lateFeePercentage || 5)) / 100;
         return rentAmount > 0 
           ? `$${defaultAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${leaseInfo.lateFeePercentage || 5}% of $${rentAmount.toLocaleString()} rent)`
           : `${leaseInfo.lateFeePercentage || 5}% of rent`;
+      }
     }
   };
 

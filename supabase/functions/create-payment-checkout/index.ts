@@ -317,7 +317,7 @@ serve(async (req) => {
     }
 
     // Calculate convenience fee for card payments
-    let baseAmount = amount || 0;
+    const baseAmount = amount || 0;
     let convenienceFee = 0;
     let totalAmount = baseAmount;
 

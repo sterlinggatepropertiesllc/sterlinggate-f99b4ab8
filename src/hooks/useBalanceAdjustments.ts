@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { createRealtimeChannelName } from '@/lib/realtimeChannel';
 
 interface BalanceAdjustment {
   id: string;
@@ -37,7 +38,7 @@ export function useBalanceAdjustments(tenantId: string | undefined) {
     if (!tenantId) return;
 
     const channel = supabase
-      .channel(`balance-adjustments-${tenantId}`)
+      .channel(createRealtimeChannelName('balance-adjustments', tenantId))
       .on(
         'postgres_changes',
         {
@@ -82,7 +83,7 @@ export function useRealtimeTenantBalance(tenantId: string | undefined, onUpdate:
     if (!tenantId) return;
 
     const channel = supabase
-      .channel(`tenant-balance-${tenantId}`)
+      .channel(createRealtimeChannelName('tenant-balance', tenantId))
       .on(
         'postgres_changes',
         {

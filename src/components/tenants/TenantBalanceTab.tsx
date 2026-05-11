@@ -22,6 +22,17 @@ interface TenantBalanceTabProps {
   onUpdate: () => void;
 }
 
+function formatCurrency(value: number) {
+  const amount = Number.isFinite(value) ? value : 0;
+  const hasCents = Math.abs(amount % 1) > 0.001;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
+  }).format(amount);
+}
+
 export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
   const { user } = useAuth();
   const [adjustmentType, setAdjustmentType] = useState<string>('');
@@ -137,7 +148,7 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
               <div>
                 <p className="text-sm text-muted-foreground uppercase tracking-wider">{displayLabel}</p>
                 <p className={`text-4xl font-serif mt-1 ${isOverdue ? 'text-destructive' : 'text-success'}`}>
-                  ${Math.abs(displayBalance).toLocaleString()}
+                  {formatCurrency(Math.abs(displayBalance))}
                 </p>
                 <Badge 
                   variant={isOverdue ? 'destructive' : 'secondary'} 
@@ -147,7 +158,7 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
                 </Badge>
                 {hasPendingACH && (
                   <p className="text-xs text-muted-foreground mt-2">
-                    Official balance: ${currentBalance.toLocaleString()}
+                    Official balance: {formatCurrency(currentBalance)}
                   </p>
                 )}
               </div>
@@ -172,7 +183,7 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
                       <div>
                         <p className="text-sm text-muted-foreground uppercase tracking-wider">Monthly Rent</p>
                         <p className="text-4xl font-serif mt-1 text-foreground">
-                          ${totalMonthlyRent.toLocaleString()}
+                          {formatCurrency(totalMonthlyRent)}
                         </p>
                         <p className="text-sm text-muted-foreground mt-2 flex items-center gap-1.5">
                           <Clock className="h-3.5 w-3.5 text-amber-400" />
@@ -211,7 +222,7 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
                           </div>
                         </div>
                         <p className="font-semibold text-foreground">
-                          ${(tp.rent_amount || 0).toLocaleString()}/mo
+                          {formatCurrency(tp.rent_amount || 0)}/mo
                         </p>
                       </div>
                     ))}
@@ -257,7 +268,7 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
               title={!hasPropertiesAssigned ? 'Assign a property first' : undefined}
             >
               <Plus className="mr-2 h-4 w-4" />
-              {chargeRent.isPending ? 'Charging...' : `Charge Monthly Rent ($${totalMonthlyRent.toLocaleString()})`}
+              {chargeRent.isPending ? 'Charging...' : `Charge Monthly Rent (${formatCurrency(totalMonthlyRent)})`}
             </Button>
             {!hasPropertiesAssigned && (
               <p className="text-sm text-muted-foreground w-full mt-1">
@@ -370,6 +381,12 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
             <div className="space-y-3">
               {adjustments.map((adjustment: any) => {
                 const isDebit = ['charge', 'late_fee'].includes(adjustment.adjustment_type);
+                const adjustmentAmount = Number(adjustment.amount || 0);
+                const displayAmount = isDebit
+                  ? `+${formatCurrency(Math.abs(adjustmentAmount))}`
+                  : ['payment', 'credit'].includes(adjustment.adjustment_type)
+                    ? `-${formatCurrency(Math.abs(adjustmentAmount))}`
+                    : formatCurrency(adjustmentAmount);
                 return (
                   <div 
                     key={adjustment.id} 
@@ -397,11 +414,10 @@ export function TenantBalanceTab({ tenant, onUpdate }: TenantBalanceTabProps) {
                     </div>
                     <div className="text-right">
                       <p className={`font-semibold text-lg ${getAdjustmentColor(adjustment.adjustment_type)}`}>
-                        {isDebit ? '+' : '-'}
-                        ${Number(adjustment.amount).toLocaleString()}
+                        {displayAmount}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Balance: ${Number(adjustment.new_balance).toLocaleString()}
+                        Balance: {formatCurrency(Number(adjustment.new_balance))}
                       </p>
                     </div>
                   </div>

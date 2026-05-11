@@ -1,5 +1,5 @@
+import { lazy, Suspense, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
-import TenantDetail from "./pages/TenantDetail";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -8,42 +8,58 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { TelegramProvider } from "@/contexts/TelegramContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useAppVersion } from "@/hooks/useAppVersion";
-import Index from "./pages/Index";
-import Auth from "./pages/Auth";
-import Dashboard from "./pages/Dashboard";
-import TenantPortal from "./pages/TenantPortal";
-import Properties from "./pages/Properties";
-import SignLease from "./pages/SignLease";
-import PaymentSuccess from "./pages/PaymentSuccess";
-import PaymentCancelled from "./pages/PaymentCancelled";
-import PrivacyPolicy from "./pages/PrivacyPolicy";
-import TermsOfService from "./pages/TermsOfService";
-import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+const Index = lazy(() => import("./pages/Index"));
+const Auth = lazy(() => import("./pages/Auth"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const TenantPortal = lazy(() => import("./pages/TenantPortal"));
+const TenantDetail = lazy(() => import("./pages/TenantDetail"));
+const Properties = lazy(() => import("./pages/Properties"));
+const SignLease = lazy(() => import("./pages/SignLease"));
+const PaymentSuccess = lazy(() => import("./pages/PaymentSuccess"));
+const PaymentCancelled = lazy(() => import("./pages/PaymentCancelled"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const TermsOfService = lazy(() => import("./pages/TermsOfService"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+      Loading Sterling Gate...
+    </div>
+  );
+}
+
 const AppContent = () => {
   useAppVersion();
+
+  useEffect(() => {
+    document.documentElement.classList.add("dark", "sterling-ops-theme");
+  }, []);
   
   return (
     <TooltipProvider>
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/properties" element={<Properties />} />
-          <Route path="/auth" element={<Auth />} />
-          <Route path="/dashboard/tenant/:tenantId" element={<TenantDetail />} />
-          <Route path="/dashboard/*" element={<Dashboard />} />
-          <Route path="/tenant/*" element={<TenantPortal />} />
-          <Route path="/sign-lease/:id" element={<SignLease />} />
-          <Route path="/payment-success" element={<PaymentSuccess />} />
-          <Route path="/payment-cancelled" element={<PaymentCancelled />} />
-          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-          <Route path="/terms-of-service" element={<TermsOfService />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/properties" element={<Properties />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/dashboard/tenant/:tenantId" element={<TenantDetail />} />
+            <Route path="/dashboard/*" element={<Dashboard />} />
+            <Route path="/tenant/*" element={<TenantPortal />} />
+            <Route path="/sign-lease/:id" element={<SignLease />} />
+            <Route path="/payment-success" element={<PaymentSuccess />} />
+            <Route path="/payment-cancelled" element={<PaymentCancelled />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+            <Route path="/terms-of-service" element={<TermsOfService />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </TooltipProvider>
   );

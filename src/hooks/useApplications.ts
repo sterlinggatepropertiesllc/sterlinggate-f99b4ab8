@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Database } from '@/integrations/supabase/types';
+import type { ApplicationRecord } from '@/components/admin/adminTypes';
 import { toast } from 'sonner';
 
 type Application = Database['public']['Tables']['applications']['Row'];
@@ -36,7 +37,7 @@ export function useApplications(propertyManagerId?: string) {
   const query = useQuery({
     queryKey: ['applications', propertyManagerId],
     queryFn: async () => {
-      let query = supabase
+      const query = supabase
         .from('applications')
         .select(`
           *,
@@ -63,7 +64,7 @@ export function useApplications(propertyManagerId?: string) {
         console.error('[useApplications] Error:', error);
         throw error;
       }
-      return data;
+      return (data || []) as unknown as ApplicationRecord[];
     },
   });
 

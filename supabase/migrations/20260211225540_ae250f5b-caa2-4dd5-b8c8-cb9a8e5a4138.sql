@@ -37,7 +37,7 @@ BEGIN
 
   -- Use pg_net to call the edge function asynchronously
   PERFORM extensions.http_post(
-    url := 'https://nmibwtbrbpqfvseeflep.supabase.co/functions/v1/send-telegram-notification',
+    url := 'https://gwixdarqhmgxjkgwzuoe.supabase.co/functions/v1/send-telegram-notification',
     body := _request_body::text,
     headers := jsonb_build_object(
       'Content-Type', 'application/json',

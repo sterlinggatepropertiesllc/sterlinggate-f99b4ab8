@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo, useLayoutEffect, useRef } from 'react';
 import { differenceInDays } from 'date-fns';
-import { Navigate, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { useManagerProperties, useCreateProperty, useUpdateProperty, useDeleteProperty } from '@/hooks/useProperties';
 import { useApplications, useUpdateApplication } from '@/hooks/useApplications';
 import { ApplicationDetailsDialog } from '@/components/applications/ApplicationDetailsDialog';
 import { useTenants, useAddTenant, useUpdateTenant, useDeleteTenant, useRevokeTenantAccess, useHardDeleteTenant } from '@/hooks/useTenants';
+import { useAllPayments } from '@/hooks/usePayments';
 import { AddTenantDialog } from '@/components/tenants/AddTenantDialog';
 import { TenantsTable } from '@/components/tenants/TenantsTable';
 import { TenantDetailsDialog } from '@/components/tenants/TenantDetailsDialog';
@@ -37,25 +38,34 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { toast } from 'sonner';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { OverdueRentAlert } from '@/components/notifications/OverdueRentAlert';
+import { PwaInstallPrompt } from '@/components/pwa/PwaInstallPrompt';
+import { PwaNotificationBanner } from '@/components/pwa/PwaNotificationBanner';
 import { SettingsDialog } from '@/components/settings/SettingsDialog';
-import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard';
-import { AuditDashboard } from '@/components/audit/AuditDashboard';
 import { ImageUploader } from '@/components/properties/ImageUploader';
 import { PropertyCard } from '@/components/properties/PropertyCard';
 import { EditPropertyDialog } from '@/components/properties/EditPropertyDialog';
 import { CreateLeaseWizard } from '@/components/leases/CreateLeaseWizard';
 import { EditLeaseDialog } from '@/components/leases/EditLeaseDialog';
-import { MessagingCenter } from '@/components/messages/MessagingCenter';
 import { AuditCertificate } from '@/components/leases/AuditCertificate';
-import { InquiriesTab } from '@/components/inquiries/InquiriesTab';
+import { AdminCommandCenter } from '@/components/admin/AdminCommandCenter';
+import { AdminGlobalSearch } from '@/components/admin/AdminGlobalSearch';
+import { AdminButton, AdminStatusBadge, EmptyState, FilterTabs, PageHeader, StatCard } from '@/components/admin/AdminDesignSystem';
+import { MobileAdminNavigation, type MobileAdminNavItem } from '@/components/admin/MobileAdminNavigation';
+import { MobilePullToRefresh } from '@/components/admin/MobilePullToRefresh';
+import type {
+  AdminDashboardTab,
+  AdminNavigationOptions,
+  ApplicationRecord,
+  LeaseRecord,
+  PaymentControlFilter,
+  TenantHealthFilter,
+  TenantRecord,
+} from '@/components/admin/adminTypes';
 import type { Database } from '@/integrations/supabase/types';
-import { MaintenanceDashboard } from '@/components/maintenance/MaintenanceDashboard';
 import { 
   LayoutDashboard, 
   Home, 
@@ -66,7 +76,6 @@ import {
   Plus,
   LogOut,
   MapPin,
-  DollarSign,
   CheckCircle2,
   XCircle,
   Clock,
@@ -75,8 +84,6 @@ import {
   Edit,
   BarChart3,
   Receipt,
-  Layers,
-  Download,
   PenTool,
   Shield,
   Menu,
@@ -85,29 +92,161 @@ import {
 } from 'lucide-react';
 import logo from '@/assets/logo.png';
 
-type DashboardTab = 'overview' | 'properties' | 'applications' | 'tenants' | 'leases' | 'messages' | 'inquiries' | 'analytics' | 'audit' | 'maintenance';
+type DashboardTab = AdminDashboardTab;
 type Property = Database['public']['Tables']['properties']['Row'];
+type PropertyStatusFilter = 'all' | 'occupied' | 'available' | 'off_market';
+type PropertySortMode = 'newest' | 'rent-high' | 'rent-low' | 'address';
+
+const DASHBOARD_TABS: DashboardTab[] = [
+  'overview',
+  'properties',
+  'applications',
+  'tenants',
+  'leases',
+  'messages',
+  'inquiries',
+  'analytics',
+  'audit',
+  'maintenance',
+];
+
+const PAYMENT_FILTERS: PaymentControlFilter[] = [
+  'all',
+  'completed',
+  'processing-ach',
+  'needs-review',
+  'failed',
+];
+
+function isDashboardTab(value: string | null): value is DashboardTab {
+  return Boolean(value && DASHBOARD_TABS.includes(value as DashboardTab));
+}
+
+function isPaymentFilter(value: string | null): value is PaymentControlFilter {
+  return Boolean(value && PAYMENT_FILTERS.includes(value as PaymentControlFilter));
+}
+
+function formatAdminCurrency(value: number) {
+  const amount = Number.isFinite(value) ? value : 0;
+  const hasCents = Math.abs(amount % 1) > 0.001;
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: hasCents ? 2 : 0,
+  }).format(amount);
+}
+
+function getAdminRefreshQueryKeys(tab: DashboardTab, userId: string): Array<readonly unknown[]> {
+  const keys: Array<readonly unknown[]> = [];
+  const add = (queryKey: readonly unknown[]) => keys.push(queryKey);
+
+  add(['messages', 'unread', userId]);
+  add(['inquiries', 'unread', userId]);
+
+  switch (tab) {
+    case 'overview':
+      add(['properties']);
+      add(['applications']);
+      add(['tenants']);
+      add(['leases']);
+      add(['payments']);
+      add(['maintenance']);
+      add(['overdue-tenants', userId]);
+      break;
+    case 'properties':
+      add(['properties']);
+      break;
+    case 'applications':
+      add(['applications']);
+      break;
+    case 'tenants':
+      add(['tenants']);
+      add(['payments']);
+      add(['overdue-tenants', userId]);
+      break;
+    case 'leases':
+      add(['leases']);
+      break;
+    case 'messages':
+      add(['messages']);
+      break;
+    case 'inquiries':
+      add(['inquiries']);
+      break;
+    case 'analytics':
+      add(['properties']);
+      add(['applications']);
+      add(['tenants']);
+      add(['leases']);
+      add(['payments']);
+      break;
+    case 'audit':
+      add(['payments']);
+      add(['properties']);
+      add(['tenants']);
+      break;
+    case 'maintenance':
+      add(['maintenance']);
+      add(['properties']);
+      break;
+  }
+
+  return keys;
+}
+
+const AnalyticsDashboard = lazy(() =>
+  import('@/components/analytics/AnalyticsDashboard').then((module) => ({ default: module.AnalyticsDashboard }))
+);
+const AuditDashboard = lazy(() =>
+  import('@/components/audit/AuditDashboard').then((module) => ({ default: module.AuditDashboard }))
+);
+const MessagingCenter = lazy(() =>
+  import('@/components/messages/MessagingCenter').then((module) => ({ default: module.MessagingCenter }))
+);
+const InquiriesTab = lazy(() =>
+  import('@/components/inquiries/InquiriesTab').then((module) => ({ default: module.InquiriesTab }))
+);
+const MaintenanceDashboard = lazy(() =>
+  import('@/components/maintenance/MaintenanceDashboard').then((module) => ({ default: module.MaintenanceDashboard }))
+);
+
+function DashboardTabFallback({ label }: { label: string }) {
+  return (
+    <Card className="p-8 text-center text-sm text-muted-foreground">
+      Loading {label}...
+    </Card>
+  );
+}
 
 export default function Dashboard() {
   const { user, role, loading, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+  const mainContentRef = useRef<HTMLElement | null>(null);
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+  const [paymentQuickFilter, setPaymentQuickFilter] = useState<PaymentControlFilter>('all');
+  const [tenantHealthFilter, setTenantHealthFilter] = useState<TenantHealthFilter>('all');
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
   const [isCreateLeaseOpen, setIsCreateLeaseOpen] = useState(false);
   const [isAddTenantOpen, setIsAddTenantOpen] = useState(false);
-  const [selectedTenant, setSelectedTenant] = useState<any>(null);
+  const [selectedTenant, setSelectedTenant] = useState<TenantRecord | null>(null);
   const [isTenantDetailsOpen, setIsTenantDetailsOpen] = useState(false);
   const [propertyImages, setPropertyImages] = useState<string[]>([]);
   const [pendingImageFiles, setPendingImageFiles] = useState<File[]>([]);
   const [editingProperty, setEditingProperty] = useState<Property | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [selectedLeaseForCert, setSelectedLeaseForCert] = useState<any>(null);
-  const [selectedLeaseForEdit, setSelectedLeaseForEdit] = useState<any>(null);
+  const [selectedLeaseForCert, setSelectedLeaseForCert] = useState<LeaseRecord | null>(null);
+  const [selectedLeaseForEdit, setSelectedLeaseForEdit] = useState<LeaseRecord | null>(null);
   const [isEditLeaseOpen, setIsEditLeaseOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [selectedApplication, setSelectedApplication] = useState<any>(null);
+  const [isMobileRefreshing, setIsMobileRefreshing] = useState(false);
+  const [selectedApplication, setSelectedApplication] = useState<ApplicationRecord | null>(null);
   const [isApplicationDetailsOpen, setIsApplicationDetailsOpen] = useState(false);
+  const [propertySearch, setPropertySearch] = useState('');
+  const [propertyStatusFilter, setPropertyStatusFilter] = useState<PropertyStatusFilter>('all');
+  const [propertySortMode, setPropertySortMode] = useState<PropertySortMode>('newest');
 
   const isMobile = useIsMobile();
 
@@ -116,9 +255,10 @@ export default function Dashboard() {
   const { data: applications, isLoading: applicationsLoading, isError: applicationsError, refetch: refetchApplications } = useApplications();
   const { data: tenants, isLoading: tenantsLoading } = useTenants(user?.id);
   const { data: leases, isLoading: leasesLoading } = useLeases(user?.id, role);
+  const { data: allPayments = [] } = useAllPayments();
   const { data: unreadCount } = useUnreadCount(user?.id);
   const { data: managerProfile } = useProfile(user?.id);
-  const { unreadPaymentCount, markAllPaymentNotificationsRead } = useUnreadPaymentNotifications();
+  const { unreadPaymentCount, markAllPaymentNotificationsRead, refetch: refetchPaymentNotifications } = useUnreadPaymentNotifications();
   const { data: unreadInquiriesCount } = useUnreadInquiriesCount(user?.id);
 
   const createProperty = useCreateProperty();
@@ -139,15 +279,32 @@ export default function Dashboard() {
     handleMarkPaymentNotificationsRead();
   }, [handleMarkPaymentNotificationsRead]);
 
-  // Handle tab navigation from URL query params (for notification clicks)
+  // Handle tab navigation from URL query params. The URL remains the source of truth for reloads.
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['overview', 'properties', 'applications', 'tenants', 'leases', 'messages', 'inquiries', 'analytics', 'audit', 'maintenance'].includes(tabParam)) {
-      setActiveTab(tabParam as DashboardTab);
-      // Clear the query param after setting the tab
-      setSearchParams({}, { replace: true });
+    const filterParam = searchParams.get('filter');
+
+    if (isDashboardTab(tabParam)) {
+      setActiveTab(tabParam);
+    } else if (!tabParam) {
+      setActiveTab('overview');
     }
-  }, [searchParams, setSearchParams]);
+
+    if (isPaymentFilter(filterParam)) {
+      setPaymentQuickFilter(filterParam);
+    }
+  }, [searchParams]);
+
+  useLayoutEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      mainContentRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, location.pathname, location.search]);
 
   // Realtime subscription for properties
   useEffect(() => {
@@ -202,12 +359,12 @@ export default function Dashboard() {
   // Sync selectedTenant with fresh data after tenants refetch
   useEffect(() => {
     if (selectedTenant && tenants && Array.isArray(tenants)) {
-      const freshTenant = tenants.find((t: any) => t.id === selectedTenant.id);
+      const freshTenant = tenants.find((t: TenantRecord) => t.id === selectedTenant.id);
       if (freshTenant && JSON.stringify(freshTenant) !== JSON.stringify(selectedTenant)) {
         setSelectedTenant(freshTenant);
       }
     }
-  }, [tenants, selectedTenant?.id]);
+  }, [tenants, selectedTenant]);
 
   // Realtime subscription for leases
   useEffect(() => {
@@ -258,33 +415,6 @@ export default function Dashboard() {
     };
   }, [user?.id, queryClient]);
 
-  // Calculate expiring leases for warnings (must be declared before any early returns)
-  const expiringLeases = useMemo(() => {
-    if (!leases) return { all: [], expired: [], critical: [], warning: [] };
-
-    const today = new Date();
-    const completedLeases = leases.filter((l: any) => l.status === 'completed');
-
-    const all = completedLeases.filter((l: any) => {
-      const daysUntilEnd = differenceInDays(new Date(l.end_date), today);
-      return daysUntilEnd <= 30;
-    });
-
-    const expired = all.filter((l: any) => differenceInDays(new Date(l.end_date), today) < 0);
-
-    const critical = all.filter((l: any) => {
-      const days = differenceInDays(new Date(l.end_date), today);
-      return days >= 0 && days <= 7;
-    });
-
-    const warning = all.filter((l: any) => {
-      const days = differenceInDays(new Date(l.end_date), today);
-      return days > 7 && days <= 30;
-    });
-
-    return { all, expired, critical, warning };
-  }, [leases]);
-
   // Safety timeout for loading state
   const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   useEffect(() => {
@@ -294,6 +424,77 @@ export default function Dashboard() {
     }
     setLoadingTimedOut(false);
   }, [loading, user, role]);
+
+  const propertySummary = useMemo(() => {
+    const list = properties || [];
+    return {
+      total: list.length,
+      occupied: list.filter((property) => property.status === 'occupied').length,
+      available: list.filter((property) => property.status === 'available').length,
+      rentRoll: list.reduce((sum, property) => sum + Number(property.rent_amount || 0), 0),
+    };
+  }, [properties]);
+
+  const visibleProperties = useMemo(() => {
+    const normalizedQuery = propertySearch.trim().toLowerCase();
+    return [...(properties || [])]
+      .filter((property) => propertyStatusFilter === 'all' || property.status === propertyStatusFilter)
+      .filter((property) => {
+        if (!normalizedQuery) return true;
+        return [property.address, property.city, property.state, property.zip_code, property.property_type]
+          .some((value) => String(value || '').toLowerCase().includes(normalizedQuery));
+      })
+      .sort((a, b) => {
+        if (propertySortMode === 'rent-high') return Number(b.rent_amount || 0) - Number(a.rent_amount || 0);
+        if (propertySortMode === 'rent-low') return Number(a.rent_amount || 0) - Number(b.rent_amount || 0);
+        if (propertySortMode === 'address') return a.address.localeCompare(b.address);
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+  }, [properties, propertySearch, propertySortMode, propertyStatusFilter]);
+
+  const handleNavigateTab = useCallback((tab: DashboardTab, options?: AdminNavigationOptions) => {
+    if (options?.paymentFilter) {
+      setPaymentQuickFilter(options.paymentFilter);
+    }
+    if (options?.tenantFilter) {
+      setTenantHealthFilter(options.tenantFilter);
+    }
+    setActiveTab(tab);
+    setSearchParams(tab === 'overview' ? {} : { tab });
+    setIsMobileMenuOpen(false);
+  }, [setSearchParams]);
+
+  const handleRefreshDashboardData = useCallback(async () => {
+    if (!user?.id || isMobileRefreshing) return;
+
+    setIsMobileRefreshing(true);
+    try {
+      await Promise.all([
+        ...getAdminRefreshQueryKeys(activeTab, user.id).map((queryKey) =>
+          queryClient.invalidateQueries({ queryKey })
+        ),
+        refetchPaymentNotifications(),
+      ]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to refresh dashboard data.';
+      toast.error(message);
+    } finally {
+      setIsMobileRefreshing(false);
+    }
+  }, [activeTab, isMobileRefreshing, queryClient, refetchPaymentNotifications, user?.id]);
+
+  const handleRecordPayment = useCallback(() => {
+    const tenantForPayment =
+      (tenants || []).find((tenant) => Number(tenant.current_balance || 0) > 0) ||
+      (tenants || [])[0];
+
+    if (tenantForPayment) {
+      navigate(`/dashboard/tenant/${tenantForPayment.id}?tab=balance`);
+      return;
+    }
+
+    setIsAddTenantOpen(true);
+  }, [navigate, tenants]);
 
   // Wait for both auth and role to be fully loaded before redirecting
 
@@ -329,6 +530,14 @@ export default function Dashboard() {
     pendingLeases: leases?.filter(l => l.status !== 'completed').length || 0,
   };
 
+  const managerDisplayName = managerProfile?.full_name || managerProfile?.email || user.email || 'Property Manager';
+  const managerEmail = managerProfile?.email || user.email || '';
+  const managerInitials = managerDisplayName
+    .split(/\s|@/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'SG';
 
   const handleAddProperty = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -423,7 +632,7 @@ export default function Dashboard() {
     await updateProperty.mutateAsync({ id, status });
   };
 
-  const navItems = [
+  const navItems: MobileAdminNavItem[] = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'properties', label: 'Properties', icon: Home },
     { id: 'applications', label: 'Applications', icon: ClipboardList, badge: stats.pendingApplications },
@@ -440,30 +649,33 @@ export default function Dashboard() {
   // Sidebar content component
   const SidebarContent = ({ onNavClick }: { onNavClick?: () => void }) => (
     <>
-      <Link to="/" className="flex items-center mb-8 w-full">
-        <img src={logo} alt="Sterling Gate Properties" className="h-16 md:h-24 w-auto object-contain" />
+      <Link
+        to="/"
+        className="mb-7 flex h-20 w-full items-center justify-center rounded-xl border border-sidebar-border/80 bg-black/20 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+      >
+        <img src={logo} alt="Sterling Gate Properties" className="h-16 w-auto scale-150 object-contain" />
       </Link>
       
-      <nav className="space-y-1 flex-1 overflow-hidden">
+      <nav className="flex-1 space-y-1.5 overflow-y-auto pr-1">
         {navItems.map((item) => (
           <button
             key={item.id}
             onClick={() => {
-              setActiveTab(item.id as DashboardTab);
+              handleNavigateTab(item.id as DashboardTab);
               onNavClick?.();
             }}
-            className={`w-full flex items-center justify-between px-4 py-3 rounded-lg transition-smooth text-left min-h-[48px] active:bg-sidebar-accent/70 overflow-hidden ${
+            className={`group flex min-h-[40px] w-full items-center justify-between overflow-hidden rounded-lg border px-3 py-2 text-left text-[13px] transition-all ${
               activeTab === item.id
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
+                ? 'ops-active-nav border-primary/45 text-primary'
+                : 'border-transparent text-sidebar-foreground/68 hover:border-sidebar-border/70 hover:bg-sidebar-accent/25 hover:text-sidebar-foreground'
             }`}
           >
-            <span className="flex items-center gap-3 min-w-0 truncate">
-              <item.icon className="h-5 w-5 shrink-0" />
-              <span className="truncate">{item.label}</span>
+            <span className="flex min-w-0 items-center gap-3 truncate">
+              <item.icon className="h-4 w-4 shrink-0" />
+              <span className="truncate font-medium">{item.label}</span>
             </span>
             {item.badge && item.badge > 0 && (
-              <Badge variant="secondary" className="bg-sidebar-primary text-sidebar-primary-foreground text-xs shrink-0 ml-2">
+              <Badge variant="secondary" className="ml-2 h-5 min-w-5 shrink-0 rounded-full border border-primary/25 bg-primary/15 px-1.5 text-[10px] text-primary">
                 {item.badge}
               </Badge>
             )}
@@ -471,25 +683,39 @@ export default function Dashboard() {
         ))}
       </nav>
 
-      <Separator className="my-4 bg-sidebar-border" />
-      
-      <Button 
-        variant="ghost" 
-        onClick={() => signOut()} 
-        className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 min-h-[48px]"
-      >
-        <LogOut className="mr-3 h-5 w-5" /> Sign Out
-      </Button>
+      <div className="mt-5 border-t border-sidebar-border/70 pt-4">
+        <div className="flex items-center gap-3 rounded-xl border border-sidebar-border/80 bg-black/20 p-2.5">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-primary/35 bg-primary/15 text-xs font-bold text-primary">
+            {managerInitials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-semibold text-sidebar-foreground">{managerDisplayName}</p>
+            <p className="truncate text-[10px] text-sidebar-foreground/55">{managerEmail || 'Property Manager'}</p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => signOut()}
+            className="h-8 w-8 shrink-0 rounded-lg text-sidebar-foreground/55 hover:bg-sidebar-accent/50 hover:text-primary"
+            aria-label="Sign out"
+          >
+            <LogOut className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
     </>
   );
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="flex w-full">
+    <div className="min-h-screen ops-shell p-0 md:p-3">
+      <div className="flex min-h-screen w-full gap-3 md:min-h-[calc(100vh-1.5rem)] md:rounded-2xl md:border md:border-border/70 md:bg-background/25 md:p-2 md:shadow-[0_30px_100px_-60px_rgba(0,0,0,0.95)]">
         {/* Mobile Sidebar Sheet */}
         {isMobile && (
           <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
-            <SheetContent side="left" className="w-72 p-4 bg-sidebar flex flex-col">
+            <SheetContent side="left" className="flex w-72 flex-col border-sidebar-border bg-sidebar p-3">
+              <SheetHeader className="sr-only">
+                <SheetTitle>Admin navigation</SheetTitle>
+              </SheetHeader>
               <SidebarContent onNavClick={() => setIsMobileMenuOpen(false)} />
             </SheetContent>
           </Sheet>
@@ -497,15 +723,15 @@ export default function Dashboard() {
 
         {/* Desktop Sidebar */}
         {!isMobile && (
-          <aside className="w-64 bg-sidebar min-h-screen p-2 flex flex-col flex-shrink-0">
+          <aside className="sticky top-5 flex h-[calc(100vh-2.5rem)] w-[190px] flex-shrink-0 flex-col rounded-xl border border-sidebar-border/85 bg-sidebar/95 p-2 shadow-[0_20px_60px_-42px_rgba(0,0,0,0.9)]">
             <SidebarContent />
           </aside>
         )}
 
         {/* Main Content */}
-        <main className="flex-1 overflow-auto min-w-0">
+        <main ref={mainContentRef} className="min-w-0 flex-1 overflow-auto overscroll-contain">
           {/* Top Header Bar */}
-          <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 md:px-8 py-3 md:py-4">
+          <div className="sticky top-0 z-10 border-b border-border/35 bg-background px-3 py-3 md:px-5">
             <div className="flex items-center justify-between gap-3">
               {/* Mobile hamburger */}
               {isMobile && (
@@ -518,232 +744,119 @@ export default function Dashboard() {
                   <Menu className="h-5 w-5" />
                 </Button>
               )}
-              <div className="flex-1 min-w-0">
-                <h2 className="text-base md:text-lg font-serif text-foreground truncate">
-                  {navItems.find(item => item.id === activeTab)?.label || 'Dashboard'}
-                </h2>
+              <div className="hidden min-w-[170px] lg:block" />
+              <div className="flex min-w-0 flex-1 justify-center">
+                <AdminGlobalSearch
+                  properties={properties || []}
+                  tenants={tenants || []}
+                  applications={applications || []}
+                  leases={leases || []}
+                  payments={allPayments}
+                  onNavigateTab={handleNavigateTab}
+                  onOpenTenant={(tenantId) => navigate(`/dashboard/tenant/${tenantId}`)}
+                />
               </div>
-              <div className="flex items-center gap-1 md:gap-2">
+              <div className="flex items-center gap-1.5 md:gap-2">
                 <OverdueRentAlert managerId={user?.id} />
+                <PwaInstallPrompt />
                 <NotificationBell />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="hidden h-10 w-10 rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary md:inline-flex"
+                  aria-label="Help"
+                >
+                  <HelpCircle className="h-5 w-5" />
+                </Button>
                 <SettingsDialog />
               </div>
             </div>
           </div>
 
-          <div className="p-4 md:p-8 overflow-hidden">
+          <MobilePullToRefresh
+            enabled={isMobile}
+            isRefreshing={isMobileRefreshing}
+            label={`Pull to refresh ${navItems.find((item) => item.id === activeTab)?.label || 'dashboard'}`}
+            onRefresh={handleRefreshDashboardData}
+            scrollContainerRef={mainContentRef}
+          >
+          <div className="relative z-20 overflow-visible p-3 pb-36 pt-4 md:p-5">
+          <PwaNotificationBanner className="mb-4" />
           {/* Overview Tab */}
           {activeTab === 'overview' && (
-            <div className="animate-fade-in">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8">
-                <div>
-                  <h1 className="text-2xl md:text-3xl font-serif">Dashboard</h1>
-                  <p className="text-muted-foreground text-sm md:text-base">Welcome back! Here's your property overview.</p>
-                </div>
-                <Button onClick={() => setIsAddPropertyOpen(true)} className="w-full sm:w-auto min-h-[44px]">
-                  <Plus className="mr-2 h-4 w-4" /> Add Property
-                </Button>
-              </div>
-
-              {/* Stats Grid */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-6 md:mb-8">
-                <Card className="hover:shadow-card transition-smooth">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-muted-foreground text-sm">Total Properties</p>
-                        <p className="text-4xl font-serif mt-1">{stats.totalProperties}</p>
-                      </div>
-                      <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
-                        <Home className="h-6 w-6 text-primary" />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 mt-3 text-sm">
-                      <Badge variant="secondary" className="bg-success/10 text-success">
-                        {stats.availableProperties} available
-                      </Badge>
-                      <Badge variant="secondary">
-                        {stats.occupiedProperties} occupied
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="hover:shadow-card transition-smooth">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-muted-foreground text-sm">Active Tenants</p>
-                        <p className="text-4xl font-serif mt-1">{stats.activeTenants}</p>
-                      </div>
-                      <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
-                        <Users className="h-6 w-6 text-accent" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="hover:shadow-card transition-smooth">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-muted-foreground text-sm">Pending Applications</p>
-                        <p className="text-4xl font-serif mt-1">{stats.pendingApplications}</p>
-                      </div>
-                      <div className="w-12 h-12 bg-warning/10 rounded-xl flex items-center justify-center">
-                        <ClipboardList className="h-6 w-6 text-warning" />
-                      </div>
-                    </div>
-                    {stats.pendingApplications > 0 && (
-                      <Button 
-                        variant="link" 
-                        className="p-0 h-auto mt-2 text-sm"
-                        onClick={() => setActiveTab('applications')}
-                      >
-                        Review applications →
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="hover:shadow-card transition-smooth">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-muted-foreground text-sm">Pending Leases</p>
-                        <p className="text-4xl font-serif mt-1">{stats.pendingLeases}</p>
-                      </div>
-                      <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
-                        <FileText className="h-6 w-6 text-primary" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Lease Expiration Warnings */}
-              {expiringLeases.all.length > 0 && (
-                <Card className="border-warning/50 bg-warning/5 mb-6">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="font-serif text-lg flex items-center gap-2">
-                      <Clock className="h-5 w-5 text-warning" />
-                      Lease Attention Required
-                    </CardTitle>
-                    <CardDescription>
-                      {expiringLeases.expired.length > 0 && `${expiringLeases.expired.length} expired · `}
-                      {expiringLeases.critical.length > 0 && `${expiringLeases.critical.length} expiring within 7 days · `}
-                      {expiringLeases.warning.length > 0 && `${expiringLeases.warning.length} expiring within 30 days`}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      {expiringLeases.all.slice(0, 5).map((lease: any) => {
-                        const daysUntilEnd = differenceInDays(new Date(lease.end_date), new Date());
-                        const isExpired = daysUntilEnd < 0;
-                        const isCritical = daysUntilEnd >= 0 && daysUntilEnd <= 7;
-                        
-                        return (
-                          <div 
-                            key={lease.id} 
-                            className="flex items-center justify-between p-3 bg-background rounded-lg border cursor-pointer hover:border-primary/50 transition-colors"
-                            onClick={() => navigate(`/sign-lease/${lease.id}`)}
-                          >
-                            <div>
-                              <p className="font-medium">{lease.properties?.address}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {lease.tenant?.full_name || lease.tenant?.email} · Ends {new Date(lease.end_date).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <Badge 
-                              variant="outline" 
-                              className={
-                                isExpired ? 'bg-destructive/10 text-destructive border-destructive' :
-                                isCritical ? 'bg-destructive/10 text-destructive border-destructive' :
-                                'bg-warning/10 text-warning border-warning'
-                              }
-                            >
-                              {isExpired ? 'Expired' : `${daysUntilEnd} days left`}
-                            </Badge>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {expiringLeases.all.length > 5 && (
-                      <Button variant="link" className="mt-2 p-0 h-auto" onClick={() => setActiveTab('leases')}>
-                        View all {expiringLeases.all.length} leases →
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Quick Actions */}
-              <div className="grid md:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="font-serif">Recent Applications</CardTitle>
-                    <CardDescription>Review and respond to new applications</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    {applications && applications.filter(a => a.status === 'pending').length > 0 ? (
-                      <div className="space-y-3">
-                        {applications.filter(a => a.status === 'pending').slice(0, 3).map((app: any) => (
-                          <div key={app.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                            <div>
-                              <p className="font-medium">{app.profiles?.full_name || 'Applicant'}</p>
-                              <p className="text-sm text-muted-foreground">{app.properties?.address}</p>
-                            </div>
-                            <Badge variant="outline" className="text-warning border-warning">
-                              <Clock className="h-3 w-3 mr-1" /> Pending
-                            </Badge>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-muted-foreground text-center py-8">No pending applications</p>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="font-serif">Quick Actions</CardTitle>
-                    <CardDescription>Common tasks at your fingertips</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <Button className="w-full justify-start" variant="outline" onClick={() => setIsAddPropertyOpen(true)}>
-                      <Plus className="mr-2 h-4 w-4" /> Add New Property
-                    </Button>
-                    <Button className="w-full justify-start" variant="outline" onClick={() => setActiveTab('applications')}>
-                      <ClipboardList className="mr-2 h-4 w-4" /> Review Applications
-                    </Button>
-                    <Button className="w-full justify-start" variant="outline" onClick={() => setActiveTab('messages')}>
-                      <MessageSquare className="mr-2 h-4 w-4" /> View Messages
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
+            <AdminCommandCenter
+              managerId={user.id}
+              managerName={managerDisplayName}
+              properties={properties || []}
+              applications={applications || []}
+              tenants={tenants || []}
+              leases={leases || []}
+              payments={allPayments}
+              unreadMessages={unreadCount || 0}
+              unreadInquiries={unreadInquiriesCount || 0}
+              paymentNotifications={unreadPaymentCount || 0}
+              onNavigateTab={handleNavigateTab}
+              onAddProperty={() => setIsAddPropertyOpen(true)}
+              onAddTenant={() => setIsAddTenantOpen(true)}
+              onCreateLease={() => setIsCreateLeaseOpen(true)}
+              onOpenTenant={(tenantId) => navigate(`/dashboard/tenant/${tenantId}`)}
+            />
           )}
 
           {/* Properties Tab */}
           {activeTab === 'properties' && (
-            <div className="animate-fade-in">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8">
-                <div>
-                  <h1 className="text-2xl md:text-3xl font-serif">Properties</h1>
-                  <p className="text-muted-foreground text-sm md:text-base">Manage your rental properties</p>
+            <div className="space-y-4 animate-fade-in">
+              <PageHeader
+                title="Properties"
+                subtitle="Manage rental properties, units, occupancy, and portfolio performance."
+                actions={<AdminButton onClick={() => setIsAddPropertyOpen(true)}>Add Property</AdminButton>}
+              />
+
+              <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                <StatCard label="Total properties" value={propertySummary.total} detail="Portfolio records" tone="gold" />
+                <StatCard label="Occupied units" value={propertySummary.occupied} detail={`${propertySummary.total ? Math.round((propertySummary.occupied / propertySummary.total) * 100) : 0}% occupied`} tone="success" />
+                <StatCard label="Available units" value={propertySummary.available} detail="Ready or needs leasing" tone="warning" />
+                <StatCard label="Monthly rent roll" value={formatAdminCurrency(propertySummary.rentRoll)} detail="Configured monthly rent" tone="teal" />
+              </section>
+
+              <section className="ops-panel p-3">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                  <FilterTabs<PropertyStatusFilter>
+                    value={propertyStatusFilter}
+                    onChange={setPropertyStatusFilter}
+                    items={[
+                      { id: 'all', label: 'All', count: propertySummary.total },
+                      { id: 'occupied', label: 'Occupied', count: propertySummary.occupied },
+                      { id: 'available', label: 'Available', count: propertySummary.available },
+                      { id: 'off_market', label: 'Setup Needed', count: (properties || []).filter((property) => property.status === 'off_market').length },
+                    ]}
+                  />
+                  <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                    <Input
+                      value={propertySearch}
+                      onChange={(event) => setPropertySearch(event.target.value)}
+                      placeholder="Search properties..."
+                      className="h-9 w-full rounded-md border-border/70 bg-card text-xs sm:min-w-[260px]"
+                    />
+                    <select
+                      value={propertySortMode}
+                      onChange={(event) => setPropertySortMode(event.target.value as PropertySortMode)}
+                      className="h-9 w-full rounded-md border border-border/70 bg-card px-3 text-xs text-muted-foreground outline-none sm:w-auto"
+                    >
+                      <option value="newest">Sort: Newest</option>
+                      <option value="address">Sort: Address</option>
+                      <option value="rent-high">Sort: Rent high</option>
+                      <option value="rent-low">Sort: Rent low</option>
+                    </select>
+                  </div>
                 </div>
-                <Button onClick={() => setIsAddPropertyOpen(true)} className="w-full sm:w-auto min-h-[44px]">
-                  <Plus className="mr-2 h-4 w-4" /> Add Property
-                </Button>
-              </div>
+              </section>
 
               {propertiesLoading ? (
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
                   {[1, 2, 3].map((i) => (
                     <Card key={i} className="animate-pulse">
-                      <div className="h-40 bg-muted" />
+                      <div className="h-32 bg-muted" />
                       <CardContent className="p-4">
                         <div className="h-5 bg-muted rounded w-1/2 mb-2" />
                         <div className="h-4 bg-muted rounded w-3/4" />
@@ -751,9 +864,9 @@ export default function Dashboard() {
                     </Card>
                   ))}
                 </div>
-              ) : properties && properties.length > 0 ? (
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {properties.map((property) => (
+              ) : properties && properties.length > 0 && visibleProperties.length > 0 ? (
+                <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                  {visibleProperties.map((property) => (
                     <PropertyCard
                       key={property.id}
                       property={property}
@@ -763,26 +876,36 @@ export default function Dashboard() {
                     />
                   ))}
                 </div>
+              ) : properties && properties.length > 0 ? (
+                <EmptyState
+                  title="No properties match this view"
+                  description="Adjust the search or filter tabs to bring properties back into view."
+                />
               ) : (
-                <Card className="p-12 text-center border-dashed">
-                  <Home className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                  <h3 className="text-xl font-serif mb-2">No Properties Yet</h3>
-                  <p className="text-muted-foreground mb-6">Add your first property to get started</p>
-                  <Button onClick={() => setIsAddPropertyOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" /> Add Property
-                  </Button>
-                </Card>
+                <EmptyState
+                  title="No properties yet"
+                  description="Add the first property to start building the portfolio operations view."
+                  action={<AdminButton onClick={() => setIsAddPropertyOpen(true)}>Add Property</AdminButton>}
+                />
               )}
             </div>
           )}
 
           {/* Applications Tab */}
           {activeTab === 'applications' && (
-            <div className="animate-fade-in">
-              <div className="mb-8">
-                <h1 className="text-3xl font-serif">Applications</h1>
-                <p className="text-muted-foreground">Review and manage rental applications</p>
-              </div>
+            <div className="space-y-4 animate-fade-in">
+              <PageHeader
+                title="Applications"
+                subtitle="Review applicant status, missing information, and leasing decisions."
+                actions={<AdminButton onClick={() => handleNavigateTab('applications')}>Review Queue</AdminButton>}
+              />
+
+              <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                <StatCard label="Pending review" value={applications?.filter((app) => ['pending', 'under_review'].includes(app.status)).length || 0} detail="Needs manager attention" tone="warning" />
+                <StatCard label="Approved" value={applications?.filter((app) => app.status === 'approved').length || 0} detail="Ready for leasing" tone="success" />
+                <StatCard label="Denied" value={applications?.filter((app) => app.status === 'rejected').length || 0} detail="Closed applications" tone="danger" />
+                <StatCard label="Total applications" value={applications?.length || 0} detail="All-time application records" tone="gold" />
+              </section>
 
               {applicationsLoading ? (
                 <div className="space-y-4">
@@ -803,10 +926,10 @@ export default function Dashboard() {
                 </Card>
               ) : applications && applications.length > 0 ? (
                 <div className="space-y-4">
-                  {applications.map((app: any) => (
+                  {applications.map((app: ApplicationRecord) => (
                     <Card 
                       key={app.id} 
-                      className="p-6 cursor-pointer hover:border-primary/50 transition-colors"
+                      className="cursor-pointer p-4 transition-colors hover:border-primary/35"
                       onClick={() => {
                         setSelectedApplication(app);
                         setIsApplicationDetailsOpen(true);
@@ -815,31 +938,27 @@ export default function Dashboard() {
                       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-2 mb-2">
-                            <h3 className="font-serif text-lg sm:text-xl">{app.profiles?.full_name || 'Applicant'}</h3>
+                            <h3 className="text-base font-semibold">{app.profiles?.full_name || 'Applicant'}</h3>
                             <Badge 
                               variant="outline"
                               className={
-                                app.status === 'approved' ? 'border-success text-success' :
-                                app.status === 'rejected' ? 'border-destructive text-destructive' :
-                                'border-warning text-warning'
+                                app.status === 'approved' ? 'border-success/30 bg-success/10 text-success' :
+                                app.status === 'rejected' ? 'border-destructive/30 bg-destructive/10 text-destructive' :
+                                'border-warning/30 bg-warning/10 text-warning'
                               }
                             >
-                              {app.status === 'approved' && <CheckCircle2 className="h-3 w-3 mr-1" />}
-                              {app.status === 'rejected' && <XCircle className="h-3 w-3 mr-1" />}
-                              {app.status === 'pending' && <Clock className="h-3 w-3 mr-1" />}
                               {app.status}
                             </Badge>
                           </div>
                           <p className="text-muted-foreground mb-1 text-sm truncate">
-                            <MapPin className="h-4 w-4 inline mr-1" />
                             {app.properties?.address}, {app.properties?.city}
                           </p>
                           <p className="text-sm text-muted-foreground">
                             Applied: {new Date(app.created_at).toLocaleDateString()}
                           </p>
                           {app.background_check_consent && (
-                            <Badge variant="secondary" className="mt-2">
-                              <CheckCircle2 className="h-3 w-3 mr-1" /> Background check consent given
+                          <Badge variant="secondary" className="mt-2">
+                              Background check consent given
                             </Badge>
                           )}
                         </div>
@@ -851,14 +970,14 @@ export default function Dashboard() {
                               className="flex-1 sm:flex-initial"
                               onClick={() => handleRejectApplication(app.id, 'Application did not meet requirements')}
                             >
-                              <XCircle className="h-4 w-4 mr-1" /> Reject
+                              Reject
                             </Button>
                             <Button 
                               size="sm"
-                              className="flex-1 sm:flex-initial"
+                              className="flex-1 border border-primary/35 bg-primary/15 text-primary hover:bg-primary/25 sm:flex-initial"
                               onClick={() => handleApproveApplication(app.id)}
                             >
-                              <CheckCircle2 className="h-4 w-4 mr-1" /> Approve
+                              Approve
                             </Button>
                           </div>
                         )}
@@ -867,11 +986,7 @@ export default function Dashboard() {
                   ))}
                 </div>
               ) : (
-                <Card className="p-12 text-center border-dashed">
-                  <ClipboardList className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                  <h3 className="text-xl font-serif mb-2">No Applications</h3>
-                  <p className="text-muted-foreground">Applications will appear here when tenants apply to your properties</p>
-                </Card>
+                <EmptyState title="No applications" description="Applications will appear here when tenants apply to your properties." />
               )}
             </div>
           )}
@@ -879,16 +994,6 @@ export default function Dashboard() {
           {/* Tenants Tab */}
           {activeTab === 'tenants' && (
             <div className="animate-fade-in">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8">
-                <div>
-                  <h1 className="text-2xl md:text-3xl font-serif">Tenants</h1>
-                  <p className="text-muted-foreground text-sm md:text-base">Manage your current tenants</p>
-                </div>
-                <Button onClick={() => setIsAddTenantOpen(true)} className="w-full sm:w-auto min-h-[44px]">
-                  <Plus className="mr-2 h-4 w-4" /> Add Tenant
-                </Button>
-              </div>
-
               {tenantsLoading ? (
                 <Card>
                   <div className="p-4 space-y-3">
@@ -900,33 +1005,37 @@ export default function Dashboard() {
               ) : tenants && tenants.length > 0 ? (
                 <TenantsTable 
                   tenants={tenants} 
+                  payments={allPayments}
+                  healthFilter={tenantHealthFilter}
+                  onHealthFilterChange={setTenantHealthFilter}
                   onNavigate={(tenantId) => navigate(`/dashboard/tenant/${tenantId}`)} 
+                  onAddTenant={() => setIsAddTenantOpen(true)}
                 />
               ) : (
-                <Card className="p-12 text-center border-dashed">
-                  <Users className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                  <h3 className="text-xl font-serif mb-2">No Tenants Yet</h3>
-                  <p className="text-muted-foreground mb-6">Add your first tenant or approve applicants to get started</p>
-                  <Button onClick={() => setIsAddTenantOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" /> Add Tenant
-                  </Button>
-                </Card>
+                <EmptyState
+                  title="No tenants yet"
+                  description="Add your first tenant or approve applicants to start managing the rent ledger."
+                  action={<AdminButton onClick={() => setIsAddTenantOpen(true)}>Add Tenant</AdminButton>}
+                />
               )}
             </div>
           )}
 
           {/* Leases Tab */}
           {activeTab === 'leases' && (
-            <div className="animate-fade-in">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 md:mb-8">
-                <div>
-                  <h1 className="text-2xl md:text-3xl font-serif">Leases</h1>
-                  <p className="text-muted-foreground text-sm md:text-base">Manage and track lease agreements</p>
-                </div>
-                <Button onClick={() => setIsCreateLeaseOpen(true)} className="btn-platinum w-full sm:w-auto min-h-[44px]">
-                  <Plus className="h-4 w-4 mr-2" /> Create Lease
-                </Button>
-              </div>
+            <div className="space-y-4 animate-fade-in">
+              <PageHeader
+                title="Leases"
+                subtitle="Track active terms, renewal windows, pending signatures, and rent obligations."
+                actions={<AdminButton onClick={() => setIsCreateLeaseOpen(true)}>Create Lease</AdminButton>}
+              />
+
+              <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                <StatCard label="Active leases" value={leases?.filter((lease) => lease.status === 'completed').length || 0} detail="Fully signed lease records" tone="success" />
+                <StatCard label="Expiring soon" value={leases?.filter((lease) => lease.status === 'completed' && differenceInDays(new Date(lease.end_date), new Date()) <= 60).length || 0} detail="Next 60 days" tone="warning" />
+                <StatCard label="Pending signatures" value={leases?.filter((lease) => lease.status.includes('pending')).length || 0} detail="Tenant or manager action" tone="gold" />
+                <StatCard label="Monthly rent" value={formatAdminCurrency((leases || []).filter((lease) => lease.status === 'completed').reduce((sum, lease) => sum + Number(lease.monthly_rent || 0), 0))} detail="Active lease rent roll" tone="teal" />
+              </section>
 
               {leasesLoading ? (
                 <div className="space-y-4">
@@ -937,8 +1046,22 @@ export default function Dashboard() {
                   ))}
                 </div>
               ) : leases && leases.length > 0 ? (
-                <div className="space-y-4">
-                  {leases.map((lease: any) => {
+                <div className="ops-panel overflow-hidden">
+                  <div className="mobile-scroll-x overflow-x-auto">
+                    <Table className="min-w-[980px]">
+                      <TableHeader>
+                        <TableRow className="border-border/60 bg-muted/15 hover:bg-muted/15">
+                          <TableHead>Tenant</TableHead>
+                          <TableHead>Property</TableHead>
+                          <TableHead>Term</TableHead>
+                          <TableHead>Rent</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Renewal Window</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                  {leases.map((lease: LeaseRecord) => {
                     // Status badge configuration
                     const statusConfig = {
                       draft: { 
@@ -963,6 +1086,15 @@ export default function Dashboard() {
                       },
                     };
                     const config = statusConfig[lease.status as keyof typeof statusConfig] || statusConfig.draft;
+                    const daysUntilEnd = differenceInDays(new Date(lease.end_date), new Date());
+                    const statusTone =
+                      lease.status === 'completed'
+                        ? 'success'
+                        : lease.status.includes('pending')
+                          ? 'warning'
+                          : lease.status === 'expired'
+                            ? 'danger'
+                            : 'neutral';
 
                     const navigateToLease = () => {
                       // Keep existing behavior: clicking the card opens the sign/view page
@@ -970,189 +1102,162 @@ export default function Dashboard() {
                     };
 
                     return (
-                      <div key={lease.id} className="block">
-                        <Card
-                          role="button"
-                          tabIndex={0}
-                          onClick={navigateToLease}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              navigateToLease();
-                            }
-                          }}
-                          className="p-6 hover:shadow-card transition-smooth cursor-pointer hover:border-primary/30"
-                        >
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                            <div className="min-w-0 flex-1">
-                              <h3 className="font-serif text-lg sm:text-xl mb-1 truncate">{lease.properties?.address}</h3>
-                              <p className="text-muted-foreground text-sm truncate">Tenant: {lease.tenant?.full_name || lease.tenant?.email}</p>
-                              <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-2 text-sm text-muted-foreground">
-                                <span>{new Date(lease.start_date).toLocaleDateString()} - {new Date(lease.end_date).toLocaleDateString()}</span>
-                                <span>${Number(lease.monthly_rent).toLocaleString()}/mo</span>
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                              <Badge 
-                                variant="outline"
-                                className={config.className}
-                              >
-                                {config.label}
-                              </Badge>
-                              
-                              {lease.status === 'completed' && (() => {
-                                const daysUntilEnd = differenceInDays(new Date(lease.end_date), new Date());
-                                if (daysUntilEnd < 0) {
-                                  return (
-                                    <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive">
-                                      Expired
-                                    </Badge>
-                                  );
-                                } else if (daysUntilEnd <= 7) {
-                                  return (
-                                    <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive">
-                                      {daysUntilEnd} days left
-                                    </Badge>
-                                  );
-                                } else if (daysUntilEnd <= 30) {
-                                  return (
-                                    <Badge variant="outline" className="bg-warning/10 text-warning border-warning">
-                                      {daysUntilEnd} days left
-                                    </Badge>
-                                  );
-                                }
-                                return null;
-                              })()}
-                              
-                              {lease.status === 'pending_tenant_signature' && (
-                                <Link to={`/sign-lease/${lease.id}`}>
-                                  <Button size="sm" variant="outline">
-                                    <Eye className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">View</span>
-                                  </Button>
-                                </Link>
-                              )}
-                              
-                              {lease.status === 'pending_manager_signature' && (
-                                <Link to={`/sign-lease/${lease.id}`}>
-                                  <Button size="sm" className="btn-platinum">
-                                    <PenTool className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Sign Now</span>
-                                  </Button>
-                                </Link>
-                              )}
-                              
-                              {lease.status === 'completed' && (
-                                <>
-                                  <Link to={`/sign-lease/${lease.id}`}>
-                                    <Button size="sm" variant="outline">
-                                      <Eye className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">View</span>
-                                    </Button>
-                                  </Link>
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedLeaseForCert(lease);
-                                    }}
-                                  >
-                                    <Shield className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Certificate</span>
-                                  </Button>
-                                </>
-                              )}
-
+                      <TableRow key={lease.id} className="cursor-pointer border-border/45 hover:bg-muted/20" onClick={navigateToLease}>
+                        <TableCell>
+                          <div className="font-medium">{lease.tenant?.full_name || lease.tenant?.email || 'Unassigned'}</div>
+                          <div className="text-xs text-muted-foreground">{lease.tenant?.email}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="max-w-[260px] truncate">{lease.properties?.address || 'No property'}</div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {new Date(lease.start_date).toLocaleDateString()} - {new Date(lease.end_date).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell className="font-medium">{formatAdminCurrency(Number(lease.monthly_rent || 0))}/mo</TableCell>
+                        <TableCell>
+                          <AdminStatusBadge tone={statusTone as 'success' | 'warning' | 'danger' | 'neutral'}>{config.label}</AdminStatusBadge>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {lease.status === 'completed'
+                            ? daysUntilEnd < 0
+                              ? 'Expired'
+                              : daysUntilEnd <= 60
+                                ? `${daysUntilEnd} days left`
+                                : 'Not in window'
+                            : 'Signature pending'}
+                        </TableCell>
+                        <TableCell onClick={(event) => event.stopPropagation()}>
+                          <div className="flex justify-end gap-2">
+                            <Link to={`/sign-lease/${lease.id}`}>
+                              <Button size="sm" variant="outline" className="h-8 border-border/70 bg-card text-xs">View</Button>
+                            </Link>
+                            {lease.status === 'completed' && (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSelectedLeaseForEdit(lease);
-                                  setIsEditLeaseOpen(true);
-                                }}
+                                className="h-8 border-border/70 bg-card text-xs"
+                                onClick={() => setSelectedLeaseForCert(lease)}
                               >
-                                <Edit className="h-4 w-4" />
+                                Certificate
                               </Button>
-
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline" 
-                                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 border-border/70 bg-card text-xs"
+                              onClick={() => {
+                                setSelectedLeaseForEdit(lease);
+                                setIsEditLeaseOpen(true);
+                              }}
+                            >
+                              Edit
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button size="sm" variant="outline" className="h-8 border-border/70 bg-card text-xs text-muted-foreground hover:text-destructive">
+                                  Delete
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Lease</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete the lease for <strong>{lease.properties?.address}</strong>? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      deleteLease.mutate(lease.id);
+                                    }}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                   >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent onClick={(e) => e.stopPropagation()}>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Delete Lease</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      Are you sure you want to delete the lease for{' '}
-                                      <strong>{lease.properties?.address}</strong>?
-                                      <br /><br />
-                                      This action cannot be undone.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        deleteLease.mutate(lease.id);
-                                      }}
-                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                    >
-                                      Delete Lease
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            </div>
+                                    Delete Lease
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
-                        </Card>
-                      </div>
+                        </TableCell>
+                      </TableRow>
                     );
                   })}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
               ) : (
-                <Card className="p-12 text-center border-dashed">
-                  <FileText className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
-                  <h3 className="text-xl font-serif mb-2">No Leases</h3>
-                  <p className="text-muted-foreground mb-4">Create your first lease for an approved applicant</p>
-                  <Button onClick={() => setIsCreateLeaseOpen(true)}>
-                    <Plus className="h-4 w-4 mr-2" /> Create Lease
-                  </Button>
-                </Card>
+                <EmptyState
+                  title="No leases"
+                  description="Create the first lease for an approved applicant."
+                  action={<AdminButton onClick={() => setIsCreateLeaseOpen(true)}>Create Lease</AdminButton>}
+                />
               )}
             </div>
           )}
 
           {/* Messages Tab */}
           {activeTab === 'messages' && (
-            <div className="animate-fade-in">
-              <div className="mb-8">
-                <h1 className="text-3xl font-serif">Messages</h1>
-                <p className="text-muted-foreground">Communicate with your tenants</p>
-              </div>
+            <div className="space-y-4 animate-fade-in">
+              <PageHeader title="Messages" subtitle="Communicate with tenants and keep operational context in one place." />
 
-              <MessagingCenter />
+              <Suspense fallback={<DashboardTabFallback label="messages" />}>
+                <MessagingCenter />
+              </Suspense>
             </div>
           )}
 
           {/* Analytics Tab */}
-          {activeTab === 'analytics' && <AnalyticsDashboard />}
+          {activeTab === 'analytics' && (
+            <Suspense fallback={<DashboardTabFallback label="analytics" />}>
+              <AnalyticsDashboard />
+            </Suspense>
+          )}
 
           {/* Inquiries Tab */}
-          {activeTab === 'inquiries' && <InquiriesTab managerId={user.id} />}
+          {activeTab === 'inquiries' && (
+            <Suspense fallback={<DashboardTabFallback label="inquiries" />}>
+              <InquiriesTab managerId={user.id} />
+            </Suspense>
+          )}
 
           {/* Audit Tab */}
-          {activeTab === 'audit' && <AuditDashboard />}
+          {activeTab === 'audit' && (
+            <Suspense fallback={<DashboardTabFallback label="payments" />}>
+              <AuditDashboard
+                quickFilter={paymentQuickFilter}
+                onQuickFilterChange={setPaymentQuickFilter}
+              />
+            </Suspense>
+          )}
 
           {/* Maintenance Tab */}
-          {activeTab === 'maintenance' && <MaintenanceDashboard />}
+          {activeTab === 'maintenance' && (
+            <Suspense fallback={<DashboardTabFallback label="maintenance" />}>
+              <MaintenanceDashboard />
+            </Suspense>
+          )}
           </div>
+          </MobilePullToRefresh>
         </main>
       </div>
+
+      {isMobile && (
+        <MobileAdminNavigation
+          activeTab={activeTab}
+          isRefreshing={isMobileRefreshing}
+          navItems={navItems}
+          onAddProperty={() => setIsAddPropertyOpen(true)}
+          onAddTenant={() => setIsAddTenantOpen(true)}
+          onCreateLease={() => setIsCreateLeaseOpen(true)}
+          onNavigateTab={handleNavigateTab}
+          onRecordPayment={handleRecordPayment}
+          onRefresh={handleRefreshDashboardData}
+        />
+      )}
 
       {/* Add Property Dialog */}
       <Dialog open={isAddPropertyOpen} onOpenChange={setIsAddPropertyOpen}>
@@ -1274,7 +1379,7 @@ export default function Dashboard() {
       <AddTenantDialog
         open={isAddTenantOpen}
         onOpenChange={setIsAddTenantOpen}
-        existingTenantUserIds={tenants?.map((t: any) => t.user_id) || []}
+        existingTenantUserIds={tenants?.map((tenant: TenantRecord) => tenant.user_id) || []}
         managerId={user.id}
       />
 

@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+
+type SupabaseAdminClient = ReturnType<typeof createClient>;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,13 +14,268 @@ const logStep = (step: string, details?: unknown) => {
   console.log(`[STRIPE-WEBHOOK] ${step}${detailsStr}`);
 };
 
+type PaymentNotificationType =
+  | "payment_received"
+  | "payment_processing"
+  | "payment_failed"
+  | "payment_incomplete"
+  | "payment_late";
+
+function getPaymentNotificationType(stripeStatus: string): PaymentNotificationType {
+  const normalized = String(stripeStatus || "").toLowerCase();
+
+  if (normalized === "succeeded" || normalized === "completed") return "payment_received";
+  if (normalized === "processing" || normalized === "pending") return "payment_processing";
+  if (
+    normalized === "requires_payment_method" ||
+    normalized === "requires_action" ||
+    normalized === "requires_confirmation" ||
+    normalized === "incomplete" ||
+    normalized === "canceled" ||
+    normalized === "cancelled"
+  ) {
+    return "payment_incomplete";
+  }
+
+  return "payment_failed";
+}
+
+async function insertNotificationOnce(
+  supabaseAdmin: SupabaseAdminClient,
+  input: {
+    userId: string | null | undefined;
+    type: PaymentNotificationType;
+    title: string;
+    message: string;
+    metadata: Record<string, unknown>;
+    paymentId?: string;
+    tenantPaymentStatus?: string;
+    dedupeKey?: string;
+  }
+) {
+  if (!input.userId) return false;
+
+  let query = supabaseAdmin
+    .from("notifications")
+    .select("id")
+    .eq("user_id", input.userId)
+    .eq("type", input.type)
+    .limit(1);
+
+  if (input.paymentId) {
+    query = query.eq("metadata->>payment_id", input.paymentId);
+  }
+
+  if (input.tenantPaymentStatus) {
+    query = query.eq("metadata->>tenant_payment_status", input.tenantPaymentStatus);
+  }
+
+  if (input.dedupeKey) {
+    query = query.eq("metadata->>dedupe_key", input.dedupeKey);
+  }
+
+  const { data: existingNotification } = await query.maybeSingle();
+  if (existingNotification?.id) return false;
+
+  const { error } = await supabaseAdmin.from("notifications").insert({
+    user_id: input.userId,
+    type: input.type,
+    title: input.title,
+    message: input.message,
+    metadata: input.metadata,
+  });
+
+  if (error) {
+    logStep("Notification insert failed", {
+      userId: input.userId,
+      type: input.type,
+      paymentId: input.paymentId,
+      error: error.message,
+    });
+    return false;
+  }
+
+  return true;
+}
+
+function extractStripeReferences(event: Stripe.Event) {
+  const object = event.data.object as {
+    id?: string;
+    object?: string;
+    payment_intent?: string | { id?: string } | null;
+  };
+
+  if (object.object === "checkout.session") {
+    return {
+      checkoutSessionId: object.id || null,
+      paymentIntentId: typeof object.payment_intent === "string"
+        ? object.payment_intent
+        : object.payment_intent?.id || null,
+    };
+  }
+
+  if (object.object === "payment_intent") {
+    return {
+      checkoutSessionId: null,
+      paymentIntentId: object.id || null,
+    };
+  }
+
+  return { checkoutSessionId: null, paymentIntentId: null };
+}
+
+async function findPaymentIdForStripeReference(
+  supabaseAdmin: SupabaseAdminClient,
+  paymentIntentId: string | null,
+  checkoutSessionId: string | null
+) {
+  if (!paymentIntentId && !checkoutSessionId) return null;
+
+  const filters = [
+    paymentIntentId ? `stripe_payment_intent_id.eq.${paymentIntentId}` : null,
+    checkoutSessionId ? `stripe_session_id.eq.${checkoutSessionId}` : null,
+  ].filter(Boolean).join(",");
+
+  const { data } = await supabaseAdmin
+    .from("payments")
+    .select("id")
+    .or(filters)
+    .limit(1)
+    .maybeSingle();
+
+  return data?.id || null;
+}
+
+async function recordWebhookReceived(
+  supabaseAdmin: SupabaseAdminClient,
+  event: Stripe.Event
+) {
+  const { paymentIntentId, checkoutSessionId } = extractStripeReferences(event);
+
+  const { data: existing } = await supabaseAdmin
+    .from("stripe_webhook_events")
+    .select("id, retry_count")
+    .eq("stripe_event_id", event.id)
+    .maybeSingle();
+
+  if (existing?.id) {
+    const { error } = await supabaseAdmin
+      .from("stripe_webhook_events")
+      .update({
+        event_type: event.type,
+        livemode: event.livemode,
+        api_version: event.api_version || null,
+        status: "received",
+        payment_intent_id: paymentIntentId,
+        checkout_session_id: checkoutSessionId,
+        retry_count: Number(existing.retry_count || 0) + 1,
+        last_received_at: new Date().toISOString(),
+        error_message: null,
+      })
+      .eq("id", existing.id);
+
+    if (error) {
+      logStep("Failed to update webhook health row", { error: error.message, eventId: event.id });
+    }
+
+    return existing.id as string;
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("stripe_webhook_events")
+    .insert({
+      stripe_event_id: event.id,
+      event_type: event.type,
+      livemode: event.livemode,
+      api_version: event.api_version || null,
+      status: "received",
+      payment_intent_id: paymentIntentId,
+      checkout_session_id: checkoutSessionId,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    logStep("Failed to insert webhook health row", { error: error.message, eventId: event.id });
+    return null;
+  }
+
+  return data.id as string;
+}
+
+async function markWebhookResult(
+  supabaseAdmin: SupabaseAdminClient,
+  webhookLogId: string | null,
+  event: Stripe.Event,
+  status: "processed" | "ignored"
+) {
+  if (!webhookLogId) return;
+
+  const { paymentIntentId, checkoutSessionId } = extractStripeReferences(event);
+  const paymentId = await findPaymentIdForStripeReference(supabaseAdmin, paymentIntentId, checkoutSessionId);
+
+  const { error } = await supabaseAdmin
+    .from("stripe_webhook_events")
+    .update({
+      status,
+      payment_id: paymentId,
+      processed_at: new Date().toISOString(),
+      error_message: null,
+    })
+    .eq("id", webhookLogId);
+
+  if (error) {
+    logStep("Failed to mark webhook result", { error: error.message, webhookLogId, status });
+  }
+}
+
+async function markWebhookFailed(
+  supabaseAdmin: SupabaseAdminClient,
+  webhookLogId: string | null,
+  error: unknown
+) {
+  if (!webhookLogId) return;
+
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  const { error: updateError } = await supabaseAdmin
+    .from("stripe_webhook_events")
+    .update({
+      status: "failed",
+      error_message: errorMessage,
+      processed_at: new Date().toISOString(),
+    })
+    .eq("id", webhookLogId);
+
+  if (updateError) {
+    logStep("Failed to mark webhook failed", { error: updateError.message, webhookLogId });
+  }
+}
+
+async function recordInvalidWebhookDelivery(
+  supabaseAdmin: SupabaseAdminClient,
+  message: string,
+  bodyLength: number
+) {
+  const { error } = await supabaseAdmin
+    .from("stripe_webhook_events")
+    .insert({
+      event_type: "signature_verification_failed",
+      status: "failed",
+      error_message: message,
+      metadata: { bodyLength },
+    } as never);
+
+  if (error) {
+    logStep("Failed to record invalid webhook delivery", { error: error.message });
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // deno-lint-ignore no-explicit-any
-  const supabaseAdmin: SupabaseClient<any> = createClient(
+  const supabaseAdmin = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     { auth: { persistSession: false } }
@@ -66,6 +323,7 @@ serve(async (req) => {
         signaturePresent: !!signature,
         webhookSecretPrefix: webhookSecret.substring(0, 10) + "...",
       });
+      await recordInvalidWebhookDelivery(supabaseAdmin, message, body.length);
       return new Response(JSON.stringify({ error: `Webhook Error: ${message}` }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 400,
@@ -74,20 +332,46 @@ serve(async (req) => {
 
     logStep("Signature verified successfully", { type: event.type, id: event.id });
 
+    const webhookLogId = await recordWebhookReceived(supabaseAdmin, event);
+    let handled = true;
+
     // Handle the event
-    switch (event.type) {
-      case "payment_intent.succeeded": {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        await handlePaymentSucceeded(supabaseAdmin, paymentIntent);
-        break;
+    try {
+      switch (event.type) {
+        case "checkout.session.completed": {
+          const session = event.data.object as Stripe.Checkout.Session;
+          await handleCheckoutSessionCompleted(stripe, supabaseAdmin, session);
+          break;
+        }
+        case "payment_intent.processing": {
+          const paymentIntent = event.data.object as Stripe.PaymentIntent;
+          await handlePaymentProcessing(supabaseAdmin, paymentIntent);
+          break;
+        }
+        case "payment_intent.succeeded": {
+          const paymentIntent = event.data.object as Stripe.PaymentIntent;
+          await handlePaymentSucceeded(supabaseAdmin, paymentIntent);
+          break;
+        }
+        case "payment_intent.payment_failed": {
+          const paymentIntent = event.data.object as Stripe.PaymentIntent;
+          await handlePaymentFailed(supabaseAdmin, paymentIntent);
+          break;
+        }
+        case "payment_intent.canceled": {
+          const paymentIntent = event.data.object as Stripe.PaymentIntent;
+          await handlePaymentFailed(supabaseAdmin, paymentIntent, "Payment canceled");
+          break;
+        }
+        default:
+          handled = false;
+          logStep("Unhandled event type", { type: event.type });
       }
-      case "payment_intent.payment_failed": {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
-        await handlePaymentFailed(supabaseAdmin, paymentIntent);
-        break;
-      }
-      default:
-        logStep("Unhandled event type", { type: event.type });
+
+      await markWebhookResult(supabaseAdmin, webhookLogId, event, handled ? "processed" : "ignored");
+    } catch (handlerError) {
+      await markWebhookFailed(supabaseAdmin, webhookLogId, handlerError);
+      throw handlerError;
     }
 
     return new Response(JSON.stringify({ received: true }), {
@@ -105,8 +389,7 @@ serve(async (req) => {
 });
 
 async function sendDiscordNotificationIfEnabled(
-  // deno-lint-ignore no-explicit-any
-  supabaseAdmin: SupabaseClient<any>,
+  supabaseAdmin: SupabaseAdminClient,
   managerId: string,
   notification: {
     title: string;
@@ -161,96 +444,121 @@ async function sendDiscordNotificationIfEnabled(
   }
 }
 
-async function handlePaymentSucceeded(
-  // deno-lint-ignore no-explicit-any
-  supabaseAdmin: SupabaseClient<any>,
-  paymentIntent: Stripe.PaymentIntent
+function getPaymentAmounts(paymentIntent: Stripe.PaymentIntent) {
+  const amountInDollars = (paymentIntent.amount || 0) / 100;
+  const convenienceFeeCents = parseInt(paymentIntent.metadata?.convenience_fee || "0", 10) || 0;
+  const convenienceFeeInDollars = convenienceFeeCents / 100;
+  const baseAmountInDollars = convenienceFeeCents > 0
+    ? amountInDollars - convenienceFeeInDollars
+    : amountInDollars;
+
+  return { amountInDollars, convenienceFeeInDollars, baseAmountInDollars };
+}
+
+async function handleCheckoutSessionCompleted(
+  stripe: Stripe,
+  supabaseAdmin: SupabaseAdminClient,
+  session: Stripe.Checkout.Session
 ) {
-  logStep("Processing payment_intent.succeeded", { id: paymentIntent.id });
+  logStep("Processing checkout.session.completed", {
+    id: session.id,
+    payment_status: session.payment_status,
+    payment_intent: session.payment_intent,
+  });
 
-  const { payment_type, property_id, lease_id, tenant_id, user_id, convenience_fee: convenienceFeeStr } = paymentIntent.metadata || {};
-  const amountPaid = paymentIntent.amount || 0;
-  const amountInDollars = amountPaid / 100;
-  
-  const convenienceFee = parseInt(convenienceFeeStr || '0', 10);
-  const convenienceFeeInDollars = convenienceFee / 100;
-  const baseAmountInDollars = convenienceFee > 0 ? (amountInDollars - convenienceFeeInDollars) : amountInDollars;
-
-  logStep("Payment details", { payment_type, tenant_id, amountInDollars, convenienceFee, baseAmountInDollars });
-
-  // Check if payment already recorded (idempotency)
-  const { data: existingPayment } = await supabaseAdmin
-    .from("payments")
-    .select("id, status, tenant_id, property_id")
-    .eq("stripe_payment_intent_id", paymentIntent.id)
-    .single();
-
-  if (existingPayment) {
-    if (existingPayment.status === "completed") {
-      logStep("Payment already completed, skipping", { id: existingPayment.id });
-      return;
-    }
-
-    // Payment exists but was processing — ACH payment clearing
-    logStep("ACH payment clearing — updating processing → completed", { id: existingPayment.id });
-
-    const { error: updateError } = await supabaseAdmin
-      .from("payments")
-      .update({ status: "completed" })
-      .eq("id", existingPayment.id);
-
-    if (updateError) {
-      logStep("Failed to update payment status", { error: updateError.message });
-    }
-
-    // Get tenant info for notifications
-    const { data: tenantData } = await supabaseAdmin
-      .from("tenants")
-      .select("manager_id, user_id")
-      .eq("id", existingPayment.tenant_id)
-      .single();
-
-    let tenantName = "tenant";
-    if (tenantData?.user_id) {
-      const { data: profileData } = await supabaseAdmin
-        .from("profiles")
-        .select("full_name")
-        .eq("id", tenantData.user_id)
-        .single();
-      tenantName = profileData?.full_name || "tenant";
-    }
-
-    // Discord notification for ACH cleared
-    if (tenantData?.manager_id) {
-      await sendDiscordNotificationIfEnabled(supabaseAdmin, tenantData.manager_id, {
-        title: "ACH Payment Cleared",
-        message: `$${amountInDollars.toFixed(2)} from ${tenantName} has cleared`,
-        type: "rent_received",
-        metadata: {
-          amount: amountInDollars,
-          payment_type: payment_type || "unknown",
-          tenant: tenantName,
-          payment_id: existingPayment.id,
-        },
-      });
-    }
-
-    // Update tenant balance using centralized RPC
-    if ((payment_type === "balance" || payment_type === "rent") && existingPayment.tenant_id) {
-      await applyBalanceViaRPC(supabaseAdmin, existingPayment.tenant_id, baseAmountInDollars, payment_type, user_id, convenienceFee);
-    }
-
+  if (!session.payment_intent) {
+    logStep("Checkout session has no PaymentIntent, skipping", { id: session.id });
     return;
   }
 
-  // No existing payment record — direct webhook call (e.g. card payment)
-  logStep("No existing payment found, creating new record");
+  const paymentIntentId = typeof session.payment_intent === "string"
+    ? session.payment_intent
+    : session.payment_intent.id;
 
-  let resolvedTenantId = tenant_id;
-  let resolvedPropertyId = property_id;
+  const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+  if (paymentIntent.status === "processing") {
+    await handlePaymentProcessing(supabaseAdmin, paymentIntent, session.id);
+    return;
+  }
+
+  if (paymentIntent.status === "succeeded") {
+    await handlePaymentSucceeded(supabaseAdmin, paymentIntent, session.id);
+    return;
+  }
+
+  logStep("Checkout PaymentIntent not ready to record", {
+    session_id: session.id,
+    payment_intent_id: paymentIntent.id,
+    status: paymentIntent.status,
+  });
+}
+
+async function ensureApplicantTenant(
+  supabaseAdmin: SupabaseAdminClient,
+  propertyId: string,
+  userId: string
+) {
+  const { data: existingTenant } = await supabaseAdmin
+    .from("tenants")
+    .select("id")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingTenant?.id) {
+    return existingTenant.id;
+  }
+
+  const { data: propertyData, error: propertyError } = await supabaseAdmin
+    .from("properties")
+    .select("manager_id")
+    .eq("id", propertyId)
+    .single();
+
+  if (propertyError || !propertyData?.manager_id) {
+    throw new Error("Unable to resolve property manager for application payment");
+  }
+
+  const { data: newTenant, error: tenantError } = await supabaseAdmin
+    .from("tenants")
+    .insert({
+      user_id: userId,
+      manager_id: propertyData.manager_id,
+      is_active: false,
+      notes: "Created for application fee tracking",
+    })
+    .select("id")
+    .single();
+
+  if (tenantError || !newTenant?.id) {
+    throw new Error(`Failed to create applicant tenant record: ${tenantError?.message || "unknown error"}`);
+  }
+
+  return newTenant.id;
+}
+
+async function resolvePaymentContext(
+  supabaseAdmin: SupabaseAdminClient,
+  metadata: Stripe.Metadata
+) {
+  const { payment_type, property_id, lease_id, tenant_id, user_id } = metadata || {};
+  let resolvedTenantId = tenant_id || null;
+  let resolvedPropertyId = property_id || null;
+
+  if (payment_type === "application_fee") {
+    if (!resolvedPropertyId || !user_id) {
+      throw new Error("Application fee payment missing property_id or user_id metadata");
+    }
+
+    return {
+      tenantId: await ensureApplicantTenant(supabaseAdmin, resolvedPropertyId, user_id),
+      propertyId: resolvedPropertyId,
+    };
+  }
 
   if (!resolvedTenantId && lease_id) {
-    logStep("Looking up tenant from lease", { lease_id });
     const { data: leaseData } = await supabaseAdmin
       .from("leases")
       .select("tenant_id, property_id")
@@ -264,88 +572,488 @@ async function handlePaymentSucceeded(
         .eq("user_id", leaseData.tenant_id)
         .eq("is_active", true)
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (tenantRecord) {
-        resolvedTenantId = tenantRecord.id;
-      }
-      resolvedPropertyId = leaseData.property_id;
+      resolvedTenantId = tenantRecord?.id || null;
+      resolvedPropertyId = leaseData.property_id || resolvedPropertyId;
     }
+  }
+
+  if (resolvedTenantId && !resolvedPropertyId) {
+    const { data: tenantData } = await supabaseAdmin
+      .from("tenants")
+      .select("property_id")
+      .eq("id", resolvedTenantId)
+      .single();
+
+    resolvedPropertyId = tenantData?.property_id || null;
+  }
+
+  if (resolvedTenantId && !resolvedPropertyId) {
+    const { data: tenantProperty } = await supabaseAdmin
+      .from("tenant_properties")
+      .select("property_id")
+      .eq("tenant_id", resolvedTenantId)
+      .order("is_primary", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    resolvedPropertyId = tenantProperty?.property_id || null;
   }
 
   if (!resolvedTenantId || !resolvedPropertyId) {
-    if (resolvedTenantId && !resolvedPropertyId) {
-      logStep("Checking tenant_properties table...");
-      const { data: tenantProperty } = await supabaseAdmin
-        .from('tenant_properties')
-        .select('property_id')
-        .eq('tenant_id', resolvedTenantId)
-        .order('is_primary', { ascending: false })
-        .limit(1)
-        .single();
-
-      if (tenantProperty?.property_id) {
-        resolvedPropertyId = tenantProperty.property_id;
-        logStep("Found property_id from tenant_properties", { resolvedPropertyId });
-      }
-    }
-    
-    if (!resolvedTenantId || !resolvedPropertyId) {
-      logStep("Cannot resolve tenant or property, skipping", { resolvedTenantId, resolvedPropertyId });
-      return;
-    }
+    throw new Error(`Could not resolve tenant/property for payment: ${JSON.stringify({ resolvedTenantId, resolvedPropertyId, payment_type })}`);
   }
 
-  // Insert completed payment record
-  const { error: insertError } = await supabaseAdmin
+  return { tenantId: resolvedTenantId, propertyId: resolvedPropertyId };
+}
+
+async function notifyTenantPaymentStatus(
+  supabaseAdmin: SupabaseAdminClient,
+  input: {
+    tenantId: string | null;
+    paymentId: string;
+    amount: number;
+    title: string;
+    message: string;
+    stripeStatus: string;
+    source: string;
+  }
+) {
+  if (!input.tenantId) return;
+
+  try {
+    const { data: tenantData } = await supabaseAdmin
+      .from("tenants")
+      .select("user_id")
+      .eq("id", input.tenantId)
+      .single();
+
+    if (!tenantData?.user_id) return;
+
+    const type = getPaymentNotificationType(input.stripeStatus);
+    const inserted = await insertNotificationOnce(supabaseAdmin, {
+      userId: tenantData.user_id,
+      type,
+      title: input.title,
+      message: input.message,
+      paymentId: input.paymentId,
+      tenantPaymentStatus: input.stripeStatus,
+      metadata: {
+        tenant_id: input.tenantId,
+        payment_id: input.paymentId,
+        amount: input.amount,
+        stripe_status: input.stripeStatus,
+        tenant_payment_status: input.stripeStatus,
+        source: input.source,
+      },
+    });
+
+    if (!inserted) {
+      logStep("Tenant payment notification already exists", {
+        paymentId: input.paymentId,
+        stripeStatus: input.stripeStatus,
+      });
+      return;
+    }
+
+    logStep("Tenant payment notification created", {
+      paymentId: input.paymentId,
+      stripeStatus: input.stripeStatus,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logStep("Tenant payment notification unavailable", {
+      paymentId: input.paymentId,
+      error: message,
+    });
+  }
+}
+
+async function handlePaymentProcessing(
+  supabaseAdmin: SupabaseAdminClient,
+  paymentIntent: Stripe.PaymentIntent,
+  checkoutSessionId?: string
+) {
+  logStep("Processing payment_intent.processing", { id: paymentIntent.id, checkoutSessionId });
+
+  const { payment_type, lease_id } = paymentIntent.metadata || {};
+  const { amountInDollars, convenienceFeeInDollars, baseAmountInDollars } = getPaymentAmounts(paymentIntent);
+
+  const { data: existingPayment } = await supabaseAdmin
+    .from("payments")
+    .select("id, status")
+    .or(`stripe_payment_intent_id.eq.${paymentIntent.id}${checkoutSessionId ? `,stripe_session_id.eq.${checkoutSessionId}` : ""}`)
+    .limit(1)
+    .maybeSingle();
+
+  if (existingPayment) {
+    await supabaseAdmin
+      .from("payments")
+      .update({ stripe_status: paymentIntent.status })
+      .eq("id", existingPayment.id);
+
+    logStep("Processing payment already recorded", { id: existingPayment.id, status: existingPayment.status });
+    return;
+  }
+
+  const { tenantId, propertyId } = await resolvePaymentContext(supabaseAdmin, paymentIntent.metadata || {});
+
+  const { data: processingPayment, error: insertError } = await supabaseAdmin
+    .from("payments")
+    .insert({
+      tenant_id: tenantId,
+      property_id: propertyId,
+      lease_id: lease_id || null,
+      amount: baseAmountInDollars,
+      convenience_fee: convenienceFeeInDollars || 0,
+      payment_date: new Date().toISOString().split("T")[0],
+      payment_method: "stripe",
+      payment_method_type: paymentIntent.metadata?.payment_method_type || "ach",
+      status: "processing",
+      stripe_payment_intent_id: paymentIntent.id,
+      stripe_session_id: checkoutSessionId || null,
+      stripe_status: paymentIntent.status,
+      payment_type,
+      notes: `${payment_type?.replace(/_/g, " ")} via ACH (processing)`,
+    })
+    .select("id")
+    .single();
+
+  if (insertError) {
+    if (insertError.code === "23505") {
+      logStep("Processing payment insert raced with another handler; treating as already recorded", {
+        paymentIntentId: paymentIntent.id,
+      });
+      return;
+    }
+
+    throw new Error(`Failed to record processing payment: ${insertError.message}`);
+  }
+
+  logStep("Processing payment recorded", { paymentIntentId: paymentIntent.id, amountInDollars });
+
+  await notifyTenantPaymentStatus(supabaseAdmin, {
+    tenantId,
+    paymentId: processingPayment.id,
+    amount: baseAmountInDollars,
+    title: "Payment Processing",
+    message: `$${baseAmountInDollars.toFixed(2)} ACH payment was submitted to Stripe. ACH usually clears in 3-5 business days, and your balance will update when Stripe confirms it.`,
+    stripeStatus: paymentIntent.status,
+    source: "stripe_webhook",
+  });
+}
+
+async function handlePaymentSucceeded(
+  supabaseAdmin: SupabaseAdminClient,
+  paymentIntent: Stripe.PaymentIntent,
+  checkoutSessionId?: string
+) {
+  logStep("Processing payment_intent.succeeded", { id: paymentIntent.id, checkoutSessionId });
+
+  const { payment_type, lease_id, user_id } = paymentIntent.metadata || {};
+  const { amountInDollars, convenienceFeeInDollars, baseAmountInDollars } = getPaymentAmounts(paymentIntent);
+
+  logStep("Payment details", { payment_type, amountInDollars, convenienceFeeInDollars, baseAmountInDollars });
+
+  // Check if payment already recorded (idempotency)
+  const { data: existingPayment } = await supabaseAdmin
+    .from("payments")
+    .select("id, status, tenant_id, property_id, payment_type, balance_adjustment_id")
+    .or(`stripe_payment_intent_id.eq.${paymentIntent.id}${checkoutSessionId ? `,stripe_session_id.eq.${checkoutSessionId}` : ""}`)
+    .limit(1)
+    .maybeSingle();
+
+  if (existingPayment) {
+    if (existingPayment.status !== "completed") {
+      logStep("Payment clearing - updating status to completed", { id: existingPayment.id });
+
+      const paymentUpdate: Record<string, unknown> = {
+        status: "completed",
+        stripe_status: paymentIntent.status,
+      };
+
+      if (checkoutSessionId) {
+        paymentUpdate.stripe_session_id = checkoutSessionId;
+      }
+
+      const { error: updateError } = await supabaseAdmin
+        .from("payments")
+        .update(paymentUpdate)
+        .eq("id", existingPayment.id);
+
+      if (updateError) {
+        throw new Error(`Failed to update payment status: ${updateError.message}`);
+      }
+    } else {
+      logStep("Payment already completed", { id: existingPayment.id });
+      await supabaseAdmin
+        .from("payments")
+        .update({ stripe_status: paymentIntent.status })
+        .eq("id", existingPayment.id);
+    }
+
+    if (payment_type === "balance" || payment_type === "rent" || existingPayment.payment_type === "balance" || existingPayment.payment_type === "rent") {
+      await applyBalanceViaRPC(
+        supabaseAdmin,
+        existingPayment.id,
+        payment_type || existingPayment.payment_type || "payment",
+        user_id,
+        convenienceFeeInDollars
+      );
+    }
+
+    if (existingPayment.status !== "completed") {
+      await notifyPaymentCleared(supabaseAdmin, existingPayment.tenant_id, existingPayment.id, amountInDollars, payment_type);
+    }
+
+    return;
+  }
+
+  logStep("No existing payment found, creating new record");
+
+  const { tenantId: resolvedTenantId, propertyId: resolvedPropertyId } = await resolvePaymentContext(
+    supabaseAdmin,
+    paymentIntent.metadata || {}
+  );
+
+  const { data: newPayment, error: insertError } = await supabaseAdmin
     .from("payments")
     .insert({
       tenant_id: resolvedTenantId,
       property_id: resolvedPropertyId,
       lease_id: lease_id || null,
       amount: baseAmountInDollars,
-      convenience_fee: convenienceFee > 0 ? convenienceFee : null,
+      convenience_fee: convenienceFeeInDollars || 0,
       payment_date: new Date().toISOString().split("T")[0],
       payment_method: "stripe",
+      payment_method_type: paymentIntent.metadata?.payment_method_type || "card",
       status: "completed",
       stripe_payment_intent_id: paymentIntent.id,
+      stripe_session_id: checkoutSessionId || null,
+      stripe_status: paymentIntent.status,
       payment_type: payment_type,
-      notes: convenienceFee > 0 
+      notes: convenienceFeeInDollars > 0
         ? `${payment_type?.replace(/_/g, " ")} via Stripe webhook - card fee: $${convenienceFeeInDollars.toFixed(2)}`
         : `${payment_type?.replace(/_/g, " ")} via Stripe webhook`,
-    });
+    })
+    .select("id")
+    .single();
 
   if (insertError) {
-    logStep("Failed to insert payment", { error: insertError.message });
-    return;
+    if (insertError.code === "23505") {
+      logStep("Completed payment insert raced with another handler; loading existing record", {
+        paymentIntentId: paymentIntent.id,
+        checkoutSessionId,
+      });
+
+      const { data: racedPayment, error: raceLookupError } = await supabaseAdmin
+        .from("payments")
+        .select("id, status, tenant_id, payment_type")
+        .or(`stripe_payment_intent_id.eq.${paymentIntent.id}${checkoutSessionId ? `,stripe_session_id.eq.${checkoutSessionId}` : ""}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (raceLookupError || !racedPayment) {
+        throw new Error(`Payment insert collided but existing row was not found: ${raceLookupError?.message || "not found"}`);
+      }
+
+      if (racedPayment.status !== "completed") {
+        const { error: updateError } = await supabaseAdmin
+          .from("payments")
+          .update({ status: "completed", stripe_status: paymentIntent.status })
+          .eq("id", racedPayment.id);
+
+        if (updateError) {
+          throw new Error(`Failed to complete raced payment: ${updateError.message}`);
+        }
+      }
+
+      if (payment_type === "balance" || payment_type === "rent" || racedPayment.payment_type === "balance" || racedPayment.payment_type === "rent") {
+        await applyBalanceViaRPC(
+          supabaseAdmin,
+          racedPayment.id,
+          payment_type || racedPayment.payment_type || "payment",
+          user_id,
+          convenienceFeeInDollars
+        );
+      }
+
+      return;
+    }
+
+    throw new Error(`Failed to insert payment: ${insertError.message}`);
   }
 
-  logStep("Payment recorded via webhook");
+  logStep("Payment recorded via webhook", { payment_id: newPayment.id });
 
-  // Update tenant balance using centralized RPC
   if (payment_type === "balance" || payment_type === "rent") {
-    await applyBalanceViaRPC(supabaseAdmin, resolvedTenantId, baseAmountInDollars, payment_type, user_id, convenienceFee);
+    await applyBalanceViaRPC(
+      supabaseAdmin,
+      newPayment.id,
+      payment_type,
+      user_id,
+      convenienceFeeInDollars
+    );
   }
+
+  await notifyPaymentCleared(supabaseAdmin, resolvedTenantId, newPayment.id, amountInDollars, payment_type);
+}
+
+async function notifyPaymentCleared(
+  supabaseAdmin: SupabaseAdminClient,
+  tenantId: string,
+  paymentId: string,
+  amountInDollars: number,
+  paymentType?: string
+) {
+  const { data: tenantData } = await supabaseAdmin
+    .from("tenants")
+    .select("manager_id, user_id")
+    .eq("id", tenantId)
+    .single();
+
+  let tenantName = "tenant";
+  if (tenantData?.user_id) {
+    const { data: profileData } = await supabaseAdmin
+      .from("profiles")
+      .select("full_name")
+      .eq("id", tenantData.user_id)
+      .single();
+    tenantName = profileData?.full_name || "tenant";
+  }
+
+  if (tenantData?.manager_id) {
+    await insertNotificationOnce(supabaseAdmin, {
+      userId: tenantData.manager_id,
+      type: "payment_received",
+      title: "Payment Cleared",
+      message: `$${amountInDollars.toFixed(2)} from ${tenantName} has cleared and the tenant ledger was updated.`,
+      paymentId,
+      metadata: {
+        amount: amountInDollars,
+        payment_type: paymentType || "unknown",
+        tenant: tenantName,
+        tenant_id: tenantId,
+        payment_id: paymentId,
+        stripe_status: "succeeded",
+        source: "stripe_webhook",
+      },
+    });
+
+    await sendDiscordNotificationIfEnabled(supabaseAdmin, tenantData.manager_id, {
+      title: "Payment Cleared",
+      message: `$${amountInDollars.toFixed(2)} from ${tenantName} has cleared`,
+      type: "rent_received",
+      metadata: {
+        amount: amountInDollars,
+        payment_type: paymentType || "unknown",
+        tenant: tenantName,
+        payment_id: paymentId,
+      },
+    });
+  }
+
+  await notifyTenantPaymentStatus(supabaseAdmin, {
+    tenantId,
+    paymentId,
+    amount: amountInDollars,
+    title: "Payment Cleared",
+    message: `$${amountInDollars.toFixed(2)} payment was verified by Stripe and applied to your Sterling Gate ledger.`,
+    stripeStatus: "succeeded",
+    source: "stripe_webhook",
+  });
 }
 
 async function handlePaymentFailed(
-  // deno-lint-ignore no-explicit-any
-  supabaseAdmin: SupabaseClient<any>,
-  paymentIntent: Stripe.PaymentIntent
+  supabaseAdmin: SupabaseAdminClient,
+  paymentIntent: Stripe.PaymentIntent,
+  fallbackReason = "Payment failed"
 ) {
   logStep("Processing payment_intent.payment_failed", { id: paymentIntent.id });
 
-  const lastError = paymentIntent.last_payment_error?.message || "Payment failed";
+  const lastError = paymentIntent.last_payment_error?.message || fallbackReason;
   logStep("Payment failure reason", { reason: lastError });
 
   const { data: existingPayment } = await supabaseAdmin
     .from("payments")
-    .select("id, tenant_id, amount")
+    .select("id, tenant_id, amount, status")
     .eq("stripe_payment_intent_id", paymentIntent.id)
-    .single();
+    .maybeSingle();
 
   if (!existingPayment) {
-    logStep("No pending payment found to mark as failed");
+    logStep("No pending payment found to mark as failed; recording failed attempt");
+
+    try {
+      const { payment_type, lease_id } = paymentIntent.metadata || {};
+      const { convenienceFeeInDollars, baseAmountInDollars } = getPaymentAmounts(paymentIntent);
+      const { tenantId, propertyId } = await resolvePaymentContext(supabaseAdmin, paymentIntent.metadata || {});
+
+      const { data: failedPayment, error: insertError } = await supabaseAdmin
+        .from("payments")
+        .insert({
+          tenant_id: tenantId,
+          property_id: propertyId,
+          lease_id: lease_id || null,
+          amount: baseAmountInDollars,
+          convenience_fee: convenienceFeeInDollars || 0,
+          payment_date: new Date().toISOString().split("T")[0],
+          payment_method: "stripe",
+          payment_method_type: paymentIntent.metadata?.payment_method_type || "ach",
+          status: "failed",
+          stripe_payment_intent_id: paymentIntent.id,
+          stripe_status: paymentIntent.status,
+          payment_type: payment_type || "balance",
+          notes: `Stripe status: ${paymentIntent.status}; Payment failed: ${lastError}`,
+        })
+        .select("id, tenant_id, amount, status")
+        .single();
+
+      if (insertError) {
+        if (insertError.code === "23505") {
+          logStep("Failed payment insert raced with another handler; skipping duplicate side effects", {
+            paymentIntentId: paymentIntent.id,
+          });
+          return;
+        }
+
+        throw insertError;
+      }
+
+      logStep("Failed payment attempt recorded", { payment_id: failedPayment.id });
+      await notifyFailedPaymentSideEffects(
+        supabaseAdmin,
+        failedPayment.tenant_id,
+        failedPayment.id,
+        failedPayment.amount,
+        lastError,
+        paymentIntent.status
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logStep("Unable to record failed payment attempt", { paymentIntentId: paymentIntent.id, error: message });
+    }
+
+    return;
+  }
+
+  if (existingPayment.status === "failed") {
+    await supabaseAdmin
+      .from("payments")
+      .update({ stripe_status: paymentIntent.status, notes: `Stripe status: ${paymentIntent.status}; Payment failed: ${lastError}` })
+      .eq("id", existingPayment.id);
+
+    logStep("Payment already marked failed; skipping duplicate failure side effects", {
+      id: existingPayment.id,
+    });
+    return;
+  }
+
+  if (existingPayment.status === "completed") {
+    logStep("Ignoring failure event for already completed payment", {
+      id: existingPayment.id,
+      paymentIntentId: paymentIntent.id,
+    });
     return;
   }
 
@@ -353,7 +1061,8 @@ async function handlePaymentFailed(
     .from("payments")
     .update({ 
       status: "failed",
-      notes: `Payment failed: ${lastError}`,
+      stripe_status: paymentIntent.status,
+      notes: `Stripe status: ${paymentIntent.status}; Payment failed: ${lastError}`,
     })
     .eq("id", existingPayment.id);
 
@@ -364,151 +1073,205 @@ async function handlePaymentFailed(
 
   logStep("Payment marked as failed", { id: existingPayment.id });
 
-  if (existingPayment.tenant_id) {
-    const { data: tenantData } = await supabaseAdmin
-      .from("tenants")
-      .select("manager_id, user_id")
-      .eq("id", existingPayment.tenant_id)
-      .single();
+  await notifyFailedPaymentSideEffects(
+    supabaseAdmin,
+    existingPayment.tenant_id,
+    existingPayment.id,
+    existingPayment.amount,
+    lastError,
+    paymentIntent.status
+  );
+}
 
-    if (tenantData?.manager_id) {
-      const { data: profileData } = await supabaseAdmin
-        .from("profiles")
-        .select("full_name")
-        .eq("id", tenantData.user_id)
-        .single();
+async function notifyFailedPaymentSideEffects(
+  supabaseAdmin: SupabaseAdminClient,
+  tenantId: string | null,
+  paymentId: string,
+  amount: number,
+  failureReason: string,
+  stripeStatus = "payment_failed"
+) {
+  if (!tenantId) return;
 
-      const tenantName = profileData?.full_name || "A tenant";
+  const { data: tenantData } = await supabaseAdmin
+    .from("tenants")
+    .select("manager_id, user_id")
+    .eq("id", tenantId)
+    .single();
 
-      await supabaseAdmin.from("notifications").insert({
-        user_id: tenantData.manager_id,
-        type: "rent_received",
-        title: "Payment Failed",
-        message: `${tenantName}'s ACH payment has failed. Please follow up.`,
-        metadata: {
-          payment_id: existingPayment.id,
-          tenant_id: existingPayment.tenant_id,
-          failure_reason: lastError,
-        },
-      });
+  if (!tenantData) return;
 
-      logStep("Manager notification created");
+  const { data: profileData } = await supabaseAdmin
+    .from("profiles")
+    .select("full_name")
+    .eq("id", tenantData.user_id)
+    .single();
 
-      await sendDiscordNotificationIfEnabled(supabaseAdmin, tenantData.manager_id, {
-        title: "⚠️ ACH Payment Failed",
-        message: `${tenantName}'s payment of $${existingPayment.amount} has failed: ${lastError}`,
-        type: "rent_received",
-        metadata: {
-          amount: existingPayment.amount,
-          tenant: tenantName,
-          failure_reason: lastError,
-          payment_id: existingPayment.id,
-        },
-      });
+  const tenantName = profileData?.full_name || "A tenant";
+  const managerNotificationType = getPaymentNotificationType(stripeStatus);
 
-      await applyLateFeeIfApplicable(supabaseAdmin, existingPayment.tenant_id, tenantData.manager_id, tenantName);
-    }
-  }
+  const tenantTitle = stripeStatus === "requires_payment_method" ? "Payment Incomplete" : "Payment Failed";
+  const tenantMessage = stripeStatus === "requires_payment_method"
+    ? `$${Number(amount || 0).toFixed(2)} payment never completed in Stripe. No money moved, so please retry only if your balance is still due.`
+    : `$${Number(amount || 0).toFixed(2)} payment did not clear in Stripe. Please retry or contact management if this looks wrong.`;
+
+  await notifyTenantPaymentStatus(supabaseAdmin, {
+    tenantId,
+    paymentId,
+    amount: Number(amount || 0),
+    title: tenantTitle,
+    message: tenantMessage,
+    stripeStatus,
+    source: "stripe_webhook",
+  });
+
+  if (!tenantData.manager_id) return;
+
+  await insertNotificationOnce(supabaseAdmin, {
+    userId: tenantData.manager_id,
+    type: managerNotificationType,
+    title: stripeStatus === "requires_payment_method" ? "Payment Incomplete" : "Payment Failed",
+    message: stripeStatus === "requires_payment_method"
+      ? `${tenantName}'s payment was incomplete in Stripe. No money moved.`
+      : `${tenantName}'s ACH payment has failed. Please follow up.`,
+    paymentId,
+    metadata: {
+      payment_id: paymentId,
+      tenant_id: tenantId,
+      failure_reason: failureReason,
+      stripe_status: stripeStatus,
+      source: "stripe_webhook",
+    },
+  });
+
+  logStep("Manager notification created");
+
+  await sendDiscordNotificationIfEnabled(supabaseAdmin, tenantData.manager_id, {
+    title: stripeStatus === "requires_payment_method" ? "Payment Incomplete" : "ACH Payment Failed",
+    message: stripeStatus === "requires_payment_method"
+      ? `${tenantName}'s payment of $${amount} was incomplete in Stripe. No money moved.`
+      : `${tenantName}'s payment of $${amount} has failed: ${failureReason}`,
+    type: "rent_received",
+    metadata: {
+      amount,
+      tenant: tenantName,
+      failure_reason: failureReason,
+      stripe_status: stripeStatus,
+      payment_id: paymentId,
+    },
+  });
+
+  await applyLateFeeIfApplicable(supabaseAdmin, tenantId, tenantData.manager_id, tenantName);
 }
 
 async function applyLateFeeIfApplicable(
-  // deno-lint-ignore no-explicit-any
-  supabaseAdmin: SupabaseClient<any>,
+  supabaseAdmin: SupabaseAdminClient,
   tenantId: string,
   managerId: string,
   tenantName: string
 ) {
   logStep("Checking if late fee should be applied", { tenantId });
 
-  const today = new Date();
-  const currentDay = today.getDate();
+  const { data: tenantBalance } = await supabaseAdmin
+    .from("tenants")
+    .select("current_balance")
+    .eq("id", tenantId)
+    .single();
 
-  const { data: tenantProperties, error: tpError } = await supabaseAdmin
-    .from("tenant_properties")
-    .select(`
-      id,
-      property_id,
-      rent_amount,
-      rent_due_day,
-      grace_period_days,
-      late_fee_type,
-      late_fee_percentage,
-      late_fee_flat_amount,
-      property:properties(address)
-    `)
-    .eq("tenant_id", tenantId);
+  const { data: pendingAchPayments } = await supabaseAdmin
+    .from("payments")
+    .select("amount")
+    .eq("tenant_id", tenantId)
+    .eq("status", "processing")
+    .eq("payment_method_type", "ach")
+    .in("payment_type", ["balance", "rent"]);
 
-  if (tpError || !tenantProperties || tenantProperties.length === 0) {
-    logStep("No tenant properties found for late fee calculation", { error: tpError?.message });
+  const pendingAchTotal = (pendingAchPayments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const effectiveBalance = Math.max(Number(tenantBalance?.current_balance || 0) - pendingAchTotal, 0);
+
+  if (effectiveBalance <= 0) {
+    logStep("Skipping late fee because credit or pending ACH covers the tenant balance", {
+      tenantId,
+      current_balance: tenantBalance?.current_balance || 0,
+      pendingAchTotal,
+      effectiveBalance,
+    });
     return;
   }
 
-  let totalLateFee = 0;
-  const lateFeeDetails: string[] = [];
+  const { data: rentCharges, error: rentChargeError } = await supabaseAdmin
+    .from("rent_charges")
+    .select("id, rent_period, rent_amount")
+    .eq("tenant_id", tenantId)
+    .eq("status", "pending")
+    .eq("late_fee_applied", false)
+    .eq("late_fee_waived", false)
+    .order("rent_period", { ascending: true });
 
-  for (const tp of tenantProperties) {
-    const rentDueDay = tp.rent_due_day || 1;
-    const gracePeriodDays = tp.grace_period_days || 5;
-    const graceEndDay = rentDueDay + gracePeriodDays;
-
-    if (currentDay > graceEndDay) {
-      const rentAmount = tp.rent_amount || 0;
-      let lateFee = 0;
-
-      if (tp.late_fee_type === "percentage") {
-        const percentage = tp.late_fee_percentage || 5;
-        lateFee = rentAmount * (percentage / 100);
-      } else if (tp.late_fee_type === "flat") {
-        lateFee = tp.late_fee_flat_amount || 0;
-      } else {
-        lateFee = rentAmount * 0.05;
-      }
-
-      if (lateFee > 0) {
-        totalLateFee += lateFee;
-        // deno-lint-ignore no-explicit-any
-        const propertyAddress = (tp.property as any)?.address || "Unknown property";
-        lateFeeDetails.push(`$${lateFee.toFixed(2)} for ${propertyAddress}`);
-      }
-    }
+  if (rentChargeError) {
+    logStep("Unable to load rent charges for late fee", { error: rentChargeError.message });
+    return;
   }
 
-  if (totalLateFee > 0) {
-    logStep("Applying total late fee via RPC", { totalLateFee, details: lateFeeDetails });
+  if (!rentCharges || rentCharges.length === 0) {
+    logStep("No pending rent charges need a late fee; skipping duplicate failed-payment fee", { tenantId });
+    return;
+  }
 
-    const { error: rpcError } = await supabaseAdmin.rpc("apply_balance_adjustment", {
-      _tenant_id: tenantId,
-      _adjustment_type: "late_fee",
-      _amount: totalLateFee,
-      _description: `Late fee applied after failed ACH payment: ${lateFeeDetails.join(", ")}`,
+  let totalLateFeeApplied = 0;
+  const lateFeeDetails: string[] = [];
+
+  for (const rentCharge of rentCharges) {
+    const { data: result, error: rpcError } = await supabaseAdmin.rpc("apply_rent_late_fee", {
+      _rent_charge_id: rentCharge.id,
+      _created_by: managerId,
     });
 
     if (rpcError) {
-      logStep("Failed to apply late fee", { error: rpcError.message });
-      return;
+      logStep("Failed to apply rent-charge late fee", { rentChargeId: rentCharge.id, error: rpcError.message });
+      continue;
     }
 
-    logStep("Late fee applied successfully", { totalLateFee });
+    const typedResult = result as { success?: boolean; late_fee?: number; error?: string; reason?: string } | null;
+    if (typedResult?.success) {
+      const fee = Number(typedResult.late_fee || 0);
+      totalLateFeeApplied += fee;
+      lateFeeDetails.push(`$${fee.toFixed(2)} for ${rentCharge.rent_period}`);
+    } else {
+      logStep("Late fee skipped by source-of-truth RPC", {
+        rentChargeId: rentCharge.id,
+        reason: typedResult?.reason,
+        error: typedResult?.error,
+      });
+    }
+  }
 
-    await supabaseAdmin.from("notifications").insert({
-      user_id: managerId,
-      type: "rent_received",
+  if (totalLateFeeApplied > 0) {
+    logStep("Late fee applied through rent-charge source of truth", { totalLateFeeApplied, details: lateFeeDetails });
+    const dedupeKey = `late-fee:${tenantId}:${lateFeeDetails.join("|")}`;
+
+    await insertNotificationOnce(supabaseAdmin, {
+      userId: managerId,
+      type: "payment_late",
       title: "Late Fee Applied",
-      message: `$${totalLateFee.toFixed(2)} late fee applied to ${tenantName}'s balance after failed payment`,
+      message: `$${totalLateFeeApplied.toFixed(2)} late fee applied to ${tenantName}'s balance after failed payment`,
+      dedupeKey,
       metadata: {
         tenant_id: tenantId,
-        late_fee: totalLateFee,
+        late_fee: totalLateFeeApplied,
         details: lateFeeDetails,
+        dedupe_key: dedupeKey,
+        source: "stripe_webhook",
       },
     });
 
     await sendDiscordNotificationIfEnabled(supabaseAdmin, managerId, {
       title: "💰 Late Fee Applied",
-      message: `$${totalLateFee.toFixed(2)} late fee added to ${tenantName}'s balance`,
+      message: `$${totalLateFeeApplied.toFixed(2)} late fee added to ${tenantName}'s balance`,
       type: "rent_received",
       metadata: {
         tenant: tenantName,
-        late_fee: totalLateFee,
+        late_fee: totalLateFeeApplied,
         details: lateFeeDetails,
       },
     });
@@ -516,36 +1279,32 @@ async function applyLateFeeIfApplicable(
 }
 
 /**
- * Centralized balance update using the apply_balance_adjustment RPC.
- * This replaces manual balance math to prevent drift.
+ * Centralized idempotent payment-to-balance application.
+ * The RPC locks the payment row and refuses to apply the same payment twice.
  */
 async function applyBalanceViaRPC(
-  // deno-lint-ignore no-explicit-any
-  supabaseAdmin: SupabaseClient<any>,
-  tenantId: string,
-  baseAmountInDollars: number,
+  supabaseAdmin: SupabaseAdminClient,
+  paymentId: string,
   paymentType: string,
   userId?: string,
-  convenienceFee?: number
+  convenienceFeeInDollars?: number
 ) {
-  const convenienceFeeInDollars = (convenienceFee || 0) / 100;
-  const description = convenienceFee && convenienceFee > 0
+  const description = convenienceFeeInDollars && convenienceFeeInDollars > 0
     ? `Stripe ${paymentType} payment - base amount, card fee: $${convenienceFeeInDollars.toFixed(2)}`
     : `Stripe ${paymentType} payment`;
 
-  logStep("Applying balance via RPC", { tenantId, baseAmountInDollars, description });
+  logStep("Applying balance via RPC", { paymentId, description });
 
-  const { data, error } = await supabaseAdmin.rpc("apply_balance_adjustment", {
-    _tenant_id: tenantId,
-    _adjustment_type: "payment",
-    _amount: baseAmountInDollars,
+  const { data, error } = await supabaseAdmin.rpc("record_payment_balance_adjustment", {
+    _payment_id: paymentId,
     _description: description,
     _created_by: userId || null,
   });
 
   if (error) {
-    logStep("RPC apply_balance_adjustment failed", { error: error.message });
-  } else {
-    logStep("Balance updated via RPC", { result: data });
+    logStep("RPC record_payment_balance_adjustment failed", { error: error.message });
+    throw new Error(`Failed to apply payment to balance: ${error.message}`);
   }
+
+  logStep("Balance application result", { result: data });
 }

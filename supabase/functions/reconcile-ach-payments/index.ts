@@ -12,6 +12,193 @@ const logStep = (step: string, details?: unknown) => {
   console.log(`[RECONCILE-ACH] ${step}${detailsStr}`);
 };
 
+type SupabaseAdminClient = ReturnType<typeof createClient>;
+type PaymentNotificationType =
+  | "payment_received"
+  | "payment_processing"
+  | "payment_failed"
+  | "payment_incomplete";
+
+function getPaymentNotificationType(stripeStatus: string): PaymentNotificationType {
+  const normalized = String(stripeStatus || "").toLowerCase();
+
+  if (normalized === "succeeded" || normalized === "completed") return "payment_received";
+  if (normalized === "processing" || normalized === "pending") return "payment_processing";
+  if (
+    normalized === "requires_payment_method" ||
+    normalized === "requires_action" ||
+    normalized === "requires_confirmation" ||
+    normalized === "incomplete" ||
+    normalized === "canceled" ||
+    normalized === "cancelled"
+  ) {
+    return "payment_incomplete";
+  }
+
+  return "payment_failed";
+}
+
+async function insertNotificationOnce(
+  supabaseAdmin: SupabaseAdminClient,
+  input: {
+    userId: string | null | undefined;
+    type: PaymentNotificationType;
+    title: string;
+    message: string;
+    metadata: Record<string, unknown>;
+    paymentId: string;
+    tenantPaymentStatus?: string;
+  }
+) {
+  if (!input.userId) return false;
+
+  let query = supabaseAdmin
+    .from("notifications")
+    .select("id")
+    .eq("user_id", input.userId)
+    .eq("type", input.type)
+    .eq("metadata->>payment_id", input.paymentId)
+    .limit(1);
+
+  if (input.tenantPaymentStatus) {
+    query = query.eq("metadata->>tenant_payment_status", input.tenantPaymentStatus);
+  }
+
+  const { data: existingNotification } = await query.maybeSingle();
+  if (existingNotification?.id) return false;
+
+  const { error } = await supabaseAdmin.from("notifications").insert({
+    user_id: input.userId,
+    type: input.type,
+    title: input.title,
+    message: input.message,
+    metadata: input.metadata,
+  });
+
+  if (error) {
+    logStep("Notification insert failed", {
+      type: input.type,
+      paymentId: input.paymentId,
+      error: error.message,
+    });
+    return false;
+  }
+
+  return true;
+}
+
+async function recordReconciliationAudit(
+  supabaseAdmin: SupabaseAdminClient,
+  input: {
+    actorId: string;
+    tenantId?: string;
+    checked: number;
+    updated: number;
+    failed: number;
+    details: Array<{ payment_id: string; amount: number; stripe_status: string; action: string }>;
+  }
+) {
+  try {
+    const { error } = await supabaseAdmin
+      .from("admin_audit_logs")
+      .insert({
+        action: "ach_reconciliation_run",
+        entity_type: "payments",
+        actor_id: input.actorId,
+        tenant_id: input.tenantId || null,
+        summary: `ACH reconciliation checked ${input.checked} payment(s): ${input.updated} updated, ${input.failed} failed`,
+        changed_fields: [],
+        metadata: {
+          checked: input.checked,
+          updated: input.updated,
+          failed: input.failed,
+          details: input.details,
+        },
+      });
+
+    if (error) {
+      logStep("Failed to record reconciliation audit log", { error: error.message });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logStep("Reconciliation audit log unavailable", { error: message });
+  }
+}
+
+async function notifyManagerPaymentStatus(
+  supabaseAdmin: SupabaseAdminClient,
+  input: {
+    tenantId: string | null;
+    paymentId: string;
+    amount: number;
+    title: string;
+    message: string;
+    stripeStatus: string;
+  }
+) {
+  if (!input.tenantId) return;
+
+  try {
+    const { data: tenantData } = await supabaseAdmin
+      .from("tenants")
+      .select("manager_id, user_id")
+      .eq("id", input.tenantId)
+      .single();
+
+    if (!tenantData) return;
+    const notificationType = getPaymentNotificationType(input.stripeStatus);
+    const tenantTitle = input.stripeStatus === "succeeded"
+      ? "Payment Cleared"
+      : notificationType === "payment_incomplete"
+        ? "Payment Incomplete"
+        : "Payment Did Not Clear";
+    const tenantMessage = input.stripeStatus === "succeeded"
+      ? `$${Number(input.amount || 0).toFixed(2)} payment was verified by Stripe and applied to your Sterling Gate ledger.`
+      : notificationType === "payment_incomplete"
+        ? `$${Number(input.amount || 0).toFixed(2)} payment never completed in Stripe. No money moved.`
+        : `$${Number(input.amount || 0).toFixed(2)} payment did not clear in Stripe. Please retry or contact management if this looks wrong.`;
+
+    if (tenantData.user_id) {
+      await insertNotificationOnce(supabaseAdmin, {
+        userId: tenantData.user_id,
+        type: notificationType,
+        title: tenantTitle,
+        message: tenantMessage,
+        paymentId: input.paymentId,
+        tenantPaymentStatus: input.stripeStatus,
+        metadata: {
+          tenant_id: input.tenantId,
+          payment_id: input.paymentId,
+          amount: input.amount,
+          stripe_status: input.stripeStatus,
+          tenant_payment_status: input.stripeStatus,
+          source: "ach_reconciliation",
+        },
+      });
+    }
+
+    if (!tenantData.manager_id) return;
+
+    await insertNotificationOnce(supabaseAdmin, {
+      userId: tenantData.manager_id,
+      type: notificationType,
+      title: input.title,
+      message: input.message,
+      paymentId: input.paymentId,
+      metadata: {
+        tenant_id: input.tenantId,
+        payment_id: input.paymentId,
+        amount: input.amount,
+        stripe_status: input.stripeStatus,
+        source: "ach_reconciliation",
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logStep("Payment status notification unavailable", { paymentId: input.paymentId, error: message });
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -47,11 +234,12 @@ serve(async (req) => {
 
     logStep("Starting reconciliation", { tenant_id: tenant_id || "ALL", requested_by: userData.user.id });
 
-    // Build query: either per-tenant or system-wide
+    // Build query: either per-tenant or system-wide. This is the webhook safety net:
+    // any non-terminal local payment with a Stripe PI can be verified directly.
     let query = supabaseAdmin
       .from("payments")
-      .select("id, amount, stripe_payment_intent_id, payment_type, tenant_id, convenience_fee")
-      .eq("status", "processing")
+      .select("id, amount, status, stripe_status, stripe_payment_intent_id, payment_type, tenant_id, convenience_fee")
+      .in("status", ["processing", "pending", "requires_action", "requires_confirmation", "requires_capture"])
       .not("stripe_payment_intent_id", "is", null);
 
     if (tenant_id) {
@@ -63,8 +251,17 @@ serve(async (req) => {
     if (fetchError) throw new Error(`Failed to fetch payments: ${fetchError.message}`);
 
     if (!processingPayments || processingPayments.length === 0) {
+      await recordReconciliationAudit(supabaseAdmin, {
+        actorId: userData.user.id,
+        tenantId: tenant_id,
+        checked: 0,
+        updated: 0,
+        failed: 0,
+        details: [],
+      });
+
       return new Response(JSON.stringify({ 
-        message: "No processing payments found", 
+        message: "No open Stripe-linked payments found", 
         updated: 0, 
         failed: 0,
         details: [] 
@@ -74,7 +271,7 @@ serve(async (req) => {
       });
     }
 
-    logStep(`Found ${processingPayments.length} processing payments to check`);
+    logStep(`Found ${processingPayments.length} open Stripe-linked payments to check`);
 
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "");
 
@@ -96,7 +293,7 @@ serve(async (req) => {
           // Update payment to completed
           const { error: updateError } = await supabaseAdmin
             .from("payments")
-            .update({ status: "completed" })
+            .update({ status: "completed", stripe_status: pi.status })
             .eq("id", payment.id);
 
           if (updateError) {
@@ -111,16 +308,10 @@ serve(async (req) => {
             continue;
           }
 
-          // Apply balance adjustment via centralized RPC
-          const convenienceFee = payment.convenience_fee || 0;
-          const convenienceFeeInDollars = convenienceFee / 100;
-          const baseAmount = convenienceFee > 0 ? (payment.amount - convenienceFeeInDollars) : payment.amount;
-
-          const { error: rpcError } = await supabaseAdmin.rpc("apply_balance_adjustment", {
-            _tenant_id: payment.tenant_id,
-            _adjustment_type: "payment",
-            _amount: baseAmount,
-            _description: `ACH payment reconciled (was stuck in processing) - $${baseAmount.toFixed(2)}`,
+          // Apply balance adjustment via the idempotent payment source-of-truth RPC.
+          const { error: rpcError } = await supabaseAdmin.rpc("record_payment_balance_adjustment", {
+            _payment_id: payment.id,
+            _description: `ACH payment reconciled (was stuck in processing) - PI ${payment.stripe_payment_intent_id}`,
             _created_by: userData.user.id,
           });
 
@@ -141,13 +332,22 @@ serve(async (req) => {
             });
           }
 
+          await notifyManagerPaymentStatus(supabaseAdmin, {
+            tenantId: payment.tenant_id,
+            paymentId: payment.id,
+            amount: Number(payment.amount || 0),
+            title: "Payment Cleared",
+            message: `$${Number(payment.amount || 0).toFixed(2)} payment cleared after Stripe reconciliation and the ledger was updated.`,
+            stripeStatus: pi.status,
+          });
+
           updated++;
           logStep("Payment reconciled", { payment_id: payment.id, amount: payment.amount });
 
         } else if (pi.status === "canceled" || pi.status === "requires_payment_method") {
           await supabaseAdmin
             .from("payments")
-            .update({ status: "failed", notes: `Reconciled: Stripe status was ${pi.status}` })
+            .update({ status: "failed", stripe_status: pi.status, notes: `Reconciled: Stripe status was ${pi.status}` })
             .eq("id", payment.id);
 
           details.push({ 
@@ -156,6 +356,16 @@ serve(async (req) => {
             stripe_status: pi.status, 
             action: "marked_failed" 
           });
+
+          await notifyManagerPaymentStatus(supabaseAdmin, {
+            tenantId: payment.tenant_id,
+            paymentId: payment.id,
+            amount: Number(payment.amount || 0),
+            title: pi.status === "requires_payment_method" ? "Payment Incomplete" : "Payment Failed",
+            message: `$${Number(payment.amount || 0).toFixed(2)} payment did not complete. Stripe status: ${pi.status}.`,
+            stripeStatus: pi.status,
+          });
+
           failed++;
         } else {
           details.push({ 
@@ -179,6 +389,15 @@ serve(async (req) => {
     }
 
     logStep("Reconciliation complete", { updated, failed });
+
+    await recordReconciliationAudit(supabaseAdmin, {
+      actorId: userData.user.id,
+      tenantId: tenant_id,
+      checked: processingPayments.length,
+      updated,
+      failed,
+      details,
+    });
 
     return new Response(JSON.stringify({ 
       message: `Reconciled ${updated} payments`, 

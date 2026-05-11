@@ -2,6 +2,9 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
+type SupabaseAdminClient = ReturnType<typeof createClient>;
+type PaymentNotificationType = "payment_received" | "payment_processing" | "payment_failed" | "payment_incomplete";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -9,6 +12,107 @@ const corsHeaders = {
 
 interface VerifyRequest {
   session_id: string;
+}
+
+function getPaymentNotificationType(stripeStatus: string): PaymentNotificationType {
+  const normalized = String(stripeStatus || "").toLowerCase();
+
+  if (normalized === "succeeded" || normalized === "completed" || normalized === "paid") return "payment_received";
+  if (normalized === "processing" || normalized === "pending") return "payment_processing";
+  if (
+    normalized === "requires_payment_method" ||
+    normalized === "requires_action" ||
+    normalized === "requires_confirmation" ||
+    normalized === "incomplete" ||
+    normalized === "canceled" ||
+    normalized === "cancelled"
+  ) {
+    return "payment_incomplete";
+  }
+
+  return "payment_failed";
+}
+
+async function applyCompletedPaymentToBalance(
+  supabaseAdmin: SupabaseAdminClient,
+  paymentId: string,
+  paymentType: string | undefined,
+  userId: string | undefined,
+  convenienceFeeInDollars: number
+) {
+  if (paymentType !== 'balance' && paymentType !== 'rent') {
+    return null;
+  }
+
+  const description = convenienceFeeInDollars > 0
+    ? `Stripe ${paymentType} payment - base amount, card fee: $${convenienceFeeInDollars.toFixed(2)}`
+    : `Stripe ${paymentType} payment`;
+
+  const { data, error } = await supabaseAdmin.rpc('record_payment_balance_adjustment', {
+    _payment_id: paymentId,
+    _description: description,
+    _created_by: userId || null,
+  });
+
+  if (error) {
+    throw new Error(`Failed to apply payment to balance: ${error.message}`);
+  }
+
+  return data;
+}
+
+async function notifyTenantPaymentStatus(
+  supabaseAdmin: SupabaseAdminClient,
+  input: {
+    tenantId: string | null;
+    paymentId: string;
+    amount: number;
+    title: string;
+    message: string;
+    stripeStatus: string;
+    source: string;
+  }
+) {
+  if (!input.tenantId) return;
+
+  try {
+    const { data: tenantData } = await supabaseAdmin
+      .from('tenants')
+      .select('user_id')
+      .eq('id', input.tenantId)
+      .single();
+
+    if (!tenantData?.user_id) return;
+
+    const { data: existingNotification } = await supabaseAdmin
+      .from('notifications')
+      .select('id')
+      .eq('user_id', tenantData.user_id)
+      .eq('type', getPaymentNotificationType(input.stripeStatus))
+      .eq('metadata->>payment_id', input.paymentId)
+      .eq('metadata->>tenant_payment_status', input.stripeStatus)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingNotification?.id) return;
+
+    await supabaseAdmin.from('notifications').insert({
+      user_id: tenantData.user_id,
+      type: getPaymentNotificationType(input.stripeStatus),
+      title: input.title,
+      message: input.message,
+      metadata: {
+        tenant_id: input.tenantId,
+        payment_id: input.paymentId,
+        amount: input.amount,
+        stripe_status: input.stripeStatus,
+        tenant_payment_status: input.stripeStatus,
+        source: input.source,
+      },
+    });
+  } catch (err) {
+    console.error('[VERIFY-PAYMENT] Tenant payment notification unavailable:', err);
+  }
 }
 
 serve(async (req) => {
@@ -21,11 +125,6 @@ serve(async (req) => {
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     { auth: { persistSession: false } }
-  );
-
-  const supabaseClient = createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_ANON_KEY") ?? ""
   );
 
   try {
@@ -56,6 +155,13 @@ serve(async (req) => {
       throw new Error("Payment not completed");
     }
 
+    const paymentIntentId = typeof session.payment_intent === 'string'
+      ? session.payment_intent
+      : session.payment_intent?.id || null;
+    const paymentIntentStatus = typeof session.payment_intent === 'string'
+      ? session.payment_status === 'paid' ? 'succeeded' : session.payment_status
+      : session.payment_intent?.status || (session.payment_status === 'paid' ? 'succeeded' : session.payment_status);
+
     // Get user_id from session metadata (set during checkout creation by authenticated user)
     const userId = session.metadata?.user_id;
     if (!userId) {
@@ -65,31 +171,85 @@ serve(async (req) => {
     
     console.log("[VERIFY-PAYMENT] User from metadata:", userId);
 
+    // Extract metadata
+    const { payment_type, property_id, lease_id, tenant_id, convenience_fee: convenienceFeeStr, base_amount: baseAmountStr, payment_method_type } = session.metadata || {};
+    const amountPaid = session.amount_total || 0;
+    const amountInDollars = amountPaid / 100;
+    const convenienceFeeCents = parseInt(convenienceFeeStr || '0', 10) || 0;
+    const convenienceFeeInDollars = convenienceFeeCents / 100;
+    const baseAmountInDollars = baseAmountStr
+      ? (parseInt(baseAmountStr, 10) || 0) / 100
+      : amountInDollars - convenienceFeeInDollars;
+
+    console.log("[VERIFY-PAYMENT] Payment details:", { payment_type, property_id, lease_id, tenant_id, amountInDollars, baseAmountInDollars, convenienceFeeInDollars, paymentIntentId });
+
     // Check if payment already recorded (idempotency)
     const { data: existingPayment } = await supabaseAdmin
       .from('payments')
-      .select('id')
-      .eq('stripe_session_id', session_id)
-      .single();
+      .select('id, status, payment_type, tenant_id, amount, balance_adjustment_id')
+      .or(`stripe_session_id.eq.${session_id}${paymentIntentId ? `,stripe_payment_intent_id.eq.${paymentIntentId}` : ''}`)
+      .limit(1)
+      .maybeSingle();
 
     if (existingPayment) {
       console.log("[VERIFY-PAYMENT] Payment already recorded:", existingPayment.id);
+
+      if (existingPayment.status !== 'completed') {
+        const paymentUpdate: Record<string, unknown> = {
+          status: 'completed',
+          stripe_session_id: session_id,
+          stripe_status: paymentIntentStatus,
+        };
+
+        if (paymentIntentId) {
+          paymentUpdate.stripe_payment_intent_id = paymentIntentId;
+        }
+
+        const { error: updateError } = await supabaseAdmin
+          .from('payments')
+          .update(paymentUpdate)
+          .eq('id', existingPayment.id);
+
+        if (updateError) {
+          throw new Error(`Failed to mark payment completed: ${updateError.message}`);
+        }
+      }
+      else {
+        await supabaseAdmin
+          .from('payments')
+          .update({ stripe_status: paymentIntentStatus })
+          .eq('id', existingPayment.id);
+      }
+
+      const balanceResult = await applyCompletedPaymentToBalance(
+        supabaseAdmin,
+        existingPayment.id,
+        payment_type || existingPayment.payment_type,
+        userId,
+        convenienceFeeInDollars
+      );
+
+      await notifyTenantPaymentStatus(supabaseAdmin, {
+        tenantId: existingPayment.tenant_id,
+        paymentId: existingPayment.id,
+        amount: Number(existingPayment.amount || baseAmountInDollars || 0),
+        title: 'Payment Cleared',
+        message: `$${Number(existingPayment.amount || baseAmountInDollars || 0).toFixed(2)} payment was verified by Stripe and applied to your Sterling Gate ledger.`,
+        stripeStatus: paymentIntentStatus,
+        source: 'verify_payment',
+      });
+
       return new Response(JSON.stringify({ 
         success: true, 
         payment_id: existingPayment.id,
-        already_recorded: true 
+        already_recorded: true,
+        balanceResult,
+        amount: amountInDollars,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
     }
-
-    // Extract metadata
-    const { payment_type, property_id, lease_id, tenant_id } = session.metadata || {};
-    const amountPaid = session.amount_total || 0;
-    const amountInDollars = amountPaid / 100;
-
-    console.log("[VERIFY-PAYMENT] Payment details:", { payment_type, property_id, lease_id, tenant_id, amountInDollars });
 
     // Resolve tenant_id and property_id based on payment type
     let resolvedTenantId = tenant_id;
@@ -201,81 +361,105 @@ serve(async (req) => {
         tenant_id: resolvedTenantId,
         property_id: resolvedPropertyId,
         lease_id: lease_id || null,
-        amount: amountInDollars,
+        amount: baseAmountInDollars,
+        convenience_fee: convenienceFeeInDollars || 0,
         payment_date: new Date().toISOString().split('T')[0],
         payment_method: 'stripe',
+        payment_method_type: payment_method_type || null,
         status: 'completed',
         stripe_session_id: session_id,
+        stripe_payment_intent_id: paymentIntentId,
+        stripe_status: paymentIntentStatus,
         payment_type: payment_type,
-        notes: `${payment_type?.replace(/_/g, ' ')} via Stripe`,
+        notes: convenienceFeeInDollars > 0
+          ? `${payment_type?.replace(/_/g, ' ')} via Stripe - card fee: $${convenienceFeeInDollars.toFixed(2)}`
+          : `${payment_type?.replace(/_/g, ' ')} via Stripe`,
       })
       .select()
       .single();
 
     if (insertError) {
       console.error("[VERIFY-PAYMENT] Insert error:", insertError);
+      if (insertError.code === '23505') {
+        const { data: racedPayment } = await supabaseAdmin
+          .from('payments')
+          .select('id, status, payment_type')
+          .or(`stripe_session_id.eq.${session_id}${paymentIntentId ? `,stripe_payment_intent_id.eq.${paymentIntentId}` : ''}`)
+          .limit(1)
+          .maybeSingle();
+
+        if (racedPayment) {
+          if (racedPayment.status !== 'completed') {
+            const paymentUpdate: Record<string, unknown> = {
+              status: 'completed',
+              stripe_session_id: session_id,
+              stripe_status: paymentIntentStatus,
+            };
+
+            if (paymentIntentId) {
+              paymentUpdate.stripe_payment_intent_id = paymentIntentId;
+            }
+
+            const { error: updateError } = await supabaseAdmin
+              .from('payments')
+              .update(paymentUpdate)
+              .eq('id', racedPayment.id);
+
+            if (updateError) {
+              throw new Error(`Failed to mark payment completed: ${updateError.message}`);
+            }
+          }
+
+          const balanceResult = await applyCompletedPaymentToBalance(
+            supabaseAdmin,
+            racedPayment.id,
+            payment_type || racedPayment.payment_type,
+            userId,
+            convenienceFeeInDollars
+          );
+
+          return new Response(JSON.stringify({
+            success: true,
+            payment_id: racedPayment.id,
+            already_recorded: true,
+            payment_type,
+            amount: amountInDollars,
+            balanceResult,
+          }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 200,
+          });
+        }
+      }
       throw new Error(`Failed to record payment: ${insertError.message}`);
     }
 
     console.log("[VERIFY-PAYMENT] Payment recorded:", newPayment.id);
 
-    // Update tenant balance for balance and rent payments
-    if (payment_type === 'balance' || payment_type === 'rent') {
-      console.log("[VERIFY-PAYMENT] Updating tenant balance for:", resolvedTenantId);
+    const balanceResult = await applyCompletedPaymentToBalance(
+      supabaseAdmin,
+      newPayment.id,
+      payment_type,
+      userId,
+      convenienceFeeInDollars
+    );
 
-      // Get current balance
-      const { data: tenantData, error: tenantFetchError } = await supabaseAdmin
-        .from('tenants')
-        .select('current_balance')
-        .eq('id', resolvedTenantId)
-        .single();
-
-      if (tenantFetchError) {
-        console.error("[VERIFY-PAYMENT] Failed to fetch tenant balance:", tenantFetchError);
-      } else {
-        const previousBalance = tenantData?.current_balance || 0;
-        const newBalance = previousBalance - amountInDollars;
-
-        console.log("[VERIFY-PAYMENT] Balance update:", { previousBalance, amountInDollars, newBalance });
-
-        // Update tenant balance
-        const { error: updateError } = await supabaseAdmin
-          .from('tenants')
-          .update({ current_balance: newBalance })
-          .eq('id', resolvedTenantId);
-
-        if (updateError) {
-          console.error("[VERIFY-PAYMENT] Failed to update balance:", updateError);
-        } else {
-          console.log("[VERIFY-PAYMENT] Balance updated successfully");
-
-          // Insert balance adjustment record
-          const { error: adjustmentError } = await supabaseAdmin
-            .from('balance_adjustments')
-            .insert({
-              tenant_id: resolvedTenantId,
-              adjustment_type: 'payment',
-              amount: amountInDollars,
-              previous_balance: previousBalance,
-              new_balance: newBalance,
-              description: `Stripe ${payment_type} payment`,
-              created_by: userId,
-            });
-
-          if (adjustmentError) {
-            console.error("[VERIFY-PAYMENT] Failed to insert balance adjustment:", adjustmentError);
-          } else {
-            console.log("[VERIFY-PAYMENT] Balance adjustment recorded");
-          }
-        }
-      }
-    }
+    await notifyTenantPaymentStatus(supabaseAdmin, {
+      tenantId: resolvedTenantId,
+      paymentId: newPayment.id,
+      amount: baseAmountInDollars,
+      title: 'Payment Cleared',
+      message: `$${baseAmountInDollars.toFixed(2)} payment was verified by Stripe and applied to your Sterling Gate ledger.`,
+      stripeStatus: paymentIntentStatus,
+      source: 'verify_payment',
+    });
 
     return new Response(JSON.stringify({ 
       success: true, 
       payment_id: newPayment.id,
       payment_type,
       amount: amountInDollars,
+      balanceResult,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

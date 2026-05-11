@@ -2,8 +2,83 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-secret',
 };
+
+type RentAction =
+  | 'charge_rent'
+  | 'apply_late_fee'
+  | 'waive_late_fee'
+  | 'process_all_rent'
+  | 'process_all_late_fees';
+
+interface RentActionRequest {
+  action: RentAction;
+  tenant_id?: string;
+  rent_charge_id?: string;
+  rent_period?: string;
+  override_amount?: number;
+}
+
+class HttpError extends Error {
+  status: number;
+
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const systemActions = new Set<RentAction>(['process_all_rent', 'process_all_late_fees']);
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(
+    JSON.stringify(body),
+    {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status,
+    }
+  );
+}
+
+function requireCronSecret(req: Request) {
+  const expectedSecret = Deno.env.get('RENT_CRON_SECRET');
+  if (!expectedSecret) {
+    throw new HttpError('RENT_CRON_SECRET not configured', 500);
+  }
+
+  const providedSecret = req.headers.get('x-cron-secret');
+  if (!providedSecret || providedSecret !== expectedSecret) {
+    throw new HttpError('Unauthorized cron request', 401);
+  }
+}
+
+async function requirePropertyManager(req: Request, supabase: ReturnType<typeof createClient>) {
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader) {
+    throw new HttpError('No authorization header provided', 401);
+  }
+
+  const token = authHeader.replace('Bearer ', '');
+  const { data: userData, error: userError } = await supabase.auth.getUser(token);
+
+  if (userError || !userData.user) {
+    throw new HttpError('Not authenticated', 401);
+  }
+
+  const { data: roleData, error: roleError } = await supabase
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', userData.user.id)
+    .eq('role', 'property_manager')
+    .maybeSingle();
+
+  if (roleError || !roleData) {
+    throw new HttpError('Only property managers can run this action', 403);
+  }
+
+  return userData.user.id;
+}
 
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
@@ -12,12 +87,25 @@ Deno.serve(async (req) => {
   }
 
   try {
+    if (req.method !== 'POST') {
+      throw new HttpError('Method not allowed', 405);
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
     
-    const { action, tenant_id, rent_charge_id, rent_period, manager_id, override_amount } = await req.json();
+    const { action, tenant_id, rent_charge_id, rent_period, override_amount }: RentActionRequest = await req.json();
+    if (!action) {
+      throw new HttpError('action is required');
+    }
+
+    const managerId = systemActions.has(action)
+      ? (requireCronSecret(req), null)
+      : await requirePropertyManager(req, supabase);
     
     console.log(`Processing rent action: ${action}`, { tenant_id, rent_charge_id, rent_period });
 
@@ -33,7 +121,7 @@ Deno.serve(async (req) => {
         const { data, error } = await supabase.rpc('charge_tenant_rent', {
           _tenant_id: tenant_id,
           _rent_period: rent_period || null,
-          _created_by: manager_id || null,
+          _created_by: managerId,
         });
         
         if (error) throw error;
@@ -50,7 +138,7 @@ Deno.serve(async (req) => {
         
         const { data, error } = await supabase.rpc('apply_rent_late_fee', {
           _rent_charge_id: rent_charge_id,
-          _created_by: manager_id || null,
+          _created_by: managerId,
           _override_amount: override_amount || null,
         });
         
@@ -68,7 +156,7 @@ Deno.serve(async (req) => {
         
         const { data, error } = await supabase.rpc('waive_rent_late_fee', {
           _rent_charge_id: rent_charge_id,
-          _waived_by: manager_id || null,
+          _waived_by: managerId,
         });
         
         if (error) throw error;
@@ -101,25 +189,16 @@ Deno.serve(async (req) => {
         throw new Error(`Unknown action: ${action}. Valid actions: charge_rent, apply_late_fee, waive_late_fee, process_all_rent, process_all_late_fees`);
     }
 
-    return new Response(
-      JSON.stringify({ success: true, data: result }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
-      }
-    );
+    return jsonResponse({ success: true, data: result });
   } catch (error) {
     console.error('Error processing rent action:', error);
     
-    return new Response(
-      JSON.stringify({ 
+    return jsonResponse(
+      {
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error' 
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 400 
-      }
+      },
+      error instanceof HttpError ? error.status : 400
     );
   }
 });

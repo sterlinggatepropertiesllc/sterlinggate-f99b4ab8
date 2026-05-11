@@ -36,7 +36,8 @@ const schema = z.object({
   status: z.string().default('completed'),
 });
 
-type FormData = z.infer<typeof schema>;
+type FormInput = z.input<typeof schema>;
+type FormData = z.output<typeof schema>;
 
 interface Props {
   open: boolean;
@@ -64,7 +65,7 @@ export function AddMaintenanceDialog({ open, onOpenChange, properties, editRecor
   const [pendingPreviews, setPendingPreviews] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, watch, setValue, reset, formState: { errors } } = useForm<FormInput, undefined, FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       performed_by: 'partner',

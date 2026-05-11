@@ -1,13 +1,14 @@
 import { Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { NotificationCenter } from './NotificationCenter';
 import { useNotifications, Notification } from '@/hooks/useNotifications';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { getNotificationUrl } from '@/lib/notificationRouting';
 
 export function NotificationBell() {
   const {
@@ -24,6 +25,7 @@ export function NotificationBell() {
 
   const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
+  const touchStartY = useRef<number | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -39,42 +41,8 @@ export function NotificationBell() {
     // Close the notification panel
     setOpen(false);
     
-    // Determine which dashboard we're on
-    const isAdminDashboard = location.pathname === '/dashboard';
-    const isTenantPortal = location.pathname === '/tenant';
-    
-    // Map notification type to tab
-    let targetTab = '';
-    switch (notification.type) {
-      case 'application_received':
-        targetTab = 'applications';
-        break;
-      case 'application_approved':
-      case 'application_rejected':
-        targetTab = 'applications';
-        break;
-      case 'rent_received':
-        targetTab = 'audit';
-        break;
-      case 'lease_signed':
-        targetTab = 'leases';
-        break;
-      case 'message_received':
-        targetTab = 'messages';
-        break;
-      case 'maintenance_request':
-        targetTab = 'properties';
-        break;
-      default:
-        return;
-    }
-    
-    // Navigate with query param to set the tab
-    if (isAdminDashboard) {
-      navigate(`/dashboard?tab=${targetTab}`);
-    } else if (isTenantPortal) {
-      navigate(`/tenant?tab=${targetTab}`);
-    }
+    const portal = location.pathname.startsWith('/tenant') ? 'tenant' : 'admin';
+    navigate(getNotificationUrl(notification, portal));
   }, [location.pathname, navigate]);
 
   const bellButton = (
@@ -135,17 +103,38 @@ export function NotificationBell() {
     />
   );
 
+  const handlePanelTouchStart = (event: React.TouchEvent) => {
+    touchStartY.current = event.touches[0].clientY;
+  };
+
+  const handlePanelTouchEnd = (event: React.TouchEvent) => {
+    if (touchStartY.current === null) return;
+    const deltaY = event.changedTouches[0].clientY - touchStartY.current;
+    touchStartY.current = null;
+    if (deltaY > 90) setOpen(false);
+  };
+
   if (isMobile) {
     return (
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetTrigger asChild>
           {bellButton}
         </SheetTrigger>
-        <SheetContent side="bottom" className="h-[85vh] rounded-t-xl p-0">
-          <SheetHeader className="px-4 py-4 border-b border-border/50">
-            <SheetTitle className="text-lg font-serif">Notifications</SheetTitle>
-          </SheetHeader>
-          <div className="h-[calc(100%-60px)]">
+        <SheetContent side="bottom" className="h-[88dvh] rounded-t-2xl border-border/70 bg-card p-0">
+          <div
+            className="touch-pan-y"
+            onTouchStart={handlePanelTouchStart}
+            onTouchEnd={handlePanelTouchEnd}
+          >
+            <div className="mx-auto mt-3 h-1.5 w-16 rounded-full bg-muted-foreground/25" />
+            <SheetHeader className="border-b border-border/50 px-4 py-3 text-left">
+              <SheetTitle className="text-base font-semibold">Notifications</SheetTitle>
+              <SheetDescription className="text-xs text-muted-foreground">
+                Tap a notification to open it. Swipe down to close.
+              </SheetDescription>
+            </SheetHeader>
+          </div>
+          <div className="h-[calc(88dvh-98px)] min-h-0">
             {notificationContent}
           </div>
         </SheetContent>

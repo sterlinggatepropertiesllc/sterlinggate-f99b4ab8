@@ -32,7 +32,7 @@ export const InviteEmail = ({
     <Body style={main}>
       <Container style={container}>
         <Img
-          src="https://nmibwtbrbpqfvseeflep.supabase.co/storage/v1/object/public/email-assets/logo.png"
+          src="https://gwixdarqhmgxjkgwzuoe.supabase.co/storage/v1/object/public/email-assets/logo.png"
           alt="Sterling Gate Properties"
           width="160"
           height="auto"

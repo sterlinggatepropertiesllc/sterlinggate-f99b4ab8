@@ -15,6 +15,7 @@ import { useManagerProperties } from '@/hooks/useProperties';
 import { useAuth } from '@/contexts/AuthContext';
 import { AddMaintenanceDialog } from './AddMaintenanceDialog';
 import { AttachmentGallery } from './AttachmentGallery';
+import { AdminButton, EmptyState, PageHeader, StatCard } from '@/components/admin/AdminDesignSystem';
 import { Plus, Download, Trash2, Pencil, CalendarIcon, X, FileText, DollarSign, Users, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { MaintenanceRecord } from '@/hooks/useMaintenance';
@@ -162,25 +163,25 @@ export function MaintenanceDashboard() {
     : null;
 
   return (
-    <div className="animate-fade-in">
+    <div className="space-y-5 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-serif">Maintenance</h1>
-          <p className="text-muted-foreground mt-1">Track property maintenance and cost splits</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => exportCSV(filtered)} disabled={filtered.length === 0}>
+      <PageHeader
+        title="Maintenance"
+        subtitle="Track property maintenance, vendor cost splits, proof, and work order status."
+        actions={
+          <>
+          <AdminButton variant="secondary" onClick={() => exportCSV(filtered)} disabled={filtered.length === 0}>
             <Download className="h-4 w-4 mr-2" /> Export CSV
-          </Button>
-          <Button onClick={() => { setEditRecord(null); setIsAddOpen(true); }}>
-            <Plus className="h-4 w-4 mr-2" /> Add Maintenance
-          </Button>
-        </div>
-      </div>
+          </AdminButton>
+          <AdminButton onClick={() => { setEditRecord(null); setIsAddOpen(true); }}>
+            Add Work Order
+          </AdminButton>
+          </>
+        }
+      />
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-6">
+      <div className="flex flex-wrap gap-3">
         <Select value={propertyFilter} onValueChange={setPropertyFilter}>
           <SelectTrigger className="w-[200px]"><SelectValue placeholder="All Properties" /></SelectTrigger>
           <SelectContent>
@@ -228,34 +229,10 @@ export function MaintenanceDashboard() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <Card className="p-5 flex items-center gap-4">
-          <div className="rounded-lg bg-primary/10 p-2.5">
-            <FileText className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Total Records</p>
-            <p className="text-2xl font-semibold">{stats.count}</p>
-          </div>
-        </Card>
-        <Card className="p-5 flex items-center gap-4">
-          <div className="rounded-lg bg-primary/10 p-2.5">
-            <DollarSign className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Total Cost</p>
-            <p className="text-2xl font-semibold">{formatCurrency(stats.totalCost)}</p>
-          </div>
-        </Card>
-        <Card className="p-5 flex items-center gap-4">
-          <div className="rounded-lg bg-accent/10 p-2.5">
-            <Users className="h-5 w-5 text-accent" />
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Partner Share</p>
-            <p className="text-2xl font-semibold text-accent">{formatCurrency(stats.totalPartner)}</p>
-          </div>
-        </Card>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <StatCard label="Total records" value={stats.count} detail="Work orders in current view" tone="gold" />
+        <StatCard label="Total cost" value={formatCurrency(stats.totalCost)} detail="Maintenance spend in view" tone="warning" />
+        <StatCard label="Partner share" value={formatCurrency(stats.totalPartner)} detail="Partner-responsible cost" tone="success" />
       </div>
 
       {/* Table */}
@@ -263,7 +240,7 @@ export function MaintenanceDashboard() {
         {isLoading ? (
           <div className="p-8 text-center text-muted-foreground">Loading...</div>
         ) : filtered.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground">No maintenance records found</div>
+          <EmptyState title="No maintenance records" description="No work orders match the current filters." />
         ) : (
           <Table>
             <TableHeader>

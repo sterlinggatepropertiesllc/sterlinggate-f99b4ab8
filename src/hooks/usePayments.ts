@@ -14,6 +14,13 @@ export interface Payment {
   status: string;
   notes: string | null;
   created_at: string;
+  payment_method_type: string | null;
+  convenience_fee: number | null;
+  stripe_payment_intent_id: string | null;
+  stripe_session_id: string | null;
+  stripe_status?: string | null;
+  balance_adjustment_id: string | null;
+  balance_applied_at: string | null;
 }
 
 interface PaymentInsert {
@@ -34,7 +41,8 @@ export function usePayments(propertyId?: string, tenantId?: string) {
       let query = supabase
         .from('payments')
         .select('*')
-        .order('payment_date', { ascending: false });
+        .order('payment_date', { ascending: false })
+        .order('created_at', { ascending: false });
 
       if (propertyId) {
         query = query.eq('property_id', propertyId);
@@ -59,7 +67,8 @@ export function usePaymentsByDateRange(startDate: string, endDate: string) {
         .select('*')
         .gte('payment_date', startDate)
         .lte('payment_date', endDate)
-        .order('payment_date', { ascending: false });
+        .order('payment_date', { ascending: false })
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       return data as Payment[];
@@ -75,7 +84,8 @@ export function useAllPayments() {
       const { data, error } = await supabase
         .from('payments')
         .select('*')
-        .order('payment_date', { ascending: false });
+        .order('payment_date', { ascending: false })
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       return data as Payment[];

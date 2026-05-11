@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { TrendingUp } from 'lucide-react';
 
 interface RevenueChartProps {
@@ -48,56 +48,59 @@ export function RevenueChart({ data }: RevenueChartProps) {
       </CardHeader>
       <CardContent className="relative z-10">
         <div className="h-[220px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorRevenuePremium" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
-                  <stop offset="50%" stopColor="hsl(var(--primary))" stopOpacity={0.15} />
-                  <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                </linearGradient>
-                <filter id="glow">
-                  <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-                  <feMerge>
-                    <feMergeNode in="coloredBlur"/>
-                    <feMergeNode in="SourceGraphic"/>
-                  </feMerge>
-                </filter>
-              </defs>
-              <CartesianGrid 
-                strokeDasharray="3 3" 
-                stroke="hsl(var(--border))" 
-                strokeOpacity={0.3}
-                vertical={false}
-              />
-              <XAxis 
-                dataKey="month" 
-                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                tickLine={false}
-                axisLine={false}
-                dy={10}
-              />
-              <YAxis 
-                tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
-                tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                tickLine={false}
-                axisLine={false}
-                dx={-10}
-              />
-              <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'hsl(var(--primary))', strokeWidth: 1, strokeDasharray: '5 5' }} />
-              <Area
-                type="monotone"
-                dataKey="revenue"
-                stroke="hsl(var(--primary))"
-                strokeWidth={3}
-                fillOpacity={1}
-                fill="url(#colorRevenuePremium)"
-                filter="url(#glow)"
-                animationDuration={1500}
-                animationEasing="ease-out"
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          <AreaChart
+            data={data}
+            margin={{ top: 20, right: 20, left: 0, bottom: 0 }}
+            responsive
+            style={{ width: '100%', height: '100%' }}
+          >
+            <defs>
+              <linearGradient id="colorRevenuePremium" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
+                <stop offset="50%" stopColor="hsl(var(--primary))" stopOpacity={0.15} />
+                <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+              </linearGradient>
+              <filter id="glow">
+                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                <feMerge>
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
+            <CartesianGrid
+              strokeDasharray="3 3"
+              stroke="hsl(var(--border))"
+              strokeOpacity={0.3}
+              vertical={false}
+            />
+            <XAxis
+              dataKey="month"
+              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+              tickLine={false}
+              axisLine={false}
+              dy={10}
+            />
+            <YAxis
+              tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+              tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+              tickLine={false}
+              axisLine={false}
+              dx={-10}
+            />
+            <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'hsl(var(--primary))', strokeWidth: 1, strokeDasharray: '5 5' }} />
+            <Area
+              type="monotone"
+              dataKey="revenue"
+              stroke="hsl(var(--primary))"
+              strokeWidth={3}
+              fillOpacity={1}
+              fill="url(#colorRevenuePremium)"
+              filter="url(#glow)"
+              animationDuration={1500}
+              animationEasing="ease-out"
+            />
+          </AreaChart>
         </div>
       </CardContent>
     </Card>
