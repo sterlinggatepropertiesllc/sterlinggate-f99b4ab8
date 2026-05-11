@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Area, AreaChart, CartesianGrid, Tooltip, XAxis, YAxis } from 'recharts';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAnalytics } from '@/hooks/useAnalytics';
@@ -150,29 +150,32 @@ export function AnalyticsDashboard() {
       <section className="grid gap-4 xl:grid-cols-[1.45fr_0.75fr]">
         <SectionCard title="Revenue & Collections Trend" subtitle="Completed Stripe and manual payments over the past 12 months.">
           <div className="h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={analytics.monthlyRevenue} margin={{ top: 12, right: 8, left: -14, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="sterlingRevenueFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(var(--success))" stopOpacity={0.28} />
-                    <stop offset="100%" stopColor="hsl(var(--success))" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="hsl(var(--border))" strokeOpacity={0.4} vertical={false} />
-                <XAxis dataKey="month" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickLine={false} axisLine={false} dy={8} />
-                <YAxis tickFormatter={(value) => `$${Number(value) / 1000}k`} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickLine={false} axisLine={false} />
-                <Tooltip
-                  contentStyle={{
-                    background: 'hsl(var(--popover))',
-                    border: '1px solid hsl(var(--border))',
-                    borderRadius: 10,
-                    color: 'hsl(var(--foreground))',
-                  }}
-                  formatter={(value) => formatCurrency(Number(value))}
-                />
-                <Area type="monotone" dataKey="revenue" stroke="hsl(var(--success))" strokeWidth={2} fill="url(#sterlingRevenueFill)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            <AreaChart
+              data={analytics.monthlyRevenue}
+              margin={{ top: 12, right: 8, left: -14, bottom: 0 }}
+              responsive
+              style={{ width: '100%', height: '100%' }}
+            >
+              <defs>
+                <linearGradient id="sterlingRevenueFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="hsl(var(--success))" stopOpacity={0.28} />
+                  <stop offset="100%" stopColor="hsl(var(--success))" stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="hsl(var(--border))" strokeOpacity={0.4} vertical={false} />
+              <XAxis dataKey="month" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickLine={false} axisLine={false} dy={8} />
+              <YAxis tickFormatter={(value) => `$${Number(value) / 1000}k`} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }} tickLine={false} axisLine={false} />
+              <Tooltip
+                contentStyle={{
+                  background: 'hsl(var(--popover))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: 10,
+                  color: 'hsl(var(--foreground))',
+                }}
+                formatter={(value) => formatCurrency(Number(value))}
+              />
+              <Area type="monotone" dataKey="revenue" stroke="hsl(var(--success))" strokeWidth={2} fill="url(#sterlingRevenueFill)" />
+            </AreaChart>
           </div>
         </SectionCard>
 
